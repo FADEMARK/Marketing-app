@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
@@ -188,7 +189,13 @@ app.get("/profile", requireBusinessAuth, async (req, res, next) => {
     const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
       req.session.businessId,
     ]);
-    res.render("profile", { business: rows[0], error: null, success: null });
+    res.render("profile", {
+      business: rows[0],
+      error: null,
+      success: null,
+      fb_error: req.query.fb_error || null,
+      fb_connected: req.query.fb_connected || null,
+    });
   } catch (err) {
     next(err);
   }
@@ -254,6 +261,101 @@ app.post("/profile", requireBusinessAuth, upload.single("logo"), async (req, res
       req.session.businessId,
     ]);
     res.render("profile", { business: rows[0], error: null, success: "Cambios guardados." });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Conectar la página de Facebook del negocio (OAuth) ----------
+
+function getFacebookRedirectUri(req) {
+  return `${req.protocol}://${req.get("host")}/facebook/callback`;
+}
+
+app.get("/facebook/connect", requireBusinessAuth, (req, res) => {
+  if (!facebook.isConfigured()) {
+    return res.status(503).send(
+      "La conexión con Facebook todavía no está configurada (faltan META_APP_ID/META_APP_SECRET en el servidor)."
+    );
+  }
+
+  // Token anti-CSRF simple: lo guardamos en sesión y lo comparamos al volver.
+  const state = crypto.randomBytes(16).toString("hex");
+  req.session.fbOAuthState = state;
+
+  const redirectUri = getFacebookRedirectUri(req);
+  res.redirect(facebook.buildLoginUrl(redirectUri, state));
+});
+
+app.get("/facebook/callback", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { code, state, error: fbError } = req.query;
+
+    if (fbError) {
+      return res.redirect("/profile?fb_error=" + encodeURIComponent(String(fbError)));
+    }
+    if (!state || state !== req.session.fbOAuthState) {
+      return res.redirect("/profile?fb_error=" + encodeURIComponent("Sesión inválida, intenta de nuevo."));
+    }
+    delete req.session.fbOAuthState;
+
+    const redirectUri = getFacebookRedirectUri(req);
+    const pages = await facebook.getPagesFromOAuthCode(code, redirectUri);
+
+    if (pages.length === 0) {
+      return res.redirect(
+        "/profile?fb_error=" +
+          encodeURIComponent("No encontramos páginas que administres. Debes ser admin de la página en Facebook.")
+      );
+    }
+
+    if (pages.length === 1) {
+      const page = pages[0];
+      await pool.query(
+        "UPDATE businesses SET fb_page_id = $1, fb_page_name = $2, fb_page_access_token = $3 WHERE id = $4",
+        [page.id, page.name, page.access_token, req.session.businessId]
+      );
+      return res.redirect("/profile?fb_connected=1");
+    }
+
+    // Si administra varias páginas, que elija cuál conectar.
+    req.session.fbPendingPages = pages;
+    res.render("select-facebook-page", { pages, error: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/facebook/select-page", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const pages = req.session.fbPendingPages || [];
+    const page = pages.find((p) => p.id === req.body.page_id);
+
+    if (!page) {
+      return res.render("select-facebook-page", {
+        pages,
+        error: "Selecciona una página de la lista.",
+      });
+    }
+
+    await pool.query(
+      "UPDATE businesses SET fb_page_id = $1, fb_page_name = $2, fb_page_access_token = $3 WHERE id = $4",
+      [page.id, page.name, page.access_token, req.session.businessId]
+    );
+    delete req.session.fbPendingPages;
+    res.redirect("/profile?fb_connected=1");
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/facebook/disconnect", requireBusinessAuth, async (req, res, next) => {
+  try {
+    await pool.query(
+      "UPDATE businesses SET fb_page_id = NULL, fb_page_name = NULL, fb_page_access_token = NULL WHERE id = $1",
+      [req.session.businessId]
+    );
+    res.redirect("/profile");
   } catch (err) {
     next(err);
   }
@@ -546,7 +648,8 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT campaigns.*, businesses.name AS business_name, businesses.fb_page_link, businesses.logo_data,
-              businesses.industry, businesses.brand_color_primary, businesses.brand_color_secondary
+              businesses.industry, businesses.brand_color_primary, businesses.brand_color_secondary,
+              businesses.fb_page_id, businesses.fb_page_name
        FROM campaigns
        JOIN businesses ON businesses.id = campaigns.business_id
        WHERE campaigns.id = $1`,
@@ -560,9 +663,57 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
       campaign,
       canvaConfigured: canva.isConfigured(),
       facebookConfigured: facebook.isConfigured(),
+      fb_publish_error: req.query.fb_publish_error || null,
     });
   } catch (err) {
     next(err);
+  }
+});
+
+app.post("/admin/campaigns/:id/publish-to-facebook", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT campaigns.*, businesses.fb_page_id, businesses.fb_page_access_token
+       FROM campaigns
+       JOIN businesses ON businesses.id = campaigns.business_id
+       WHERE campaigns.id = $1`,
+      [req.params.id]
+    );
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).send("Campaña no encontrada.");
+
+    if (!campaign.fb_page_id || !campaign.fb_page_access_token) {
+      return res.redirect(
+        `/admin/campaigns/${req.params.id}?fb_publish_error=` +
+          encodeURIComponent("Este negocio todavía no conectó su página de Facebook (debe hacerlo desde su perfil).")
+      );
+    }
+    if (!campaign.final_image_data) {
+      return res.redirect(
+        `/admin/campaigns/${req.params.id}?fb_publish_error=` +
+          encodeURIComponent("Todavía no hay una imagen final para publicar.")
+      );
+    }
+
+    const message = [campaign.ai_caption, campaign.ai_hashtags].filter(Boolean).join("\n\n");
+
+    const { postUrl } = await facebook.publishPhotoToPage({
+      pageId: campaign.fb_page_id,
+      pageAccessToken: campaign.fb_page_access_token,
+      imageDataUri: campaign.final_image_data,
+      message,
+    });
+
+    await pool.query(
+      "UPDATE campaigns SET status = $1, published_post_url = $2, updated_at = NOW() WHERE id = $3",
+      [STATUSES.PUBLICADO, postUrl, req.params.id]
+    );
+
+    res.redirect(`/admin/campaigns/${req.params.id}`);
+  } catch (err) {
+    res.redirect(
+      `/admin/campaigns/${req.params.id}?fb_publish_error=` + encodeURIComponent(err.message)
+    );
   }
 });
 

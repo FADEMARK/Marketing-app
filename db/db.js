@@ -42,6 +42,9 @@ async function init() {
       phone TEXT,
       doctor_name TEXT,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      fb_page_id TEXT,
+      fb_page_name TEXT,
+      fb_page_access_token TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
 
@@ -88,6 +91,9 @@ async function init() {
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS address TEXT;`);
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS phone TEXT;`);
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS doctor_name TEXT;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_id TEXT;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_name TEXT;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_access_token TEXT;`);
 }
 
 module.exports = { pool, init };

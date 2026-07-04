@@ -50,8 +50,29 @@
     <% } %>
     <% if (!facebookConfigured) { %>
       <div class="alert alert-warning">
-        La publicación automática en Facebook aún no está configurada. Publica manualmente en
-        la página del cliente y pega el link del post abajo.
+        La publicación automática en Facebook aún no está configurada (falta META_APP_ID/META_APP_SECRET
+        en el servidor). Publica manualmente en la página del cliente y pega el link del post abajo.
+      </div>
+    <% } else if (!campaign.fb_page_id) { %>
+      <div class="alert alert-warning">
+        Este negocio todavía no conectó su página de Facebook (lo hace desde su perfil, botón
+        "Conectar con Facebook"). Mientras tanto, publica manualmente y pega el link abajo.
+      </div>
+    <% } else { %>
+      <div class="detail-box">
+        <h3>Publicar automáticamente</h3>
+        <p class="muted">Página conectada: <strong><%= campaign.fb_page_name %></strong></p>
+        <% if (typeof fb_publish_error !== 'undefined' && fb_publish_error) { %>
+          <div class="alert alert-error"><%= fb_publish_error %></div>
+        <% } %>
+        <% if (campaign.final_image_data) { %>
+          <form method="POST" action="/admin/campaigns/<%= campaign.id %>/publish-to-facebook"
+                onsubmit="return confirm('¿Publicar esta imagen y copy ahora mismo en la página de Facebook del negocio?');">
+            <button type="submit" class="btn-primary">Publicar en Facebook ahora</button>
+          </form>
+        <% } else { %>
+          <p class="muted">Sube o genera la imagen final antes de poder publicar.</p>
+        <% } %>
       </div>
     <% } %>
 

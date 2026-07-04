@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Elige tu página de Facebook — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page narrow">
+    <h1>¿Cuál página quieres conectar?</h1>
+    <p class="subtitle">Administras varias páginas de Facebook. Elige la de este negocio.</p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/facebook/select-page" class="card-form">
+      <% pages.forEach(function(p) { %>
+        <label style="flex-direction: row; align-items: center; gap: 10px;">
+          <input type="radio" name="page_id" value="<%= p.id %>" required style="width:auto;" />
+          <%= p.name %>
+        </label>
+      <% }); %>
+      <button type="submit" class="btn-primary full-width">Conectar esta página</button>
+    </form>
+  </main>
+</body>
+</html>

@@ -18,6 +18,25 @@
     <% if (success) { %>
       <div class="alert alert-warning"><%= success %></div>
     <% } %>
+    <% if (typeof fb_error !== 'undefined' && fb_error) { %>
+      <div class="alert alert-error">Facebook: <%= fb_error %></div>
+    <% } %>
+    <% if (typeof fb_connected !== 'undefined' && fb_connected) { %>
+      <div class="alert alert-warning">Página de Facebook conectada correctamente.</div>
+    <% } %>
+
+    <div class="card-form" style="margin-bottom: 24px;">
+      <h3 style="margin: 0;">Publicación en Facebook</h3>
+      <% if (business.fb_page_id) { %>
+        <p>Conectado a: <strong><%= business.fb_page_name %></strong></p>
+        <form method="POST" action="/facebook/disconnect">
+          <button type="submit" class="link-button" style="color:#B3261E;">Desconectar página</button>
+        </form>
+      <% } else { %>
+        <p class="muted">Conecta tu página para poder publicar directo desde el panel admin, sin subirla a mano.</p>
+        <a href="/facebook/connect" class="btn-primary">Conectar con Facebook</a>
+      <% } %>
+    </div>
 
     <form method="POST" action="/profile" enctype="multipart/form-data" class="card-form">
       <label>Nombre del negocio *
