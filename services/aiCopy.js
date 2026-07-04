@@ -59,31 +59,46 @@ function fallbackGenerateCopy(brief) {
     new Set(baseWords.map(slugifyHashtag).filter((h) => h.length > 1))
   ).slice(0, 6);
 
-  return { caption, hashtags: hashtags.join(" ") };
+  // Headline corto para usarse como título del diseño (mejor que reusar el
+  // texto crudo del cliente, que puede venir largo o con errores de dedo).
+  const headline = product_service.length > 40
+    ? product_service.slice(0, 39).trim() + "…"
+    : product_service;
+
+  return { headline, caption, hashtags: hashtags.join(" ") };
 }
 
 function buildPrompt(brief) {
-  return `Actúa como un Marketing Senior. Redacta un copy corto y persuasivo para una publicación de Facebook, en español, con este brief:
-Objetivo: ${brief.objective}
-Producto/Servicio: ${brief.product_service}
+  return `Actúa como un Marketing Senior y corrector de estilo. Con este brief, en español:
+${brief.businessIndustry ? `Giro del negocio: ${brief.businessIndustry}\n` : ""}Objetivo: ${brief.objective}
+Producto/Servicio (tal como lo escribió el cliente, puede tener errores de dedo/ortografía): ${brief.product_service}
 Mensaje clave: ${brief.key_message}
 Público objetivo: ${brief.target_audience}
 Tono: ${brief.tone}
 Llamado a la acción: ${brief.cta}
 Palabras clave: ${brief.keywords || "N/A"}
 
-Responde ÚNICAMENTE con un JSON válido, sin texto adicional ni bloques de código, con el formato exacto: {"caption": "...", "hashtags": "#tag1 #tag2 #tag3"}`;
+Genera:
+1. "headline": un título corto y llamativo (máximo 6 palabras) para usarse como texto GRANDE sobre una imagen publicitaria. Corrige cualquier error ortográfico o de dedo del producto/servicio; no lo copies literal si viene mal escrito o incompleto.
+2. "caption": un copy corto y persuasivo para una publicación de Facebook, también con ortografía y redacción corregidas.
+3. "hashtags": 4 a 6 hashtags relevantes.
+
+Responde ÚNICAMENTE con un JSON válido, sin texto adicional ni bloques de código, con el formato exacto: {"headline": "...", "caption": "...", "hashtags": "#tag1 #tag2 #tag3"}`;
 }
 
-function parseJsonResponse(text) {
+function parseJsonResponse(text, brief) {
   // Algunos modelos envuelven el JSON en ```json ... ``` a pesar de pedir texto plano.
   const cleaned = text.replace(/```json|```/g, "").trim();
   try {
     const parsed = JSON.parse(cleaned);
-    return { caption: parsed.caption, hashtags: parsed.hashtags };
+    return {
+      headline: parsed.headline || brief.product_service,
+      caption: parsed.caption,
+      hashtags: parsed.hashtags,
+    };
   } catch (err) {
     // Si el modelo no devolvió JSON limpio, usamos el texto completo como caption.
-    return { caption: cleaned, hashtags: "" };
+    return { headline: brief.product_service, caption: cleaned, hashtags: "" };
   }
 }
 
@@ -111,7 +126,7 @@ async function generateWithGemini(brief) {
 
   const data = await response.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-  return parseJsonResponse(text);
+  return parseJsonResponse(text, brief);
 }
 
 async function generateWithOpenAI(brief) {
@@ -136,7 +151,7 @@ async function generateWithOpenAI(brief) {
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content || "{}";
-  return parseJsonResponse(text);
+  return parseJsonResponse(text, brief);
 }
 
 async function generateCopy(brief) {

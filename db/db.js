@@ -37,6 +37,7 @@ async function init() {
       brand_color_primary TEXT DEFAULT '#1877F2',
       brand_color_secondary TEXT DEFAULT '#0B0B0B',
       logo_data TEXT,
+      industry TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
 
@@ -73,6 +74,10 @@ async function init() {
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
   `);
+
+  // Migraciones ligeras: si la tabla ya existía de antes (como en un
+  // despliegue previo en Render), le agrega columnas nuevas sin borrar datos.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS industry TEXT;`);
 }
 
 module.exports = { pool, init };

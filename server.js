@@ -75,10 +75,17 @@ app.get("/register", (req, res) => {
 
 app.post("/register", upload.single("logo"), async (req, res, next) => {
   try {
-    const { name, fb_page_link, email, password, brand_color_primary, brand_color_secondary } =
-      req.body;
+    const {
+      name,
+      fb_page_link,
+      industry,
+      email,
+      password,
+      brand_color_primary,
+      brand_color_secondary,
+    } = req.body;
 
-    if (!name || !fb_page_link || !email || !password) {
+    if (!name || !fb_page_link || !industry || !email || !password) {
       return res.render("register", {
         error: "Todos los campos son obligatorios.",
         form: req.body,
@@ -97,11 +104,12 @@ app.post("/register", upload.single("logo"), async (req, res, next) => {
     const logoData = fileToDataUri(req.file);
 
     const result = await pool.query(
-      `INSERT INTO businesses (name, fb_page_link, email, password_hash, brand_color_primary, brand_color_secondary, logo_data)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+      `INSERT INTO businesses (name, fb_page_link, industry, email, password_hash, brand_color_primary, brand_color_secondary, logo_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [
         name,
         fb_page_link,
+        industry,
         email,
         passwordHash,
         brand_color_primary || "#1877F2",
@@ -191,6 +199,14 @@ app.post(
 
       const referenceImageData = fileToDataUri(req.file);
 
+      // Traemos el giro/industria y datos de marca del negocio de una vez,
+      // para enfocar tanto el copy como la imagen a ESE tipo de negocio.
+      const { rows: bizRows } = await pool.query(
+        "SELECT industry, brand_color_primary, brand_color_secondary, logo_data FROM businesses WHERE id = $1",
+        [req.session.businessId]
+      );
+      const biz = bizRows[0];
+
       const brief = {
         objective,
         product_service,
@@ -199,10 +215,13 @@ app.post(
         tone,
         cta,
         keywords,
+        businessIndustry: biz?.industry || null,
       };
 
-      // 1. Generar copy + hashtags (IA o fallback por reglas).
-      const { caption, hashtags } = await generateCopy(brief);
+      // 1. Generar copy + headline + hashtags (IA o fallback por reglas).
+      //    El headline viene revisado/corregido por la IA (sin los typos que
+      //    el cliente haya escrito), listo para usarse como título del diseño.
+      const { headline, caption, hashtags } = await generateCopy(brief);
 
       // 2. Intentar generar el diseño automáticamente: primero Canva (si está
       //    configurado), y si no, con IA de imagen (si hay OPENAI_API_KEY).
@@ -212,19 +231,16 @@ app.post(
       let autoAdminNote = null;
 
       if (!canvaResult && aiImage.isConfigured()) {
-        const { rows: bizRows } = await pool.query(
-          "SELECT brand_color_primary, brand_color_secondary FROM businesses WHERE id = $1",
-          [req.session.businessId]
-        );
-        const biz = bizRows[0];
-
         aiImageData = await aiImage.generateImage({
           ...brief,
+          headline,
+          extraNotes: extra_notes,
           brandColors: biz
             ? `${biz.brand_color_primary} y ${biz.brand_color_secondary}`
             : null,
           brandColorPrimary: biz?.brand_color_primary,
           brandColorSecondary: biz?.brand_color_secondary,
+          logoDataUri: biz?.logo_data,
         });
 
         if (aiImageData) {
@@ -387,7 +403,7 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT campaigns.*, businesses.name AS business_name, businesses.fb_page_link, businesses.logo_data,
-              businesses.brand_color_primary, businesses.brand_color_secondary
+              businesses.industry, businesses.brand_color_primary, businesses.brand_color_secondary
        FROM campaigns
        JOIN businesses ON businesses.id = campaigns.business_id
        WHERE campaigns.id = $1`,

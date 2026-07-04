@@ -18,6 +18,7 @@
     <div class="detail-box">
       <h3>Negocio</h3>
       <p><strong><%= campaign.business_name %></strong></p>
+      <% if (campaign.industry) { %><p class="muted"><%= campaign.industry %></p><% } %>
       <p><a href="<%= campaign.fb_page_link %>" target="_blank" rel="noopener">📘 <%= campaign.fb_page_link %></a></p>
       <div class="swatches">
         <span class="swatch" style="background: <%= campaign.brand_color_primary %>"></span>

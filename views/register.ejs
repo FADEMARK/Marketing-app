@@ -24,6 +24,23 @@
         <input type="url" name="fb_page_link" required value="<%= form.fb_page_link || '' %>" placeholder="https://facebook.com/tunegocio" />
       </label>
 
+      <label>Giro del negocio *
+        <input list="industries" type="text" name="industry" required value="<%= form.industry || '' %>" placeholder="Ej. Clínica dental, Restaurante, Gimnasio..." />
+        <datalist id="industries">
+          <option value="Clínica dental">
+          <option value="Restaurante / Cafetería">
+          <option value="Salón de belleza / Spa">
+          <option value="Gimnasio / Fitness">
+          <option value="Tienda de ropa / Boutique">
+          <option value="Bienes raíces">
+          <option value="Veterinaria">
+          <option value="Consultorio médico">
+          <option value="Ferretería">
+          <option value="Escuela / Academia">
+          <option value="Servicios profesionales (legal, contable, etc.)">
+        </datalist>
+      </label>
+
       <label>Correo electrónico *
         <input type="email" name="email" required value="<%= form.email || '' %>" />
       </label>

@@ -44,6 +44,34 @@ function tspanLines(lines, x, startY, lineHeight) {
     .join("");
 }
 
+function dataUriToBuffer(dataUri) {
+  const match = /^data:(.+);base64,(.+)$/.exec(dataUri || "");
+  if (!match) return null;
+  return Buffer.from(match[2], "base64");
+}
+
+/**
+ * Redimensiona el logo para que quepa dentro de una caja cuadrada, sin
+ * deformarlo, y devuelve el buffer PNG resultante junto a sus dimensiones
+ * reales (para poder centrarlo dentro de la caja).
+ */
+async function prepareLogo(logoDataUri, boxSize) {
+  const raw = dataUriToBuffer(logoDataUri);
+  if (!raw) return null;
+
+  try {
+    const resized = await sharp(raw)
+      .resize(boxSize, boxSize, { fit: "inside", withoutEnlargement: true })
+      .png()
+      .toBuffer();
+    const meta = await sharp(resized).metadata();
+    return { buffer: resized, width: meta.width || boxSize, height: meta.height || boxSize };
+  } catch (err) {
+    console.error("[composeDesign] No se pudo procesar el logo, se omite:", err.message);
+    return null;
+  }
+}
+
 /**
  * @param {Buffer} imageBuffer - imagen de fondo (JPEG/PNG) generada por IA
  * @param {object} opts
@@ -52,6 +80,7 @@ function tspanLines(lines, x, startY, lineHeight) {
  * @param {string} [opts.cta] - texto del botón de llamado a la acción
  * @param {string} [opts.brandColorPrimary] - color de acento/botón, hex
  * @param {string} [opts.brandColorSecondary] - color del banner de fondo, hex
+ * @param {string} [opts.logoDataUri] - logo del negocio como data URI (opcional)
  * @returns {Promise<Buffer>} PNG final compuesto
  */
 async function composeDesign(imageBuffer, opts = {}) {
@@ -61,12 +90,17 @@ async function composeDesign(imageBuffer, opts = {}) {
     cta = "",
     brandColorPrimary = "#1877F2",
     brandColorSecondary = "#0B0B0B",
+    logoDataUri = null,
   } = opts;
 
   const width = 1080;
   const height = 1080;
   const paddingX = 64;
   const bannerVerticalPadding = 64;
+
+  const logoBoxSize = 168;
+  const logoBoxMargin = 40;
+  const logo = await prepareLogo(logoDataUri, logoBoxSize - 32);
 
   const headlineLines = wrapText(headline, 22, 2);
   const headlineFontSize = 58;
@@ -150,11 +184,22 @@ async function composeDesign(imageBuffer, opts = {}) {
     ${headlineSvg}
     ${subSvg}
     ${ctaSvg}
+    ${logo ? `<rect x="${logoBoxMargin}" y="${logoBoxMargin}" width="${logoBoxSize}" height="${logoBoxSize}" rx="20" fill="#FFFFFF" fill-opacity="0.94" />` : ""}
   </svg>`;
+
+  const layers = [{ input: Buffer.from(svg), top: 0, left: 0 }];
+
+  if (logo) {
+    layers.push({
+      input: logo.buffer,
+      top: Math.round(logoBoxMargin + (logoBoxSize - logo.height) / 2),
+      left: Math.round(logoBoxMargin + (logoBoxSize - logo.width) / 2),
+    });
+  }
 
   return sharp(imageBuffer)
     .resize(width, height, { fit: "cover" })
-    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+    .composite(layers)
     .png()
     .toBuffer();
 }

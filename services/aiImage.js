@@ -34,20 +34,35 @@ function buildPrompt(brief) {
     "profundidad y contexto real — NO un ícono plano, NO un clipart, NO una ilustración",
     "vectorial genérica tipo stock, NO un dibujo de caricatura, NO fondos abstractos con",
     "manchas o remolinos de color decorativos.",
-    `Producto o servicio a destacar: ${brief.product_service}.`,
+    brief.businessIndustry ? `Giro del negocio (dato más importante para elegir la escena): ${brief.businessIndustry}.` : "",
+    `Producto o servicio EXACTO a destacar: ${brief.product_service}.`,
     `Mensaje clave / concepto: ${brief.key_message}.`,
     `Objetivo de la publicación: ${brief.objective}.`,
     `Público objetivo: ${brief.target_audience}.`,
     `Tono visual: ${brief.tone}.`,
-    "Muestra el producto/servicio en un contexto real y creíble (por ejemplo: el",
-    "ambiente donde se usa o se ofrece, personas reales interactuando con él si aplica),",
-    "no un objeto flotando solo sobre un fondo de color.",
+    "MUY IMPORTANTE — fidelidad al giro del negocio: usa el giro del negocio (si se",
+    "indicó arriba) o, si no, interprétalo a partir del producto/servicio y el",
+    "mensaje clave, y muestra una escena 100% coherente con ESE giro específico.",
+    "Ejemplo: si es una clínica/servicio dental, muestra un consultorio dental real,",
+    "un dentista o higienista con bata clínica atendiendo a un paciente, o un primer",
+    "plano de una sonrisa sana y genuina — NO una oficina corporativa genérica ni",
+    "personas de traje sin relación con el servicio. Si es un restaurante, muestra el",
+    "platillo o el ambiente real del lugar. Si es un gimnasio, muestra el espacio de",
+    "entrenamiento real y gente ejercitándose. Aplica esta misma lógica de fidelidad",
+    "al giro del negocio sin importar cuál sea.",
+    "Si el público objetivo incluye niños, es válido incluir niños genuinamente",
+    "felices en la escena, siempre de forma apropiada y no forzada.",
+    "Muestra el producto/servicio en un contexto real y creíble, con personas reales",
+    "interactuando con él cuando tenga sentido — no un objeto flotando solo sobre",
+    "un fondo de color.",
     brief.brandColors
       ? `Si es posible sin sacrificar el realismo, incorpora sutilmente estos colores de marca en la paleta general (ropa, accesorios, luz ambiental, detalles): ${brief.brandColors}.`
       : "",
+    brief.extraNotes ? `Instrucciones adicionales del cliente a considerar: ${brief.extraNotes}.` : "",
     "Deja una zona con espacio visual limpio (negative space) para superponer texto después.",
     "Formato cuadrado, calidad de cámara profesional, alta resolución.",
-    "IMPORTANTE: no incluyas ningún texto, letras, números ni logos generados por ti en la imagen.",
+    "IMPORTANTE: no incluyas ningún texto, letras, números ni logos generados por ti en la imagen",
+    "(el logo real de la marca se agrega después de forma exacta, no lo dibujes tú).",
   ]
     .filter(Boolean)
     .join(" ");
@@ -153,11 +168,14 @@ async function generateImage(brief) {
     if (!buffer) return rawDataUri;
 
     const composed = await composeDesign(buffer, {
-      headline: brief.product_service,
+      // Usa el headline ya corregido/acortado por generateCopy si viene;
+      // si no (fallback sin IA), usa el texto crudo del cliente.
+      headline: brief.headline || brief.product_service,
       subheadline: brief.key_message,
       cta: brief.cta,
       brandColorPrimary: brief.brandColorPrimary,
       brandColorSecondary: brief.brandColorSecondary,
+      logoDataUri: brief.logoDataUri,
     });
 
     return `data:image/png;base64,${composed.toString("base64")}`;
