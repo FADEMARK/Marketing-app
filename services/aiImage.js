@@ -10,20 +10,24 @@
 //   3. Si no hay ninguna clave, se deja pendiente para que el equipo diseñe
 //      la pieza a mano desde el panel admin.
 //
-// Enfoque (ajustado tras pruebas reales): le pedimos al modelo que dibuje
-// SOLO la fotografía + el título grande integrado — que es lo único que
-// renderiza de forma consistentemente confiable. Párrafos largos, teléfonos,
-// direcciones y nombres propios (como el de un doctor) salen con errores de
-// ortografía o palabras deformadas con cierta frecuencia, así que esos NO
-// se los pedimos a la IA: los agregamos nosotros aparte con texto real
-// (tarjeta blanca con subtítulo, CTA, contacto y logo) vía
-// services/composeDesign.js, garantizando que salgan exactos.
+// Enfoque (distinto por motor, según qué tan confiable es cada uno
+// escribiendo texto):
+//   - Gemini: le pedimos que dibuje SOLO la fotografía, sin ningún texto —
+//     su renderizado de párrafos, teléfonos, direcciones y nombres propios
+//     falla con cierta frecuencia. Todo el texto (título, subtítulo, CTA,
+//     contacto) lo agregamos nosotros aparte, garantizado, con una tarjeta
+//     vía services/composeDesign.js.
+//   - OpenAI (gpt-image-1): SÍ le pedimos que escriba el texto real
+//     directamente en la foto (título, mensaje, CTA y contacto, con el
+//     contenido exacto que le damos) — es el mismo motor detrás de la
+//     generación de imágenes de ChatGPT y renderiza texto de forma mucho más
+//     confiable, dando un resultado más integrado (sin tarjeta superpuesta).
 //
-// Logo: la IA NUNCA lo dibuja ni lo recibe como referencia — le pedimos
-// explícitamente que no genere ni redibuje ningún logotipo. El logo real
-// siempre lo pegamos nosotros después, con pixeles exactos, vía
-// services/composeDesign.js. Así evitamos que la IA lo "reinterprete" y
-// quede ligeramente distinto al real.
+// Logo: en AMBOS casos la IA NUNCA lo dibuja ni lo recibe como referencia —
+// le pedimos explícitamente que no genere ni redibuje ningún logotipo. El
+// logo real siempre lo pegamos nosotros después, con pixeles exactos
+// (services/composeDesign.js), para que no salga distorsionado ni
+// reinterpretado.
 //
 // Foto de referencia del cliente (opcional, campo "imagen de referencia" del
 // formulario): si el cliente sube su propia foto real (su platillo, su local,
@@ -33,7 +37,7 @@
 // resultado sigue siendo fiel a lo que el negocio realmente ofrece.
 
 const fetch = require("node-fetch");
-const { composeDesign } = require("./composeDesign");
+const { composeDesign, overlayLogo } = require("./composeDesign");
 const { getPromptTemplate, renderTemplate } = require("./promptSettings");
 
 function isConfigured() {
@@ -50,7 +54,15 @@ function dataUriToParts(dataUri) {
 // garantizan que el texto no salga mal escrito y que el logo/foto de
 // referencia se traten bien. Se agregan siempre, después de la parte
 // creativa (editable) del prompt.
-function buildFixedRules(brief, { referencePhotoAsInput = false } = {}) {
+//
+// writeTextDirectly: modo especial usado SOLO con OpenAI (gpt-image-1), que
+// renderiza texto de forma mucho más confiable que Gemini. En este modo le
+// damos el texto EXACTO para que lo dibuje él mismo dentro de la foto (como
+// hace ChatGPT), en vez de que nosotros lo agreguemos con una tarjeta aparte.
+function buildFixedRules(
+  brief,
+  { referencePhotoAsInput = false, writeTextDirectly = false } = {}
+) {
   const referencePhotoInstruction = referencePhotoAsInput
     ? [
         "IMPORTANTE SOBRE LA FOTO BASE: te adjunto una fotografía REAL del negocio,",
@@ -64,6 +76,55 @@ function buildFixedRules(brief, { referencePhotoAsInput = false } = {}) {
       ].join(" ")
     : "";
 
+  const qualityRules = [
+    "Reglas de calidad: composición equilibrada sin saturar el diseño con demasiados",
+    "elementos, buen respiro visual entre los elementos de la escena, no deformes",
+    "rostros, manos ni productos, no agregues marcas de agua ni texto adicional",
+    "inventado. El resultado debe sentirse confiable, atractivo y profesional,",
+    "listo para publicarse en redes sociales.",
+  ].join(" ");
+
+  const fillFrameRule =
+    "Llena todo el cuadro de lado a lado con la fotografía — sin bordes, marcos ni zonas en blanco vacías. Formato cuadrado, alta resolución.";
+
+  if (writeTextDirectly) {
+    const contactPart = brief.contactLine
+      ? `- Línea de contacto, en letra más pequeña, en la parte inferior: "${brief.contactLine}"`
+      : "";
+
+    return [
+      referencePhotoInstruction,
+      "IMPORTANTE SOBRE EL TEXTO: a diferencia de otras veces, esta vez SÍ debes escribir el",
+      "siguiente texto DENTRO de la imagen, integrado gráficamente como lo haría un diseñador",
+      "profesional (tipografía bold para el título, una etiqueta o botón de color sólido para el",
+      "llamado a la acción, buen contraste sobre el fondo):",
+      `- Título/promoción principal, grande y llamativo: "${brief.headline || brief.product_service}"`,
+      brief.key_message ? `- Mensaje o detalle secundario: "${brief.key_message}"` : "",
+      `- Botón o etiqueta de llamado a la acción: "${brief.cta}"`,
+      contactPart,
+      "",
+      "MUY IMPORTANTE SOBRE PRECISIÓN: copia estos textos EXACTAMENTE como están escritos arriba,",
+      "letra por letra — incluidos acentos, mayúsculas, números de teléfono y nombres propios. NO",
+      "resumas, traduzcas, corrijas ni inventes texto adicional. Un error de ortografía en un nombre",
+      "o un teléfono es un error grave e inaceptable.",
+      "",
+      "No dibujes ningún logotipo — el logo real del negocio se pega aparte después, con pixeles",
+      "exactos, para que no salga distorsionado ni reinterpretado.",
+      "",
+      qualityRules,
+      "",
+      "MUY IMPORTANTE SOBRE EL ENCUADRE: vas a escribir texto en la franja inferior del cuadro (aprox.",
+      "el 35-40% de abajo), así que compón esa zona con un fondo más simple y de buen contraste para",
+      "que el texto se lea perfectamente (puedes usar desenfoque sutil o una franja semitransparente",
+      "detrás del texto si hace falta para legibilidad). Las caras, personas y el elemento principal",
+      "del negocio deben quedar bien visibles en la mitad superior, sin cortes incómodos.",
+      "",
+      fillFrameRule,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
   return [
     referencePhotoInstruction,
     "IMPORTANTE SOBRE TEXTO Y LOGO: No escribas ningún texto dentro de la imagen.",
@@ -73,11 +134,7 @@ function buildFixedRules(brief, { referencePhotoAsInput = false } = {}) {
     "agregados después por la app con texto real y el logo real — concéntrate",
     "100% en la fotografía.",
     "",
-    "Reglas de calidad: composición equilibrada sin saturar el diseño con demasiados",
-    "elementos, buen respiro visual entre los elementos de la escena, no deformes",
-    "rostros, manos ni productos, no agregues marcas de agua ni texto adicional",
-    "inventado. El resultado debe sentirse confiable, atractivo y profesional,",
-    "listo para publicarse en redes sociales.",
+    qualityRules,
     "",
     "MUY IMPORTANTE SOBRE EL ENCUADRE: la mitad INFERIOR del cuadro (el 45% de",
     "abajo) va a quedar cubierta después por una tarjeta de texto opaca. Compón la",
@@ -87,8 +144,7 @@ function buildFixedRules(brief, { referencePhotoAsInput = false } = {}) {
     "tapado (piso, fondo, continuación del ambiente, desenfoque) — NO pongas ahí",
     "las caras ni lo más importante de la composición.",
     "",
-    "Llena todo el cuadro de lado a lado con la fotografía — sin bordes, marcos ni",
-    "zonas en blanco vacías. Formato cuadrado, alta resolución.",
+    fillFrameRule,
   ]
     .filter(Boolean)
     .join(" ");
@@ -116,10 +172,13 @@ function templateVars(brief, { referencePhotoAsInput = false } = {}) {
   };
 }
 
-async function buildPrompt(brief, { referencePhotoAsInput = false } = {}) {
+async function buildPrompt(
+  brief,
+  { referencePhotoAsInput = false, writeTextDirectly = false } = {}
+) {
   const template = await getPromptTemplate();
   const creativePart = renderTemplate(template, templateVars(brief, { referencePhotoAsInput }));
-  const fixedRules = buildFixedRules(brief, { referencePhotoAsInput });
+  const fixedRules = buildFixedRules(brief, { referencePhotoAsInput, writeTextDirectly });
   return `${creativePart}\n\n${fixedRules}`;
 }
 
@@ -173,7 +232,11 @@ async function generateWithGemini(brief) {
 }
 
 async function generateWithOpenAI(brief) {
-  const promptText = await buildPrompt(brief);
+  // A diferencia de Gemini, a OpenAI (gpt-image-1) sí le pedimos que escriba
+  // el texto real directamente en la foto — su renderizado de texto es
+  // notablemente más confiable (es el mismo motor detrás de la generación de
+  // imágenes de ChatGPT).
+  const promptText = await buildPrompt(brief, { writeTextDirectly: true });
 
   const response = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
@@ -212,7 +275,8 @@ function dataUriToBuffer(dataUri) {
 }
 
 // Aplica la composición final (tarjeta con texto garantizado + logo real)
-// sobre una foto cruda que ya generó alguna de las IAs.
+// sobre una foto cruda que ya generó alguna de las IAs. Se usa para Gemini,
+// que no escribe el texto él mismo.
 async function composeFinal(rawDataUri, brief) {
   const buffer = dataUriToBuffer(rawDataUri);
   if (!buffer) return rawDataUri;
@@ -232,6 +296,27 @@ async function composeFinal(rawDataUri, brief) {
   } catch (err) {
     console.error(
       "[aiImage] Fallo componiendo la tarjeta final, se deja la foto tal cual la generó la IA:",
+      err.message
+    );
+    return rawDataUri;
+  }
+}
+
+// Solo pega el logo real (sin tarjeta ni texto propio) sobre una foto que la
+// IA ya generó completa CON su propio texto. Se usa para OpenAI (gpt-image-1),
+// que escribe el título/CTA/contacto directamente en la imagen.
+async function composeLogoOnly(rawDataUri, brief) {
+  if (!brief.logoDataUri) return rawDataUri; // sin logo que pegar, se deja tal cual
+
+  const buffer = dataUriToBuffer(rawDataUri);
+  if (!buffer) return rawDataUri;
+
+  try {
+    const composed = await overlayLogo(buffer, brief.logoDataUri);
+    return `data:image/png;base64,${composed.toString("base64")}`;
+  } catch (err) {
+    console.error(
+      "[aiImage] Fallo pegando el logo, se deja la foto tal cual la generó la IA:",
       err.message
     );
     return rawDataUri;
@@ -285,7 +370,11 @@ async function generateImageCandidates(brief) {
     results.map(async ({ engine, raw }) => ({
       engine,
       label: ENGINE_LABELS[engine] || engine,
-      dataUri: await composeFinal(raw, brief),
+      // OpenAI ya escribió el texto real dentro de la foto (ver
+      // generateWithOpenAI) — solo le pegamos el logo. Gemini no escribe
+      // texto, así que necesita la tarjeta completa de composeFinal().
+      dataUri:
+        engine === "openai" ? await composeLogoOnly(raw, brief) : await composeFinal(raw, brief),
     }))
   );
 }
