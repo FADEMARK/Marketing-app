@@ -109,7 +109,35 @@ Publicar automáticamente en la página de Facebook de **cada cliente** requiere
 
 Mientras tanto, el flujo manual ya funciona: tu equipo descarga la imagen final aprobada, publica a mano en la página del cliente, y pega el link del post en el panel interno para cerrar el ciclo (el cliente lo ve reflejado en su panel).
 
-## Conectar Canva (generación automática del diseño)
+## Generar el copy Y la imagen automáticamente con IA (la forma más simple)
+
+Con una sola variable de entorno, la app genera automáticamente **tanto el texto del post como la imagen** para cada brief nuevo, sin necesidad de configurar Canva.
+
+### Opción recomendada: Google Gemini (gratis, sin tarjeta)
+
+Ojo: esto es distinto de una suscripción a "Gemini Advanced" (Google One) — esa no da acceso a la API. Lo que necesitas es una cuenta de Google normal y una API key gratuita:
+
+1. Ve a [aistudio.google.com/apikey](https://aistudio.google.com/apikey), inicia sesión con tu cuenta de Google, y crea una API key. No pide tarjeta.
+2. Agrega `GEMINI_API_KEY` a las variables de entorno de tu servicio (en Render: **Environment** → Add Environment Variable).
+3. Redeploy.
+
+El nivel gratuito incluye hasta 500 imágenes al día y un límite generoso de texto — más que suficiente para empezar. Ten en cuenta que en el nivel gratuito, Google puede usar tus prompts para entrenar sus modelos (revisa sus términos si esto te preocupa por confidencialidad de tus clientes).
+
+### Opción alternativa: OpenAI (de pago, sin relación con ChatGPT Plus)
+
+Si prefieres OpenAI: crea una API key en [platform.openai.com/api-keys](https://platform.openai.com/api-keys) (cuenta de facturación separada de una suscripción a ChatGPT Plus, esa no sirve aquí) y agrega `OPENAI_API_KEY`. El costo es por uso (revisa precios vigentes en [openai.com/api/pricing](https://openai.com/api/pricing)).
+
+Si defines ambas claves, la app usa Gemini primero y solo recurre a OpenAI si Gemini falla.
+
+### Cómo se comporta con cualquiera de las dos
+
+Desde que agregues la clave, cada publicación nueva llega al panel admin ya con: copy redactado, hashtags, y una imagen generada por IA lista para revisar — el estado pasa directo a "Listo para aprobación" en vez de "En diseño".
+
+Importante: el cliente **no ve** la imagen ni el copy hasta que tu equipo cambie el estado a "Aprobado" o "Publicado" desde el panel admin — así siempre hay una revisión humana antes de que el cliente vea el resultado (la IA ayuda con el trabajo pesado, tu equipo se queda con el control de calidad).
+
+Ten en cuenta: los modelos de generación de imagen todavía no escriben texto de forma confiable, así que la imagen se genera **sin texto superpuesto** (solo el elemento visual); el copy/CTA se maneja aparte como el texto del post. Si necesitas texto dentro de la imagen (como un banner con precio), tu equipo puede editarla en Canva/Photoshop antes de aprobarla.
+
+## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 
 `services/canva.js` ya tiene la llamada real a la API de autofill de Canva. Para activarla:
 

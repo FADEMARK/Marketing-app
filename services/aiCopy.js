@@ -1,9 +1,12 @@
 // Generador de copy (texto del post) y hashtags.
 //
-// Si defines OPENAI_API_KEY en .env, se usa un modelo de OpenAI para redactar
-// el copy como lo haría un Marketing Senior. Si no hay API key, se usa un
-// generador basado en plantillas (fallback) para que la app funcione igual
-// sin depender de servicios externos.
+// Orden de preferencia:
+//   1. GEMINI_API_KEY (Google Gemini) — tiene un nivel gratuito real, sin
+//      tarjeta de crédito, así que es la opción recomendada por defecto.
+//   2. OPENAI_API_KEY (OpenAI) — requiere facturación por uso en
+//      platform.openai.com (distinta de una suscripción a ChatGPT Plus).
+//   3. Si no hay ninguna clave, se usa un generador basado en plantillas
+//      (fallback), gratis y sin dependencias externas.
 
 const fetch = require("node-fetch");
 
@@ -59,10 +62,8 @@ function fallbackGenerateCopy(brief) {
   return { caption, hashtags: hashtags.join(" ") };
 }
 
-async function generateWithOpenAI(brief) {
-  const apiKey = process.env.OPENAI_API_KEY;
-
-  const prompt = `Actúa como un Marketing Senior. Redacta un copy corto y persuasivo para una publicación de Facebook, en español, con este brief:
+function buildPrompt(brief) {
+  return `Actúa como un Marketing Senior. Redacta un copy corto y persuasivo para una publicación de Facebook, en español, con este brief:
 Objetivo: ${brief.objective}
 Producto/Servicio: ${brief.product_service}
 Mensaje clave: ${brief.key_message}
@@ -71,7 +72,50 @@ Tono: ${brief.tone}
 Llamado a la acción: ${brief.cta}
 Palabras clave: ${brief.keywords || "N/A"}
 
-Responde en JSON con el formato exacto: {"caption": "...", "hashtags": "#tag1 #tag2 #tag3"}`;
+Responde ÚNICAMENTE con un JSON válido, sin texto adicional ni bloques de código, con el formato exacto: {"caption": "...", "hashtags": "#tag1 #tag2 #tag3"}`;
+}
+
+function parseJsonResponse(text) {
+  // Algunos modelos envuelven el JSON en ```json ... ``` a pesar de pedir texto plano.
+  const cleaned = text.replace(/```json|```/g, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    return { caption: parsed.caption, hashtags: parsed.hashtags };
+  } catch (err) {
+    // Si el modelo no devolvió JSON limpio, usamos el texto completo como caption.
+    return { caption: cleaned, hashtags: "" };
+  }
+}
+
+async function generateWithGemini(brief) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash";
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: buildPrompt(brief) }] }],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Gemini respondió con estado ${response.status}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+  return parseJsonResponse(text);
+}
+
+async function generateWithOpenAI(brief) {
+  const apiKey = process.env.OPENAI_API_KEY;
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -81,7 +125,7 @@ Responde en JSON con el formato exacto: {"caption": "...", "hashtags": "#tag1 #t
     },
     body: JSON.stringify({
       model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: buildPrompt(brief) }],
       temperature: 0.7,
     }),
   });
@@ -92,25 +136,26 @@ Responde en JSON con el formato exacto: {"caption": "...", "hashtags": "#tag1 #t
 
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content || "{}";
-
-  try {
-    const parsed = JSON.parse(text);
-    return { caption: parsed.caption, hashtags: parsed.hashtags };
-  } catch (err) {
-    // Si el modelo no devolvió JSON limpio, usamos el texto completo como caption.
-    return { caption: text, hashtags: "" };
-  }
+  return parseJsonResponse(text);
 }
 
 async function generateCopy(brief) {
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      return await generateWithGemini(brief);
+    } catch (err) {
+      console.error("Fallo generación con Gemini, probando siguiente opción:", err.message);
+    }
+  }
+
   if (process.env.OPENAI_API_KEY) {
     try {
       return await generateWithOpenAI(brief);
     } catch (err) {
       console.error("Fallo generación con OpenAI, usando fallback:", err.message);
-      return fallbackGenerateCopy(brief);
     }
   }
+
   return fallbackGenerateCopy(brief);
 }
 

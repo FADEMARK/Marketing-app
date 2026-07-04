@@ -10,6 +10,7 @@ const multer = require("multer");
 const { pool, init } = require("./db/db");
 const { STATUSES, STATUS_LABELS } = require("./services/status");
 const { generateCopy } = require("./services/aiCopy");
+const aiImage = require("./services/aiImage");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const { requireBusinessAuth, requireAdminAuth } = require("./services/middleware");
@@ -203,15 +204,40 @@ app.post(
       // 1. Generar copy + hashtags (IA o fallback por reglas).
       const { caption, hashtags } = await generateCopy(brief);
 
-      // 2. Intentar generar el diseño automáticamente en Canva (si está configurado).
+      // 2. Intentar generar el diseño automáticamente: primero Canva (si está
+      //    configurado), y si no, con IA de imagen (si hay OPENAI_API_KEY).
       const canvaResult = await canva.createDesignFromBrief(brief);
 
-      const status = canvaResult ? STATUSES.LISTO_PARA_APROBACION : STATUSES.EN_DISENO;
+      let aiImageData = null;
+      let autoAdminNote = null;
+
+      if (!canvaResult && aiImage.isConfigured()) {
+        const { rows: bizRows } = await pool.query(
+          "SELECT brand_color_primary, brand_color_secondary FROM businesses WHERE id = $1",
+          [req.session.businessId]
+        );
+        const biz = bizRows[0];
+
+        aiImageData = await aiImage.generateImage({
+          ...brief,
+          brandColors: biz
+            ? `${biz.brand_color_primary} y ${biz.brand_color_secondary}`
+            : null,
+        });
+
+        if (aiImageData) {
+          autoAdminNote =
+            "Imagen generada automáticamente por IA. Revísala (y ajústala si hace falta) antes de aprobar/publicar.";
+        }
+      }
+
+      const hasAutoDesign = Boolean(canvaResult || aiImageData);
+      const status = hasAutoDesign ? STATUSES.LISTO_PARA_APROBACION : STATUSES.EN_DISENO;
 
       const result = await pool.query(
         `INSERT INTO campaigns
-          (business_id, objective, product_service, key_message, target_audience, tone, cta, keywords, desired_date, reference_image_data, extra_notes, status, ai_caption, ai_hashtags, canva_design_id, canva_design_url)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+          (business_id, objective, product_service, key_message, target_audience, tone, cta, keywords, desired_date, reference_image_data, extra_notes, status, ai_caption, ai_hashtags, canva_design_id, canva_design_url, final_image_data, admin_notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING id`,
         [
           req.session.businessId,
@@ -230,6 +256,8 @@ app.post(
           hashtags,
           canvaResult?.designId || null,
           canvaResult?.editUrl || null,
+          aiImageData,
+          autoAdminNote,
         ]
       );
 

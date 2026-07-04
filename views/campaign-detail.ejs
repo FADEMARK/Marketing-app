@@ -26,14 +26,15 @@
         <% if (campaign.desired_date) { %><p><strong>Fecha deseada:</strong> <%= campaign.desired_date %></p><% } %>
       </div>
 
+      <% var isApproved = campaign.status === 'aprobado' || campaign.status === 'publicado'; %>
       <div class="detail-box">
         <h3>Propuesta de nuestro equipo</h3>
-        <% if (campaign.final_image_data) { %>
+        <% if (isApproved && campaign.final_image_data) { %>
           <img class="preview-image" src="<%= campaign.final_image_data %>" alt="Diseño final" />
         <% } else if (campaign.canva_design_url) { %>
           <p><a href="<%= campaign.canva_design_url %>" target="_blank" rel="noopener">Ver borrador en Canva →</a></p>
         <% } else { %>
-          <p class="muted">Nuestro equipo está preparando el diseño. Te avisaremos cuando esté listo.</p>
+          <p class="muted">Nuestro equipo está preparando y revisando el diseño. Te avisaremos cuando esté listo.</p>
         <% } %>
 
         <% if (campaign.ai_caption) { %>
