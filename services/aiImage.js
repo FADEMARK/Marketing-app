@@ -10,22 +10,23 @@
 //   3. Si no hay ninguna clave, se deja pendiente para que el equipo diseñe
 //      la pieza a mano desde el panel admin.
 //
-// Enfoque: le pedimos al modelo el FLYER COMPLETO con todo el texto ya
-// incluido (título, promociones, teléfono/WhatsApp, dirección, doctor si
-// aplica) — los modelos de imagen actuales (el mismo tipo que usa ChatGPT)
-// ya renderizan texto corto de forma bastante confiable si se les da el
-// contenido exacto a escribir.
+// Enfoque (ajustado tras pruebas reales): le pedimos al modelo que dibuje
+// SOLO la fotografía + el título grande integrado — que es lo único que
+// renderiza de forma consistentemente confiable. Párrafos largos, teléfonos,
+// direcciones y nombres propios (como el de un doctor) salen con errores de
+// ortografía o palabras deformadas con cierta frecuencia, así que esos NO
+// se los pedimos a la IA: los agregamos nosotros aparte con texto real
+// (tarjeta blanca con subtítulo, CTA, contacto y logo) vía
+// services/composeDesign.js, garantizando que salgan exactos.
 //
-// Logo: con Gemini (que soporta imágenes de entrada además de texto), le
-// mandamos el logo real del negocio como imagen de referencia para que lo
-// incorpore él mismo, bien integrado en el diseño — igual que si se lo
-// mandaras a ChatGPT junto con el post. Es mejor que pegarlo nosotros
-// después en una cajita aparte. Con OpenAI (que en este flujo solo acepta
-// texto), usamos el método anterior: dejamos la esquina libre y pegamos el
-// logo real encima con services/composeDesign.js.
+// Logo: con Gemini (que soporta imágenes de entrada), le mandamos el logo
+// real del negocio como imagen de referencia para que lo incorpore él mismo
+// en la fotografía — esto sí funciona bien en la práctica. Si no se pudo
+// incorporar así (OpenAI, o si Gemini no lo logró), lo agregamos nosotros en
+// la tarjeta.
 
 const fetch = require("node-fetch");
-const { overlayLogo } = require("./composeDesign");
+const { composeDesign } = require("./composeDesign");
 
 function isConfigured() {
   return Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
@@ -38,9 +39,6 @@ function dataUriToParts(dataUri) {
 }
 
 function buildPrompt(brief, { logoAsInput = false } = {}) {
-  const contactBits = [];
-  if (brief.contactLine) contactBits.push(brief.contactLine);
-
   const logoInstruction = logoAsInput
     ? [
         "IMPORTANTE SOBRE EL LOGO: te adjunto el logo REAL del negocio como imagen",
@@ -53,52 +51,48 @@ function buildPrompt(brief, { logoAsInput = false } = {}) {
       ].join(" ")
     : [
         "IMPORTANTE SOBRE EL LOGO: dentro de la esquina superior izquierda, deja un",
-        "área simple (por ejemplo, solo parte de la foto o un espacio limpio), SIN dibujar",
-        "ningún logotipo, ícono de marca ni texto del nombre del negocio ahí — esa esquina",
-        "se completa después con el logo real de la marca en un editor aparte, así que",
-        "cualquier logo que dibujes tú ahí quedaría duplicado o incorrecto.",
+        "área simple (por ejemplo, solo parte de la foto), SIN dibujar ningún logotipo,",
+        "ícono de marca ni texto del nombre del negocio ahí — esa esquina se completa",
+        "después con el logo real de la marca en un editor aparte.",
       ].join(" ");
 
   return [
-    "Diseña un FLYER PUBLICITARIO COMPLETO Y TERMINADO para redes sociales (formato",
-    "cuadrado), listo para publicarse tal cual — no una foto suelta, sino una pieza",
-    "de diseño gráfico profesional con fotografía + texto integrados, al estilo de",
-    "los flyers publicitarios reales de negocios locales (fondo con foto de contexto",
-    "real, encabezados grandes y coloridos, insignias/círculos con las promociones,",
-    "franja de contacto abajo). Debe verse profesional, limpio y persuasivo, no",
-    "genérico ni de mal gusto.",
+    "Fotografía publicitaria profesional de alta gama para una campaña real de una",
+    "agencia de marketing premium, estilo editorial (piensa en una campaña de una",
+    "marca reconocida, no en un anuncio genérico de internet). Debe verse como una",
+    "fotografía o composición fotorrealista con buena iluminación y contexto real —",
+    "NO un ícono plano, NO un clipart, NO una ilustración vectorial genérica tipo",
+    "stock, NO un dibujo de caricatura.",
     "",
     `Nombre del negocio: ${brief.businessName || "N/D"}.`,
     brief.businessIndustry ? `Giro del negocio: ${brief.businessIndustry}.` : "",
-    `Título principal a escribir en grande en la imagen: "${brief.headline || brief.product_service}".`,
-    `Mensaje/subtítulo a incluir: "${brief.key_message}".`,
-    `Llamado a la acción a incluir (en una franja o botón, con ícono de WhatsApp si el contacto es un teléfono): "${brief.cta}".`,
-    contactBits.length
-      ? `Información de contacto EXACTA a escribir tal cual (no la inventes ni la cambies): ${contactBits.join(" | ")}.`
-      : "",
-    brief.businessDoctorName
-      ? `Si el diseño incluye una firma, gafete o nombre de doctor(a)/responsable, usa EXACTAMENTE este nombre: "${brief.businessDoctorName}". No inventes un nombre distinto.`
-      : "",
-    `Público objetivo de la escena de fondo: ${brief.target_audience}.`,
+    `Concepto/mensaje de la publicación (para ambientar la escena, NO lo escribas como texto): "${brief.key_message}".`,
+    `Público objetivo de la escena: ${brief.target_audience}.`,
     `Tono visual: ${brief.tone}.`,
-    "MUY IMPORTANTE — fidelidad al giro del negocio: la fotografía de fondo debe",
-    "ser 100% coherente con el giro de arriba (si es una clínica dental: consultorio,",
+    "MUY IMPORTANTE — fidelidad al giro del negocio: la fotografía debe ser 100%",
+    "coherente con el giro de arriba (si es una clínica dental: consultorio,",
     "dentista/higienista, pacientes con sonrisas sanas; si es un restaurante: el",
     "platillo o el lugar; si es un gimnasio: el espacio y gente entrenando; etc.),",
     "NO una oficina corporativa genérica ni personas sin relación con el negocio.",
     "Si el público objetivo incluye niños o familias, es válido mostrarlos genuinamente",
     "felices en la escena, de forma apropiada y no forzada.",
     brief.brandColors
-      ? `Usa estos colores de marca de forma predominante en el texto, insignias y acentos del diseño: ${brief.brandColors}.`
+      ? `Si es posible sin sacrificar el realismo, incorpora sutilmente estos colores de marca en la paleta general: ${brief.brandColors}.`
       : "",
     brief.extraNotes ? `Instrucciones adicionales del cliente a considerar: ${brief.extraNotes}.` : "",
     "",
+    `ÚNICO texto a integrar en la imagen, en letras grandes y llamativas, bien`,
+    `integrado con la composición: "${brief.headline || brief.product_service}".`,
+    "NO escribas ningún otro texto en la imagen: nada de subtítulos, párrafos",
+    "descriptivos, insignias con porcentajes, teléfono, dirección, nombre de doctor(a)",
+    "ni botones de llamado a la acción — todo eso se agrega aparte por separado con",
+    "texto real, para garantizar que no tenga errores ortográficos. Concéntrate solo",
+    "en la fotografía y en escribir bien ese único título.",
+    "",
     logoInstruction,
     "",
-    "Todo el texto que sí escribas en la imagen (título, promociones, contacto) debe",
-    "quedar bien escrito, legible, sin errores ortográficos ni palabras inventadas o",
-    "deformadas. Llena todo el cuadro de lado a lado con el diseño — sin bordes,",
-    "marcos ni zonas en blanco vacías. Formato cuadrado, alta resolución.",
+    "Llena todo el cuadro de lado a lado con la fotografía — sin bordes, marcos ni",
+    "zonas en blanco vacías. Formato cuadrado, alta resolución.",
   ]
     .filter(Boolean)
     .join(" ");
@@ -220,20 +214,27 @@ async function generateImage(brief) {
 
   if (!rawDataUri) return null;
 
-  // Si Gemini ya incorporó el logo real como imagen de referencia, no hace
-  // falta pegarlo aparte. Si no (por ejemplo, se usó OpenAI, o Gemini falló
-  // al incluirlo), lo pegamos nosotros en la esquina que quedó libre.
-  if (logoEmbedded || !brief.logoDataUri) return rawDataUri;
-
+  // La foto ya trae el título grande integrado. Le agregamos aparte, con
+  // texto real (sin riesgo de errores ortográficos), el subtítulo, el CTA,
+  // el contacto y — si Gemini no lo incorporó ya como imagen de referencia —
+  // el logo.
   try {
     const buffer = dataUriToBuffer(rawDataUri);
     if (!buffer) return rawDataUri;
 
-    const composed = await overlayLogo(buffer, brief.logoDataUri);
+    const composed = await composeDesign(buffer, {
+      subheadline: brief.key_message,
+      cta: brief.cta,
+      contactLine: brief.contactLine,
+      brandColorPrimary: brief.brandColorPrimary,
+      brandColorSecondary: brief.brandColorSecondary,
+      logoDataUri: logoEmbedded ? null : brief.logoDataUri,
+    });
+
     return `data:image/png;base64,${composed.toString("base64")}`;
   } catch (err) {
     console.error(
-      "[aiImage] Fallo agregando el logo, se deja el flyer sin logo superpuesto:",
+      "[aiImage] Fallo componiendo la tarjeta final, se deja la foto tal cual la generó la IA:",
       err.message
     );
     return rawDataUri;

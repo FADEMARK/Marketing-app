@@ -422,6 +422,7 @@ app.post(
       // para que quede listo para compartir en cualquier red social o WhatsApp
       // sin que el cliente tenga que escribirlo cada vez.
       const contactLine = [
+        biz?.doctor_name || null,
         biz?.phone ? `Tel: ${biz.phone}` : null,
         biz?.address ? `Dirección: ${biz.address}` : null,
       ]
