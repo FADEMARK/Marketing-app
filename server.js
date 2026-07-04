@@ -223,6 +223,8 @@ app.post(
           brandColors: biz
             ? `${biz.brand_color_primary} y ${biz.brand_color_secondary}`
             : null,
+          brandColorPrimary: biz?.brand_color_primary,
+          brandColorSecondary: biz?.brand_color_secondary,
         });
 
         if (aiImageData) {

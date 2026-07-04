@@ -11,12 +11,15 @@
 //      la pieza a mano desde el panel admin.
 //
 // Diseño deliberado: le pedimos al modelo que NO incluya texto en la imagen
-// (los modelos de imagen todavía no renderizan texto de forma confiable), y
-// dejamos el copy/CTA como texto del post por separado. El resultado es una
-// pieza visual lista para que el equipo la revise, y si hace falta, le agregue
-// texto o la ajuste en un editor antes de aprobarla.
+// (los modelos de imagen todavía no renderizan texto de forma confiable).
+// En su lugar, generamos solo la fotografía/fondo, y le superponemos el
+// título, mensaje y botón de llamado a la acción con services/composeDesign.js
+// (usando sharp) — así el resultado final sí trae texto real, legible y con
+// tipografía limpia, como una pieza de diseño publicitario terminada, no solo
+// una foto suelta.
 
 const fetch = require("node-fetch");
+const { composeDesign } = require("./composeDesign");
 
 function isConfigured() {
   return Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
@@ -24,17 +27,26 @@ function isConfigured() {
 
 function buildPrompt(brief) {
   return [
-    "Crea una imagen publicitaria profesional para redes sociales, estilo limpio,",
-    "moderno y de alta calidad (no un collage ni un mockup de teléfono).",
+    "Fotografía publicitaria profesional de alta gama para una campaña real de una",
+    "agencia de marketing premium, estilo editorial (piensa en una campaña de una",
+    "marca reconocida, no en un anuncio genérico de internet).",
+    "Debe verse como una fotografía o composición fotorrealista con buena iluminación,",
+    "profundidad y contexto real — NO un ícono plano, NO un clipart, NO una ilustración",
+    "vectorial genérica tipo stock, NO un dibujo de caricatura, NO fondos abstractos con",
+    "manchas o remolinos de color decorativos.",
     `Producto o servicio a destacar: ${brief.product_service}.`,
     `Mensaje clave / concepto: ${brief.key_message}.`,
     `Objetivo de la publicación: ${brief.objective}.`,
     `Público objetivo: ${brief.target_audience}.`,
     `Tono visual: ${brief.tone}.`,
+    "Muestra el producto/servicio en un contexto real y creíble (por ejemplo: el",
+    "ambiente donde se usa o se ofrece, personas reales interactuando con él si aplica),",
+    "no un objeto flotando solo sobre un fondo de color.",
     brief.brandColors
-      ? `Usa estos colores de marca de forma predominante en la composición: ${brief.brandColors}.`
+      ? `Si es posible sin sacrificar el realismo, incorpora sutilmente estos colores de marca en la paleta general (ropa, accesorios, luz ambiental, detalles): ${brief.brandColors}.`
       : "",
-    "Deja espacio visual limpio para superponer texto después.",
+    "Deja una zona con espacio visual limpio (negative space) para superponer texto después.",
+    "Formato cuadrado, calidad de cámara profesional, alta resolución.",
     "IMPORTANTE: no incluyas ningún texto, letras, números ni logos generados por ti en la imagen.",
   ]
     .filter(Boolean)
@@ -103,30 +115,59 @@ async function generateWithOpenAI(brief) {
   return `data:image/png;base64,${b64}`;
 }
 
+function dataUriToBuffer(dataUri) {
+  const match = /^data:(.+);base64,(.+)$/.exec(dataUri);
+  if (!match) return null;
+  return Buffer.from(match[2], "base64");
+}
+
 /**
- * @param {object} brief - datos de la campaña + brandColors opcional (string)
+ * @param {object} brief - datos de la campaña + brandColors (string, para el
+ *   prompt) + brandColorPrimary/brandColorSecondary (hex, para el diseño)
  * @returns {Promise<string|null>} data URI (data:image/png;base64,...) o null si falla/no está configurado
  */
 async function generateImage(brief) {
+  let rawDataUri = null;
+
   if (process.env.GEMINI_API_KEY) {
     try {
-      const result = await generateWithGemini(brief);
-      if (result) return result;
+      rawDataUri = await generateWithGemini(brief);
     } catch (err) {
       console.error("[aiImage] Fallo con Gemini, probando siguiente opción:", err.message);
     }
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  if (!rawDataUri && process.env.OPENAI_API_KEY) {
     try {
-      const result = await generateWithOpenAI(brief);
-      if (result) return result;
+      rawDataUri = await generateWithOpenAI(brief);
     } catch (err) {
       console.error("[aiImage] Fallo con OpenAI:", err.message);
     }
   }
 
-  return null;
+  if (!rawDataUri) return null;
+
+  // Superpone título/mensaje/CTA con tipografía real sobre la foto generada.
+  try {
+    const buffer = dataUriToBuffer(rawDataUri);
+    if (!buffer) return rawDataUri;
+
+    const composed = await composeDesign(buffer, {
+      headline: brief.product_service,
+      subheadline: brief.key_message,
+      cta: brief.cta,
+      brandColorPrimary: brief.brandColorPrimary,
+      brandColorSecondary: brief.brandColorSecondary,
+    });
+
+    return `data:image/png;base64,${composed.toString("base64")}`;
+  } catch (err) {
+    console.error(
+      "[aiImage] Fallo componiendo el diseño final, se deja la foto sin texto superpuesto:",
+      err.message
+    );
+    return rawDataUri;
+  }
 }
 
 module.exports = { generateImage, isConfigured };
