@@ -67,11 +67,14 @@ Esta es la ruta más simple: sin servidor que administrar, con HTTPS y dominio p
 
 **5. Deploy.** Render instala, arranca `npm start`, y te da una URL tipo `tuapp.onrender.com`.
 
-**6. Crea tu usuario admin ya desplegado:** en la pestaña **Shell** del servicio en Render (disponible solo en planes pagados) o corriendo el script apuntando tu `DATABASE_URL` de Render desde tu propia computadora:
-```bash
-DATABASE_URL="la-external-database-url-de-render" npm run seed:admin -- "Tu Nombre" tucorreo@empresa.com unaContraseñaSegura
-```
-(Usa la **External** Database URL para esto, no la interna — la interna solo funciona entre servicios dentro de Render.)
+**6. Crea tu usuario admin.** Dos formas, según lo que te sea más fácil:
+
+- **Sin terminal (recomendado si no usas la línea de comandos)**: agrega temporalmente la variable de entorno `SETUP_ADMIN_TOKEN` (cualquier texto secreto que inventes) en el Web Service, redeploy, y visita `https://tu-app.onrender.com/setup-admin` en el navegador — ahí hay un formulario para crear tu usuario admin. Cuando termines, **quita** esa variable de entorno por seguridad (para que la página deje de estar disponible).
+- **Con terminal**, si tienes Node.js instalado en tu computadora:
+  ```bash
+  DATABASE_URL="la-external-database-url-de-render" npm run seed:admin -- "Tu Nombre" tucorreo@empresa.com unaContraseñaSegura
+  ```
+  (Usa la **External** Database URL para esto, no la interna — la interna solo funciona entre servicios dentro de Render.)
 
 **7. Conecta tu dominio** (fade.mx o el que sea): en el servicio de Render, ve a **Settings → Custom Domains**, agrega tu dominio, y sigue las instrucciones para apuntar un registro CNAME desde IONOS (o Cloudflare, si ya moviste el DNS ahí) hacia Render.
 

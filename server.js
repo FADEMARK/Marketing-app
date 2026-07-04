@@ -284,6 +284,61 @@ app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
   }
 });
 
+// ---------- Crear/resetear el usuario admin desde el navegador ----------
+//
+// Pensado para cuando no tienes forma de correr "npm run seed:admin" desde
+// una terminal (por ejemplo, en el free tier de Render no hay Shell). Solo
+// funciona si defines SETUP_ADMIN_TOKEN como variable de entorno; sin esa
+// variable, la ruta queda deshabilitada (404). Por seguridad, quita esa
+// variable de entorno una vez que hayas creado tu usuario admin.
+
+app.get("/setup-admin", (req, res) => {
+  if (!process.env.SETUP_ADMIN_TOKEN) return res.status(404).send("No disponible.");
+  res.render("setup-admin", { error: null, success: null });
+});
+
+app.post("/setup-admin", async (req, res, next) => {
+  try {
+    if (!process.env.SETUP_ADMIN_TOKEN) return res.status(404).send("No disponible.");
+
+    const { token, name, email, password } = req.body;
+
+    if (token !== process.env.SETUP_ADMIN_TOKEN) {
+      return res.render("setup-admin", { error: "Token incorrecto.", success: null });
+    }
+    if (!name || !email || !password) {
+      return res.render("setup-admin", {
+        error: "Completa todos los campos.",
+        success: null,
+      });
+    }
+
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const existing = await pool.query("SELECT id FROM admins WHERE email = $1", [email]);
+
+    if (existing.rows.length > 0) {
+      await pool.query("UPDATE admins SET name = $1, password_hash = $2 WHERE email = $3", [
+        name,
+        passwordHash,
+        email,
+      ]);
+    } else {
+      await pool.query("INSERT INTO admins (name, email, password_hash) VALUES ($1, $2, $3)", [
+        name,
+        email,
+        passwordHash,
+      ]);
+    }
+
+    res.render("setup-admin", {
+      error: null,
+      success: `Listo. Ya puedes iniciar sesión en /admin/login con ${email}. Por seguridad, ahora quita SETUP_ADMIN_TOKEN de las variables de entorno.`,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------- Panel interno (equipo de Marketing/Diseño) ----------
 
 app.get("/admin/login", (req, res) => {

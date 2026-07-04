@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Configurar usuario admin — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page narrow">
+    <h1>Crear / resetear usuario admin</h1>
+    <p class="subtitle">
+      Página de un solo uso, protegida por el token que pusiste en la variable
+      <code>SETUP_ADMIN_TOKEN</code>. Quítala de tus variables de entorno cuando termines.
+    </p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+    <% if (success) { %>
+      <div class="alert alert-warning"><%= success %></div>
+    <% } %>
+
+    <form method="POST" action="/setup-admin" class="card-form">
+      <label>Token de configuración (SETUP_ADMIN_TOKEN)
+        <input type="password" name="token" required />
+      </label>
+      <label>Tu nombre
+        <input type="text" name="name" required />
+      </label>
+      <label>Correo del admin
+        <input type="email" name="email" required />
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" required minlength="6" />
+      </label>
+      <button type="submit" class="btn-primary full-width">Crear / actualizar usuario admin</button>
+    </form>
+  </main>
+</body>
+</html>
