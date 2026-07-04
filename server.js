@@ -442,6 +442,7 @@ app.post(
         imageCandidates = await aiImage.generateImageCandidates({
           ...brief,
           headline,
+          hashtags,
           extraNotes: extra_notes,
           referenceImageDataUri: referenceImageData,
           brandColors: biz

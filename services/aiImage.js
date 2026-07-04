@@ -10,18 +10,15 @@
 //   3. Si no hay ninguna clave, se deja pendiente para que el equipo diseñe
 //      la pieza a mano desde el panel admin.
 //
-// Enfoque (distinto por motor, según qué tan confiable es cada uno
-// escribiendo texto):
-//   - Gemini: le pedimos que dibuje SOLO la fotografía, sin ningún texto —
-//     su renderizado de párrafos, teléfonos, direcciones y nombres propios
-//     falla con cierta frecuencia. Todo el texto (título, subtítulo, CTA,
-//     contacto) lo agregamos nosotros aparte, garantizado, con una tarjeta
-//     vía services/composeDesign.js.
-//   - OpenAI (gpt-image-1): SÍ le pedimos que escriba el texto real
-//     directamente en la foto (título, mensaje, CTA y contacto, con el
-//     contenido exacto que le damos) — es el mismo motor detrás de la
-//     generación de imágenes de ChatGPT y renderiza texto de forma mucho más
-//     confiable, dando un resultado más integrado (sin tarjeta superpuesta).
+// Enfoque (por decisión explícita del cliente): AMBOS motores (Gemini y
+// OpenAI) reciben el texto exacto —título, mensaje, CTA y el contacto
+// completo con dirección y teléfono— y son ellos quienes lo escriben
+// directamente dentro de la imagen, como una pieza gráfica/flyer completa
+// (no una foto simple), decidiendo ellos mismos dónde ubicarlo. Ya no
+// usamos la tarjeta de respaldo (services/composeDesign.js) para ninguno de
+// los dos. Nota: gpt-image-1 (OpenAI) renderiza texto de forma más confiable
+// que Gemini — revisa siempre el resultado en el panel de admin antes de
+// aprobar, sobre todo la versión de Gemini.
 //
 // Logo: en AMBOS casos la IA NUNCA lo dibuja ni lo recibe como referencia —
 // le pedimos explícitamente que no genere ni redibuje ningún logotipo. El
@@ -89,35 +86,48 @@ function buildFixedRules(
 
   if (writeTextDirectly) {
     const contactPart = brief.contactLine
-      ? `- Línea de contacto, en letra más pequeña, en la parte inferior: "${brief.contactLine}"`
+      ? `- Bloque de contacto, con un icono pequeño junto a cada dato (uno de persona, uno de teléfono, uno de ubicación): "${brief.contactLine}"`
+      : "";
+    const hashtagsPart = brief.hashtags
+      ? `- Línea de hashtags, en letra pequeña, en la franja inferior del diseño: "${brief.hashtags}"`
       : "";
 
     return [
       referencePhotoInstruction,
-      "IMPORTANTE SOBRE EL TEXTO: a diferencia de otras veces, esta vez SÍ debes escribir el",
-      "siguiente texto DENTRO de la imagen, integrado gráficamente como lo haría un diseñador",
-      "profesional (tipografía bold para el título, una etiqueta o botón de color sólido para el",
-      "llamado a la acción, buen contraste sobre el fondo):",
-      `- Título/promoción principal, grande y llamativo: "${brief.headline || brief.product_service}"`,
-      brief.key_message ? `- Mensaje o detalle secundario: "${brief.key_message}"` : "",
-      `- Botón o etiqueta de llamado a la acción: "${brief.cta}"`,
-      contactPart,
+      "TIPO DE PIEZA: no generes solo una fotografía — diseña un POST/FLYER GRÁFICO publicitario",
+      "COMPLETO para redes sociales, como lo haría un diseñador senior en Photoshop/Illustrator/Canva.",
+      "Combina una fotografía o escena de fondo relacionada con el negocio y el tema de la promoción",
+      "con elementos gráficos de diseño superpuestos: un encabezado tipo banner con tipografía muy",
+      "bold (parte del texto en un color de acento), una insignia o sello circular/redondeado",
+      "destacando el descuento u oferta principal, franjas o cintas de color separando secciones, y",
+      "una barra inferior de color sólido (oscuro o de la marca) con los datos de contacto bien",
+      "organizados. Este es el nivel de sofisticación gráfica esperado — no una foto simple con texto",
+      "encima.",
       "",
-      "MUY IMPORTANTE SOBRE PRECISIÓN: copia estos textos EXACTAMENTE como están escritos arriba,",
-      "letra por letra — incluidos acentos, mayúsculas, números de teléfono y nombres propios. NO",
-      "resumas, traduzcas, corrijas ni inventes texto adicional. Un error de ortografía en un nombre",
-      "o un teléfono es un error grave e inaceptable.",
+      "IMPORTANTE SOBRE EL TEXTO: escribe estos textos EXACTOS dentro del diseño:",
+      `- Título/promoción principal, como encabezado grande y llamativo: "${brief.headline || brief.product_service}"`,
+      brief.key_message ? `- Mensaje o detalle secundario: "${brief.key_message}"` : "",
+      `- Botón o etiqueta de llamado a la acción, con estilo de botón de WhatsApp (verde, con ícono de WhatsApp): "${brief.cta}"`,
+      contactPart,
+      hashtagsPart,
+      "",
+      "MUY IMPORTANTE SOBRE PRECISIÓN: copia estos textos EXACTOS como están escritos arriba, letra",
+      "por letra — incluidos acentos, mayúsculas, números de teléfono y nombres propios. NO resumas,",
+      "traduzcas ni corrijas nada de esto. Y sobre todo: NO INVENTES datos adicionales que no estén",
+      "listados arriba — nada de precios, números de consultorio, pisos, promociones ni ofertas extra",
+      "que no se te hayan dado explícitamente. Si te falta un dato, simplemente omítelo; inventarlo",
+      "mal es un error grave e inaceptable.",
+      "",
+      "Sí puedes agregar 1-2 líneas cortas de copy/gancho publicitario adicional de tu propia autoría",
+      "(por ejemplo una frase corta motivacional relacionada al tema de la promoción), siempre y",
+      "cuando se note que es una frase de marketing y no la confundas con un dato factual.",
       "",
       "No dibujes ningún logotipo — el logo real del negocio se pega aparte después, con pixeles",
-      "exactos, para que no salga distorsionado ni reinterpretado.",
+      "exactos, para que no salga distorsionado ni reinterpretado. Deja la esquina superior izquierda",
+      "(una franja de aproximadamente 200x200 px) con un fondo simple, sin elementos importantes ahí,",
+      "para poder pegar el logo real ahí sin taparlo.",
       "",
       qualityRules,
-      "",
-      "MUY IMPORTANTE SOBRE EL ENCUADRE: vas a escribir texto en la franja inferior del cuadro (aprox.",
-      "el 35-40% de abajo), así que compón esa zona con un fondo más simple y de buen contraste para",
-      "que el texto se lea perfectamente (puedes usar desenfoque sutil o una franja semitransparente",
-      "detrás del texto si hace falta para legibilidad). Las caras, personas y el elemento principal",
-      "del negocio deben quedar bien visibles en la mitad superior, sin cortes incómodos.",
       "",
       fillFrameRule,
     ]
@@ -150,9 +160,11 @@ function buildFixedRules(
     .join(" ");
 }
 
-function templateVars(brief, { referencePhotoAsInput = false } = {}) {
+function templateVars(brief, { referencePhotoAsInput = false, writeTextDirectly = false } = {}) {
   return {
-    modo_intro: referencePhotoAsInput
+    modo_intro: writeTextDirectly
+      ? "Tu tarea es diseñar una pieza gráfica publicitaria COMPLETA (flyer/post de redes sociales), no solo una fotografía — revisa las instrucciones detalladas de estilo y texto más abajo."
+      : referencePhotoAsInput
       ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto (ver instrucciones abajo), no generar una escena nueva desde cero."
       : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
     nombre_negocio: brief.businessName || "N/D",
@@ -177,7 +189,10 @@ async function buildPrompt(
   { referencePhotoAsInput = false, writeTextDirectly = false } = {}
 ) {
   const template = await getPromptTemplate();
-  const creativePart = renderTemplate(template, templateVars(brief, { referencePhotoAsInput }));
+  const creativePart = renderTemplate(
+    template,
+    templateVars(brief, { referencePhotoAsInput, writeTextDirectly })
+  );
   const fixedRules = buildFixedRules(brief, { referencePhotoAsInput, writeTextDirectly });
   return `${creativePart}\n\n${fixedRules}`;
 }
@@ -191,8 +206,15 @@ async function generateWithGemini(brief) {
   // NUNCA se le manda a la IA (ver nota arriba) — siempre se pega después.
   const referencePhotoParts = dataUriToParts(brief.referenceImageDataUri);
 
+  // Por decisión explícita del cliente, Gemini también escribe el texto real
+  // (título, mensaje, CTA, contacto completo con dirección y teléfono) él
+  // mismo dentro de la foto, igual que OpenAI — en vez de usar la tarjeta de
+  // respaldo. Nota: el renderizado de texto de Gemini es menos confiable que
+  // el de gpt-image-1, así que revisa el resultado en el panel de admin
+  // antes de aprobar.
   const promptText = await buildPrompt(brief, {
     referencePhotoAsInput: Boolean(referencePhotoParts),
+    writeTextDirectly: true,
   });
   const requestParts = [{ text: promptText }];
   if (referencePhotoParts) {
@@ -370,11 +392,10 @@ async function generateImageCandidates(brief) {
     results.map(async ({ engine, raw }) => ({
       engine,
       label: ENGINE_LABELS[engine] || engine,
-      // OpenAI ya escribió el texto real dentro de la foto (ver
-      // generateWithOpenAI) — solo le pegamos el logo. Gemini no escribe
-      // texto, así que necesita la tarjeta completa de composeFinal().
-      dataUri:
-        engine === "openai" ? await composeLogoOnly(raw, brief) : await composeFinal(raw, brief),
+      // Ambos motores escriben el texto real (título, mensaje, CTA, contacto
+      // completo) directamente en la foto — aquí solo pegamos el logo real,
+      // sin tarjeta ni texto adicional nuestro.
+      dataUri: await composeLogoOnly(raw, brief),
     }))
   );
 }
