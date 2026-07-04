@@ -24,6 +24,13 @@
 // en la fotografía — esto sí funciona bien en la práctica. Si no se pudo
 // incorporar así (OpenAI, o si Gemini no lo logró), lo agregamos nosotros en
 // la tarjeta.
+//
+// Foto de referencia del cliente (opcional, campo "imagen de referencia" del
+// formulario): si el cliente sube su propia foto real (su platillo, su local,
+// su espacio), se la mandamos también a Gemini como imagen de entrada y le
+// pedimos que la use como BASE — mejorándola profesionalmente (luz, color,
+// composición) en vez de inventar una escena nueva desde cero. Así el
+// resultado sigue siendo fiel a lo que el negocio realmente ofrece.
 
 const fetch = require("node-fetch");
 const { composeDesign } = require("./composeDesign");
@@ -38,7 +45,20 @@ function dataUriToParts(dataUri) {
   return { mimeType: match[1], data: match[2] };
 }
 
-function buildPrompt(brief, { logoAsInput = false } = {}) {
+function buildPrompt(brief, { logoAsInput = false, referencePhotoAsInput = false } = {}) {
+  const referencePhotoInstruction = referencePhotoAsInput
+    ? [
+        "IMPORTANTE SOBRE LA FOTO BASE: te adjunto una fotografía REAL del negocio,",
+        "el producto o el lugar (tal cual son en la vida real). Usa ESA foto como",
+        "base y mejórala profesionalmente: ajusta iluminación, color, contraste,",
+        "nitidez y encuadre para que se vea como una fotografía de campaña",
+        "publicitaria de alta gama. NO inventes un lugar, platillo o producto",
+        "distinto — conserva fielmente lo que aparece realmente en la foto. Si hace",
+        "falta, puedes recortar o ajustar la composición, pero el contenido real",
+        "debe seguir siendo reconocible como el mismo.",
+      ].join(" ")
+    : "";
+
   const logoInstruction = logoAsInput
     ? [
         "IMPORTANTE SOBRE EL LOGO: te adjunto el logo REAL del negocio como imagen",
@@ -56,24 +76,46 @@ function buildPrompt(brief, { logoAsInput = false } = {}) {
         "después con el logo real de la marca en un editor aparte.",
       ].join(" ");
 
+  const industryStyleGuide = [
+    "Guía de estilo según el giro del negocio (aplica la que corresponda, o algo",
+    "análogo si no calza exactamente): si es una clínica dental o de salud, usa",
+    "estética limpia, colores frescos, sonrisas saludables, elementos sutiles del",
+    "sector, y una sensación de confianza profesional/familiar. Si es comida o",
+    "restaurante, usa fotografía apetecible, iluminación cálida y enfoque en antojo.",
+    "Si es belleza o spa, usa estética elegante, aspiracional y limpia. Si es",
+    "tecnología, usa un diseño moderno, minimalista y confiable. Si es retail o",
+    "tienda, usa un enfoque comercial claro con el producto destacado. Si es",
+    "gimnasio o fitness, usa energía, movimiento y un espacio de entrenamiento real.",
+    "Para cualquier otro giro, sigue esta misma lógica: la escena debe sentirse",
+    "genuinamente propia de ese tipo de negocio, no genérica.",
+  ].join(" ");
+
   return [
-    "Fotografía publicitaria profesional de alta gama para una campaña real de una",
-    "agencia de marketing premium, estilo editorial (piensa en una campaña de una",
-    "marca reconocida, no en un anuncio genérico de internet). Debe verse como una",
-    "fotografía o composición fotorrealista con buena iluminación y contexto real —",
-    "NO un ícono plano, NO un clipart, NO una ilustración vectorial genérica tipo",
-    "stock, NO un dibujo de caricatura.",
+    "Eres un diseñador gráfico publicitario senior especializado en anuncios de",
+    "alto impacto para redes sociales.",
+    referencePhotoAsInput
+      ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto (ver instrucciones abajo), no generar una escena nueva desde cero."
+      : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
+    "Debe verse como una pieza hecha por una agencia de marketing premium, no como",
+    "una plantilla básica ni un anuncio genérico de internet. Fotorrealista, con",
+    "buena iluminación, composición equilibrada y moderna — NO un ícono plano, NO",
+    "un clipart, NO una ilustración vectorial genérica tipo stock, NO un dibujo de",
+    "caricatura.",
     "",
     `Nombre del negocio: ${brief.businessName || "N/D"}.`,
     brief.businessIndustry ? `Giro del negocio: ${brief.businessIndustry}.` : "",
     `Concepto/mensaje de la publicación (para ambientar la escena, NO lo escribas como texto): "${brief.key_message}".`,
     `Público objetivo de la escena: ${brief.target_audience}.`,
     `Tono visual: ${brief.tone}.`,
-    "MUY IMPORTANTE — fidelidad al giro del negocio: la fotografía debe ser 100%",
-    "coherente con el giro de arriba (si es una clínica dental: consultorio,",
-    "dentista/higienista, pacientes con sonrisas sanas; si es un restaurante: el",
-    "platillo o el lugar; si es un gimnasio: el espacio y gente entrenando; etc.),",
-    "NO una oficina corporativa genérica ni personas sin relación con el negocio.",
+    referencePhotoInstruction,
+    !referencePhotoAsInput
+      ? [
+          "MUY IMPORTANTE — fidelidad al giro del negocio: la fotografía debe ser 100%",
+          "coherente con el giro de arriba, no una oficina corporativa genérica ni",
+          "personas sin relación con el negocio.",
+        ].join(" ")
+      : "",
+    industryStyleGuide,
     "Si el público objetivo incluye niños o familias, es válido mostrarlos genuinamente",
     "felices en la escena, de forma apropiada y no forzada.",
     brief.brandColors
@@ -91,6 +133,12 @@ function buildPrompt(brief, { logoAsInput = false } = {}) {
     "",
     logoInstruction,
     "",
+    "Reglas de calidad: composición equilibrada sin saturar el diseño con demasiados",
+    "elementos, buen respiro visual entre los elementos de la escena, no deformes",
+    "rostros, manos, productos ni logotipos, no agregues marcas de agua ni texto",
+    "adicional inventado. El resultado debe sentirse confiable, atractivo y",
+    "profesional, listo para publicarse en redes sociales.",
+    "",
     "Llena todo el cuadro de lado a lado con la fotografía — sin bordes, marcos ni",
     "zonas en blanco vacías. Formato cuadrado, alta resolución.",
   ]
@@ -106,7 +154,24 @@ async function generateWithGemini(brief) {
   // entrada junto con el texto, para que lo incorpore él mismo en el diseño
   // (en vez de que nosotros lo peguemos después en una cajita aparte).
   const logoParts = dataUriToParts(brief.logoDataUri);
-  const requestParts = [{ text: buildPrompt(brief, { logoAsInput: Boolean(logoParts) }) }];
+
+  // Si el cliente subió su propia foto de referencia (su platillo, su local),
+  // se la mandamos también como imagen de entrada para que la use de base.
+  const referencePhotoParts = dataUriToParts(brief.referenceImageDataUri);
+
+  const requestParts = [
+    {
+      text: buildPrompt(brief, {
+        logoAsInput: Boolean(logoParts),
+        referencePhotoAsInput: Boolean(referencePhotoParts),
+      }),
+    },
+  ];
+  if (referencePhotoParts) {
+    requestParts.push({
+      inlineData: { mimeType: referencePhotoParts.mimeType, data: referencePhotoParts.data },
+    });
+  }
   if (logoParts) {
     requestParts.push({ inlineData: { mimeType: logoParts.mimeType, data: logoParts.data } });
   }
