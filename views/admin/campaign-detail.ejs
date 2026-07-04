@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= campaign.product_service %> — Panel interno</title>
+  <%- include('../partials/head') %>
+</head>
+<body>
+  <%- include('../partials/nav') %>
+
+  <main class="page narrow">
+    <a href="/admin" class="back-link">&larr; Volver al listado</a>
+
+    <div class="page-header">
+      <h1><%= campaign.product_service %></h1>
+      <span class="status-badge status-<%= campaign.status %>"><%= STATUS_LABELS[campaign.status] %></span>
+    </div>
+
+    <div class="detail-box">
+      <h3>Negocio</h3>
+      <p><strong><%= campaign.business_name %></strong></p>
+      <p><a href="<%= campaign.fb_page_link %>" target="_blank" rel="noopener">📘 <%= campaign.fb_page_link %></a></p>
+      <div class="swatches">
+        <span class="swatch" style="background: <%= campaign.brand_color_primary %>"></span>
+        <span class="swatch" style="background: <%= campaign.brand_color_secondary %>"></span>
+      </div>
+      <% if (campaign.logo_data) { %><img class="logo-preview" src="<%= campaign.logo_data %>" alt="Logo" /><% } %>
+    </div>
+
+    <div class="detail-box">
+      <h3>Brief del cliente</h3>
+      <p><strong>Objetivo:</strong> <%= campaign.objective %></p>
+      <p><strong>Mensaje clave:</strong> <%= campaign.key_message %></p>
+      <p><strong>Público objetivo:</strong> <%= campaign.target_audience %></p>
+      <p><strong>Tono:</strong> <%= campaign.tone %></p>
+      <p><strong>CTA:</strong> <%= campaign.cta %></p>
+      <% if (campaign.keywords) { %><p><strong>Palabras clave:</strong> <%= campaign.keywords %></p><% } %>
+      <% if (campaign.extra_notes) { %><p><strong>Notas:</strong> <%= campaign.extra_notes %></p><% } %>
+      <% if (campaign.reference_image_data) { %>
+        <p><strong>Imagen de referencia:</strong></p>
+        <img class="preview-image" src="<%= campaign.reference_image_data %>" alt="Referencia" />
+      <% } %>
+    </div>
+
+    <% if (!canvaConfigured) { %>
+      <div class="alert alert-warning">
+        Canva no está conectado todavía (falta CANVA_API_KEY / CANVA_BRAND_TEMPLATE_ID en .env).
+        Diseña la pieza manualmente y súbela abajo como "Imagen final".
+      </div>
+    <% } %>
+    <% if (!facebookConfigured) { %>
+      <div class="alert alert-warning">
+        La publicación automática en Facebook aún no está configurada. Publica manualmente en
+        la página del cliente y pega el link del post abajo.
+      </div>
+    <% } %>
+
+    <form method="POST" action="/admin/campaigns/<%= campaign.id %>/update" enctype="multipart/form-data" class="card-form">
+      <h3>Trabajo del equipo</h3>
+
+      <label>Estado
+        <select name="status">
+          <option value="pendiente_revision" <%= campaign.status === 'pendiente_revision' ? 'selected' : '' %>>Pendiente de revisión</option>
+          <option value="en_diseno" <%= campaign.status === 'en_diseno' ? 'selected' : '' %>>En diseño</option>
+          <option value="listo_para_aprobacion" <%= campaign.status === 'listo_para_aprobacion' ? 'selected' : '' %>>Listo para aprobación</option>
+          <option value="aprobado" <%= campaign.status === 'aprobado' ? 'selected' : '' %>>Aprobado, listo para publicar</option>
+          <option value="publicado" <%= campaign.status === 'publicado' ? 'selected' : '' %>>Publicado</option>
+        </select>
+      </label>
+
+      <label>Copy (editable)
+        <textarea name="ai_caption" rows="4"><%= campaign.ai_caption || '' %></textarea>
+      </label>
+
+      <label>Hashtags (editable)
+        <input type="text" name="ai_hashtags" value="<%= campaign.ai_hashtags || '' %>" />
+      </label>
+
+      <label>Link del diseño en Canva (opcional)
+        <input type="url" name="canva_design_url" value="<%= campaign.canva_design_url || '' %>" placeholder="https://www.canva.com/design/..." />
+      </label>
+
+      <label>Imagen final (sube el diseño terminado)
+        <input type="file" name="final_image" accept="image/*" />
+      </label>
+      <% if (campaign.final_image_data) { %>
+        <img class="preview-image" src="<%= campaign.final_image_data %>" alt="Imagen final actual" />
+      <% } %>
+
+      <label>Link del post ya publicado en Facebook (cuando esté publicado)
+        <input type="url" name="published_post_url" value="<%= campaign.published_post_url || '' %>" placeholder="https://facebook.com/..." />
+      </label>
+
+      <label>Notas internas
+        <textarea name="admin_notes" rows="2"><%= campaign.admin_notes || '' %></textarea>
+      </label>
+
+      <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+    </form>
+  </main>
+</body>
+</html>

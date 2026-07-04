@@ -1,0 +1,20 @@
+<header class="topbar">
+  <a href="/" class="brand">📣 MarketingHub</a>
+  <nav>
+    <% if (isBusinessLoggedIn) { %>
+      <a href="/dashboard">Mi panel</a>
+      <a href="/campaigns/new">Nueva publicación</a>
+      <form action="/logout" method="POST" class="inline-form">
+        <button type="submit" class="link-button">Cerrar sesión</button>
+      </form>
+    <% } else if (isAdminLoggedIn) { %>
+      <a href="/admin">Panel interno</a>
+      <form action="/admin/logout" method="POST" class="inline-form">
+        <button type="submit" class="link-button">Cerrar sesión</button>
+      </form>
+    <% } else { %>
+      <a href="/login">Iniciar sesión</a>
+      <a href="/register" class="cta-link">Registrar mi negocio</a>
+    <% } %>
+  </nav>
+</header>

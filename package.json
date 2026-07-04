@@ -1,0 +1,25 @@
+{
+  "name": "marketing-app",
+  "version": "1.0.0",
+  "description": "Plataforma donde negocios se registran, cuentan su marca y reciben un brief de marketing profesional (imagen + copy + hashtags) generado y revisado por el equipo de Marketing/Diseño antes de publicarse en su página de Facebook.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed:admin": "node scripts/seed-admin.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-pg-simple": "^10.0.0",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "multer": "^2.0.0",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.11.5"
+  }
+}
