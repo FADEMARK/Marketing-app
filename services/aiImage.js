@@ -34,6 +34,7 @@
 
 const fetch = require("node-fetch");
 const { composeDesign } = require("./composeDesign");
+const { getPromptTemplate, renderTemplate } = require("./promptSettings");
 
 function isConfigured() {
   return Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
@@ -45,7 +46,11 @@ function dataUriToParts(dataUri) {
   return { mimeType: match[1], data: match[2] };
 }
 
-function buildPrompt(brief, { logoAsInput = false, referencePhotoAsInput = false } = {}) {
+// Reglas técnicas fijas (no editables desde el prompt studio): son las que
+// garantizan que el texto no salga mal escrito y que el logo/foto de
+// referencia se traten bien. Se agregan siempre, después de la parte
+// creativa (editable) del prompt.
+function buildFixedRules(brief, { logoAsInput = false, referencePhotoAsInput = false } = {}) {
   const referencePhotoInstruction = referencePhotoAsInput
     ? [
         "IMPORTANTE SOBRE LA FOTO BASE: te adjunto una fotografía REAL del negocio,",
@@ -76,60 +81,14 @@ function buildPrompt(brief, { logoAsInput = false, referencePhotoAsInput = false
         "después con el logo real de la marca en un editor aparte.",
       ].join(" ");
 
-  const industryStyleGuide = [
-    "Guía de estilo según el giro del negocio (aplica la que corresponda, o algo",
-    "análogo si no calza exactamente): si es una clínica dental o de salud, usa",
-    "estética limpia, colores frescos, sonrisas saludables, elementos sutiles del",
-    "sector, y una sensación de confianza profesional/familiar. Si es comida o",
-    "restaurante, usa fotografía apetecible, iluminación cálida y enfoque en antojo.",
-    "Si es belleza o spa, usa estética elegante, aspiracional y limpia. Si es",
-    "tecnología, usa un diseño moderno, minimalista y confiable. Si es retail o",
-    "tienda, usa un enfoque comercial claro con el producto destacado. Si es",
-    "gimnasio o fitness, usa energía, movimiento y un espacio de entrenamiento real.",
-    "Para cualquier otro giro, sigue esta misma lógica: la escena debe sentirse",
-    "genuinamente propia de ese tipo de negocio, no genérica.",
-  ].join(" ");
-
   return [
-    "Eres un diseñador gráfico publicitario senior especializado en anuncios de",
-    "alto impacto para redes sociales.",
-    referencePhotoAsInput
-      ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto (ver instrucciones abajo), no generar una escena nueva desde cero."
-      : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
-    "Debe verse como una pieza hecha por una agencia de marketing premium, no como",
-    "una plantilla básica ni un anuncio genérico de internet. Fotorrealista, con",
-    "buena iluminación, composición equilibrada y moderna — NO un ícono plano, NO",
-    "un clipart, NO una ilustración vectorial genérica tipo stock, NO un dibujo de",
-    "caricatura.",
-    "",
-    `Nombre del negocio: ${brief.businessName || "N/D"}.`,
-    brief.businessIndustry ? `Giro del negocio: ${brief.businessIndustry}.` : "",
-    `Concepto/mensaje de la publicación (para ambientar la escena, NO lo escribas como texto): "${brief.key_message}".`,
-    `Público objetivo de la escena: ${brief.target_audience}.`,
-    `Tono visual: ${brief.tone}.`,
     referencePhotoInstruction,
-    !referencePhotoAsInput
-      ? [
-          "MUY IMPORTANTE — fidelidad al giro del negocio: la fotografía debe ser 100%",
-          "coherente con el giro de arriba, no una oficina corporativa genérica ni",
-          "personas sin relación con el negocio.",
-        ].join(" ")
-      : "",
-    industryStyleGuide,
-    "Si el público objetivo incluye niños o familias, es válido mostrarlos genuinamente",
-    "felices en la escena, de forma apropiada y no forzada.",
-    brief.brandColors
-      ? `Si es posible sin sacrificar el realismo, incorpora sutilmente estos colores de marca en la paleta general: ${brief.brandColors}.`
-      : "",
-    brief.extraNotes ? `Instrucciones adicionales del cliente a considerar: ${brief.extraNotes}.` : "",
-    "",
-    `ÚNICO texto a integrar en la imagen, en letras grandes y llamativas, bien`,
-    `integrado con la composición: "${brief.headline || brief.product_service}".`,
-    "NO escribas ningún otro texto en la imagen: nada de subtítulos, párrafos",
-    "descriptivos, insignias con porcentajes, teléfono, dirección, nombre de doctor(a)",
-    "ni botones de llamado a la acción — todo eso se agrega aparte por separado con",
-    "texto real, para garantizar que no tenga errores ortográficos. Concéntrate solo",
-    "en la fotografía y en escribir bien ese único título.",
+    "IMPORTANTE SOBRE EL TEXTO: NO escribas NINGÚN texto en la imagen — nada de",
+    "títulos, subtítulos, párrafos descriptivos, insignias con porcentajes,",
+    "teléfono, dirección, nombre de negocio ni de doctor(a), ni botones de llamado",
+    "a la acción. Todo el texto (incluido el título de la promoción) se agrega",
+    "aparte, por separado, con texto real, para garantizar que salga bien escrito",
+    "y con el impacto visual correcto. Concéntrate 100% en la fotografía.",
     "",
     logoInstruction,
     "",
@@ -146,6 +105,35 @@ function buildPrompt(brief, { logoAsInput = false, referencePhotoAsInput = false
     .join(" ");
 }
 
+function templateVars(brief, { referencePhotoAsInput = false } = {}) {
+  return {
+    modo_intro: referencePhotoAsInput
+      ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto (ver instrucciones abajo), no generar una escena nueva desde cero."
+      : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
+    nombre_negocio: brief.businessName || "N/D",
+    giro_negocio: brief.businessIndustry || "N/D",
+    mensaje_clave: brief.key_message || "",
+    publico_objetivo: brief.target_audience || "",
+    tono: brief.tone || "",
+    fidelidad_giro: !referencePhotoAsInput
+      ? "MUY IMPORTANTE — fidelidad al giro del negocio: la fotografía debe ser 100% coherente con el giro de arriba, no una oficina corporativa genérica ni personas sin relación con el negocio."
+      : "",
+    colores_marca: brief.brandColors
+      ? `Si es posible sin sacrificar el realismo, incorpora sutilmente estos colores de marca en la paleta general: ${brief.brandColors}.`
+      : "",
+    notas_adicionales: brief.extraNotes
+      ? `Instrucciones adicionales del cliente a considerar: ${brief.extraNotes}.`
+      : "",
+  };
+}
+
+async function buildPrompt(brief, { logoAsInput = false, referencePhotoAsInput = false } = {}) {
+  const template = await getPromptTemplate();
+  const creativePart = renderTemplate(template, templateVars(brief, { referencePhotoAsInput }));
+  const fixedRules = buildFixedRules(brief, { logoAsInput, referencePhotoAsInput });
+  return `${creativePart}\n\n${fixedRules}`;
+}
+
 async function generateWithGemini(brief) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
@@ -159,14 +147,11 @@ async function generateWithGemini(brief) {
   // se la mandamos también como imagen de entrada para que la use de base.
   const referencePhotoParts = dataUriToParts(brief.referenceImageDataUri);
 
-  const requestParts = [
-    {
-      text: buildPrompt(brief, {
-        logoAsInput: Boolean(logoParts),
-        referencePhotoAsInput: Boolean(referencePhotoParts),
-      }),
-    },
-  ];
+  const promptText = await buildPrompt(brief, {
+    logoAsInput: Boolean(logoParts),
+    referencePhotoAsInput: Boolean(referencePhotoParts),
+  });
+  const requestParts = [{ text: promptText }];
   if (referencePhotoParts) {
     requestParts.push({
       inlineData: { mimeType: referencePhotoParts.mimeType, data: referencePhotoParts.data },
@@ -210,6 +195,8 @@ async function generateWithGemini(brief) {
 }
 
 async function generateWithOpenAI(brief) {
+  const promptText = await buildPrompt(brief);
+
   const response = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
     headers: {
@@ -222,7 +209,7 @@ async function generateWithOpenAI(brief) {
       // para texto — para este enfoque, la calidad "high" da mejores resultados
       // de texto legible que "low"/"medium", a mayor costo por imagen).
       model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1",
-      prompt: buildPrompt(brief),
+      prompt: promptText,
       size: "1024x1024",
       quality: process.env.OPENAI_IMAGE_QUALITY || "high",
     }),
@@ -279,15 +266,17 @@ async function generateImage(brief) {
 
   if (!rawDataUri) return null;
 
-  // La foto ya trae el título grande integrado. Le agregamos aparte, con
-  // texto real (sin riesgo de errores ortográficos), el subtítulo, el CTA,
-  // el contacto y — si Gemini no lo incorporó ya como imagen de referencia —
-  // el logo.
+  // La IA a veces integra el título en la foto y a veces no (no es 100%
+  // consistente), así que el título con más impacto — el que atrae al
+  // cliente — lo garantizamos nosotros aparte, grande y en la tarjeta, junto
+  // con el subtítulo, el CTA, el contacto y — si Gemini no incorporó el logo
+  // ya como imagen de referencia — el logo.
   try {
     const buffer = dataUriToBuffer(rawDataUri);
     if (!buffer) return rawDataUri;
 
     const composed = await composeDesign(buffer, {
+      headline: brief.headline || brief.product_service,
       subheadline: brief.key_message,
       cta: brief.cta,
       contactLine: brief.contactLine,
@@ -306,4 +295,4 @@ async function generateImage(brief) {
   }
 }
 
-module.exports = { generateImage, isConfigured };
+module.exports = { generateImage, isConfigured, buildPrompt };

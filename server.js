@@ -14,6 +14,7 @@ const { generateCopy } = require("./services/aiCopy");
 const aiImage = require("./services/aiImage");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
+const promptSettings = require("./services/promptSettings");
 const { requireBusinessAuth, requireAdminAuth } = require("./services/middleware");
 
 const app = express();
@@ -603,6 +604,60 @@ app.get("/admin", requireAdminAuth, async (req, res, next) => {
     );
 
     res.render("admin/dashboard", { campaigns });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Prompt studio: editar el prompt de generación de imagen ----------
+
+const SAMPLE_BRIEF_FOR_PREVIEW = {
+  businessName: "Café Aurora",
+  businessIndustry: "Restaurante / Cafetería",
+  key_message: "Nuevo combo de desayuno con 20% de descuento entre semana",
+  target_audience: "Jóvenes profesionales, 25-40 años",
+  tone: "Cercano/Amigable",
+  brandColors: "#1877F2 y #0B0B0B",
+  extraNotes: "Incluir el logo siempre",
+};
+
+app.get("/admin/prompt-studio", requireAdminAuth, async (req, res, next) => {
+  try {
+    const template = await promptSettings.getPromptTemplate();
+    const isDefault = template === promptSettings.DEFAULT_TEMPLATE;
+    const preview = await aiImage.buildPrompt(SAMPLE_BRIEF_FOR_PREVIEW, {
+      logoAsInput: true,
+      referencePhotoAsInput: false,
+    });
+    res.render("admin/prompt-studio", { template, isDefault, preview, success: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/admin/prompt-studio", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { action, template } = req.body;
+
+    if (action === "restaurar") {
+      await promptSettings.resetPromptTemplate();
+    } else {
+      await promptSettings.savePromptTemplate(template || "");
+    }
+
+    const savedTemplate = await promptSettings.getPromptTemplate();
+    const isDefault = savedTemplate === promptSettings.DEFAULT_TEMPLATE;
+    const preview = await aiImage.buildPrompt(SAMPLE_BRIEF_FOR_PREVIEW, {
+      logoAsInput: true,
+      referencePhotoAsInput: false,
+    });
+
+    res.render("admin/prompt-studio", {
+      template: savedTemplate,
+      isDefault,
+      preview,
+      success: action === "restaurar" ? "Se restauró el prompt por defecto." : "Cambios guardados.",
+    });
   } catch (err) {
     next(err);
   }

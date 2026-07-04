@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Prompt studio — Panel interno</title>
+  <%- include('../partials/head') %>
+</head>
+<body>
+  <%- include('../partials/nav') %>
+
+  <main class="page">
+    <a href="/admin" class="back-link">&larr; Volver a los briefs</a>
+    <h1>Prompt studio</h1>
+    <p class="subtitle">
+      Edita cómo le pedimos a la IA que diseñe la fotografía de cada publicación.
+      Solo esta parte creativa es editable — las reglas que evitan errores de texto,
+      cómo tratar el logo y la foto de referencia quedan fijas y siempre se agregan
+      después, para que no se pueda romper por accidente.
+    </p>
+
+    <% if (success) { %>
+      <div class="alert alert-warning"><%= success %></div>
+    <% } %>
+    <% if (isDefault) { %>
+      <div class="alert alert-warning">Estás usando el prompt por defecto (nunca lo has editado).</div>
+    <% } %>
+
+    <form method="POST" action="/admin/prompt-studio" class="card-form">
+      <label>Prompt creativo (editable)
+        <textarea name="template" rows="18" style="font-family: monospace; font-size: 0.85rem;"><%= template %></textarea>
+      </label>
+
+      <p class="muted small">
+        Placeholders disponibles (se rellenan solos con los datos de cada campaña):
+        <code>{{nombre_negocio}}</code>, <code>{{giro_negocio}}</code>, <code>{{mensaje_clave}}</code>,
+        <code>{{publico_objetivo}}</code>, <code>{{tono}}</code>, <code>{{modo_intro}}</code>,
+        <code>{{fidelidad_giro}}</code>, <code>{{colores_marca}}</code>, <code>{{notas_adicionales}}</code>.
+        No los borres si quieres que esa información le siga llegando a la IA.
+      </p>
+
+      <div class="two-col">
+        <button type="submit" name="action" value="guardar" class="btn-primary full-width">Guardar cambios</button>
+        <button type="submit" name="action" value="restaurar" class="link-button full-width"
+                style="border:1px solid var(--border); border-radius:8px; padding:10px;"
+                onclick="return confirm('¿Restaurar el prompt por defecto? Se pierde tu versión editada.');">
+          Restaurar por defecto
+        </button>
+      </div>
+    </form>
+
+    <div class="detail-box" style="margin-top:24px;">
+      <h3>Vista previa del prompt completo</h3>
+      <p class="muted small">
+        Así queda el prompt final que se le manda a la IA (con datos de ejemplo, y ya incluyendo
+        las reglas fijas de logo/texto/calidad que no son editables). Guarda tus cambios arriba
+        para actualizar esta vista previa.
+      </p>
+      <pre style="white-space: pre-wrap; font-family: monospace; font-size: 0.8rem; background: var(--bg); padding: 16px; border-radius: 8px; max-height: 500px; overflow-y: auto;"><%= preview %></pre>
+    </div>
+  </main>
+</body>
+</html>

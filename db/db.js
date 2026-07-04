@@ -80,6 +80,12 @@ async function init() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
   `);
 
   // Migraciones ligeras: si la tabla ya existía de antes (como en un
