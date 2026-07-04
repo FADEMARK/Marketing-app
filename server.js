@@ -435,11 +435,11 @@ app.post(
       //    configurado), y si no, con IA de imagen (si hay OPENAI_API_KEY).
       const canvaResult = await canva.createDesignFromBrief(brief);
 
-      let aiImageData = null;
+      let imageCandidates = [];
       let autoAdminNote = null;
 
       if (!canvaResult && aiImage.isConfigured()) {
-        aiImageData = await aiImage.generateImage({
+        imageCandidates = await aiImage.generateImageCandidates({
           ...brief,
           headline,
           extraNotes: extra_notes,
@@ -453,19 +453,26 @@ app.post(
           contactLine,
         });
 
-        if (aiImageData) {
+        if (imageCandidates.length) {
           autoAdminNote =
-            "Imagen generada automáticamente por IA. Revísala (y ajústala si hace falta) antes de aprobar/publicar.";
+            imageCandidates.length > 1
+              ? "Se generaron varias versiones con distintas IAs. Elige la que se vea mejor antes de aprobar/publicar."
+              : "Imagen generada automáticamente por IA. Revísala (y ajústala si hace falta) antes de aprobar/publicar.";
         }
       }
+
+      // Por defecto usamos la primera versión disponible como "final"; el
+      // equipo puede cambiarla por cualquiera de las otras candidatas desde
+      // el panel interno antes de aprobar/publicar.
+      const aiImageData = imageCandidates[0]?.dataUri || null;
 
       const hasAutoDesign = Boolean(canvaResult || aiImageData);
       const status = hasAutoDesign ? STATUSES.LISTO_PARA_APROBACION : STATUSES.EN_DISENO;
 
       const result = await pool.query(
         `INSERT INTO campaigns
-          (business_id, objective, product_service, key_message, target_audience, tone, cta, keywords, desired_date, reference_image_data, extra_notes, status, ai_caption, ai_hashtags, canva_design_id, canva_design_url, final_image_data, admin_notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          (business_id, objective, product_service, key_message, target_audience, tone, cta, keywords, desired_date, reference_image_data, extra_notes, status, ai_caption, ai_hashtags, canva_design_id, canva_design_url, final_image_data, image_candidates, admin_notes)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
          RETURNING id`,
         [
           req.session.businessId,
@@ -485,6 +492,7 @@ app.post(
           canvaResult?.designId || null,
           canvaResult?.editUrl || null,
           aiImageData,
+          imageCandidates.length ? JSON.stringify(imageCandidates) : null,
           autoAdminNote,
         ]
       );
@@ -714,12 +722,52 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
 
     if (!campaign) return res.status(404).send("Campaña no encontrada.");
 
+    let imageCandidates = [];
+    if (campaign.image_candidates) {
+      try {
+        imageCandidates = JSON.parse(campaign.image_candidates);
+      } catch (err) {
+        console.error("[admin/campaigns] No se pudo parsear image_candidates:", err.message);
+      }
+    }
+
     res.render("admin/campaign-detail", {
       campaign,
+      imageCandidates,
       canvaConfigured: canva.isConfigured(),
       facebookConfigured: facebook.isConfigured(),
       fb_publish_error: req.query.fb_publish_error || null,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/admin/campaigns/:id/choose-image", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { engine } = req.body;
+    const { rows } = await pool.query("SELECT image_candidates FROM campaigns WHERE id = $1", [
+      req.params.id,
+    ]);
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).send("Campaña no encontrada.");
+
+    let imageCandidates = [];
+    try {
+      imageCandidates = JSON.parse(campaign.image_candidates || "[]");
+    } catch (err) {
+      imageCandidates = [];
+    }
+
+    const chosen = imageCandidates.find((c) => c.engine === engine);
+    if (chosen) {
+      await pool.query(
+        "UPDATE campaigns SET final_image_data = $1, updated_at = NOW() WHERE id = $2",
+        [chosen.dataUri, req.params.id]
+      );
+    }
+
+    res.redirect(`/admin/campaigns/${req.params.id}`);
   } catch (err) {
     next(err);
   }

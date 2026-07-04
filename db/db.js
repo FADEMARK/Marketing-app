@@ -75,6 +75,7 @@ async function init() {
       canva_design_id TEXT,
       canva_design_url TEXT,
       final_image_data TEXT,
+      image_candidates TEXT,
       published_post_url TEXT,
       admin_notes TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -100,6 +101,7 @@ async function init() {
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_id TEXT;`);
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_name TEXT;`);
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_access_token TEXT;`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS image_candidates TEXT;`);
 }
 
 module.exports = { pool, init };

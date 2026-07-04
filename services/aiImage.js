@@ -79,6 +79,14 @@ function buildFixedRules(brief, { referencePhotoAsInput = false } = {}) {
     "inventado. El resultado debe sentirse confiable, atractivo y profesional,",
     "listo para publicarse en redes sociales.",
     "",
+    "MUY IMPORTANTE SOBRE EL ENCUADRE: la mitad INFERIOR del cuadro (el 45% de",
+    "abajo) va a quedar cubierta después por una tarjeta de texto opaca. Compón la",
+    "escena para que las caras, personas y el elemento principal del negocio estén",
+    "ubicados en la mitad SUPERIOR del cuadro, bien visibles y sin cortes incómodos.",
+    "La parte inferior debe tener contenido secundario que se vea bien aunque quede",
+    "tapado (piso, fondo, continuación del ambiente, desenfoque) — NO pongas ahí",
+    "las caras ni lo más importante de la composición.",
+    "",
     "Llena todo el cuadro de lado a lado con la fotografía — sin bordes, marcos ni",
     "zonas en blanco vacías. Formato cuadrado, alta resolución.",
   ]
@@ -203,41 +211,13 @@ function dataUriToBuffer(dataUri) {
   return Buffer.from(match[2], "base64");
 }
 
-/**
- * @param {object} brief - datos de la campaña + brandColors (string, para el
- *   prompt) + brandColorPrimary/brandColorSecondary (hex, sin usar aquí pero
- *   aceptados por compatibilidad) + logoDataUri + contactLine + businessName +
- *   businessDoctorName
- * @returns {Promise<string|null>} data URI (data:image/png;base64,...) o null si falla/no está configurado
- */
-async function generateImage(brief) {
-  let rawDataUri = null;
+// Aplica la composición final (tarjeta con texto garantizado + logo real)
+// sobre una foto cruda que ya generó alguna de las IAs.
+async function composeFinal(rawDataUri, brief) {
+  const buffer = dataUriToBuffer(rawDataUri);
+  if (!buffer) return rawDataUri;
 
-  if (process.env.GEMINI_API_KEY) {
-    try {
-      const result = await generateWithGemini(brief);
-      if (result) rawDataUri = result.dataUri;
-    } catch (err) {
-      console.error("[aiImage] Fallo con Gemini, probando siguiente opción:", err.message);
-    }
-  }
-
-  if (!rawDataUri && process.env.OPENAI_API_KEY) {
-    try {
-      rawDataUri = await generateWithOpenAI(brief);
-    } catch (err) {
-      console.error("[aiImage] Fallo con OpenAI:", err.message);
-    }
-  }
-
-  if (!rawDataUri) return null;
-
-  // La IA nunca dibuja texto ni logo — todo eso (título, subtítulo, CTA,
-  // contacto y el logo real, pixel exacto) lo agregamos aparte, garantizado.
   try {
-    const buffer = dataUriToBuffer(rawDataUri);
-    if (!buffer) return rawDataUri;
-
     const composed = await composeDesign(buffer, {
       headline: brief.headline || brief.product_service,
       subheadline: brief.key_message,
@@ -258,4 +238,71 @@ async function generateImage(brief) {
   }
 }
 
-module.exports = { generateImage, isConfigured, buildPrompt };
+const ENGINE_LABELS = {
+  gemini: "Google Gemini (Nano Banana)",
+  openai: "OpenAI (gpt-image-1)",
+};
+
+/**
+ * Genera un candidato de imagen por CADA IA que esté configurada (en
+ * paralelo), en vez de usar una como respaldo de la otra. Así el equipo
+ * puede comparar el resultado de Gemini contra el de OpenAI (gpt-image-1 —
+ * el mismo motor detrás de la generación de imágenes de ChatGPT, que suele
+ * dar mejor calidad fotográfica) y elegir el que se vea mejor para cada caso,
+ * en vez de quedarse siempre con el primero que responda.
+ *
+ * @param {object} brief - ver generateImage()
+ * @returns {Promise<Array<{engine: string, label: string, dataUri: string}>>}
+ */
+async function generateImageCandidates(brief) {
+  const jobs = [];
+
+  if (process.env.GEMINI_API_KEY) {
+    jobs.push(
+      generateWithGemini(brief)
+        .then((result) => (result?.dataUri ? { engine: "gemini", raw: result.dataUri } : null))
+        .catch((err) => {
+          console.error("[aiImage] Fallo con Gemini:", err.message);
+          return null;
+        })
+    );
+  }
+
+  if (process.env.OPENAI_API_KEY) {
+    jobs.push(
+      generateWithOpenAI(brief)
+        .then((raw) => (raw ? { engine: "openai", raw } : null))
+        .catch((err) => {
+          console.error("[aiImage] Fallo con OpenAI:", err.message);
+          return null;
+        })
+    );
+  }
+
+  const results = (await Promise.all(jobs)).filter(Boolean);
+
+  return Promise.all(
+    results.map(async ({ engine, raw }) => ({
+      engine,
+      label: ENGINE_LABELS[engine] || engine,
+      dataUri: await composeFinal(raw, brief),
+    }))
+  );
+}
+
+/**
+ * @param {object} brief - datos de la campaña + brandColors (string, para el
+ *   prompt) + brandColorPrimary/brandColorSecondary (hex, sin usar aquí pero
+ *   aceptados por compatibilidad) + logoDataUri + contactLine + businessName +
+ *   businessDoctorName
+ * @returns {Promise<string|null>} data URI (data:image/png;base64,...) o null si falla/no está configurado
+ *
+ * Nota: mantiene compatibilidad hacia atrás devolviendo un solo resultado
+ * (el primero disponible). Para comparar ambas IAs, usa generateImageCandidates().
+ */
+async function generateImage(brief) {
+  const candidates = await generateImageCandidates(brief);
+  return candidates[0]?.dataUri || null;
+}
+
+module.exports = { generateImage, generateImageCandidates, isConfigured, buildPrompt };

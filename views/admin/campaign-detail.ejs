@@ -42,6 +42,34 @@
       <% } %>
     </div>
 
+    <% if (typeof imageCandidates !== 'undefined' && imageCandidates.length > 0) { %>
+      <div class="detail-box">
+        <h3>Versiones generadas por IA</h3>
+        <p class="muted small">
+          Se generó una versión por cada IA disponible. Compáralas y elige la que se vea mejor —
+          esa quedará como la "Imagen final" para aprobar/publicar.
+        </p>
+        <div class="image-candidates" style="display:flex; gap:16px; flex-wrap:wrap;">
+          <% imageCandidates.forEach(function(candidate) { %>
+            <% var isActive = candidate.dataUri === campaign.final_image_data; %>
+            <div class="image-candidate" style="flex:1; min-width:220px; max-width:320px;">
+              <img class="preview-image" src="<%= candidate.dataUri %>" alt="Versión <%= candidate.label %>" />
+              <p class="muted small" style="text-align:center; margin:4px 0;">
+                <%= candidate.label %>
+                <% if (isActive) { %> — <strong>en uso</strong><% } %>
+              </p>
+              <form method="POST" action="/admin/campaigns/<%= campaign.id %>/choose-image">
+                <input type="hidden" name="engine" value="<%= candidate.engine %>" />
+                <button type="submit" class="btn-primary full-width" <%= isActive ? 'disabled' : '' %>>
+                  <%= isActive ? 'Ya es la imagen final' : 'Usar esta' %>
+                </button>
+              </form>
+            </div>
+          <% }); %>
+        </div>
+      </div>
+    <% } %>
+
     <% if (!canvaConfigured) { %>
       <div class="alert alert-warning">
         Canva no está conectado todavía (falta CANVA_API_KEY / CANVA_BRAND_TEMPLATE_ID en .env).

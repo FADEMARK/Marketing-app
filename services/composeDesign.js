@@ -126,11 +126,11 @@ async function composeDesign(imageBuffer, opts = {}) {
   const contactFontSize = 22;
   const contactLineHeight = 30;
 
-  const gapAfterHeadline = 18;
-  const gapAfterSub = 30;
-  const gapAfterCta = 20;
-  const cardPaddingTop = 44;
-  const cardPaddingBottom = 44;
+  const gapAfterHeadline = 16;
+  const gapAfterSub = 24;
+  const gapAfterCta = 16;
+  const cardPaddingTop = 36;
+  const cardPaddingBottom = 36;
 
   const headlineBlockHeight = headlineLines.length * headlineLineHeight;
   const subBlockHeight = subLines.length ? subLines.length * subLineHeight : 0;
@@ -144,7 +144,7 @@ async function composeDesign(imageBuffer, opts = {}) {
     (contactLines.length ? gapAfterCta + contactBlockHeight : 0);
 
   const cardHeight = Math.min(
-    Math.round(height * 0.5),
+    Math.round(height * 0.46),
     contentHeight + cardPaddingTop + cardPaddingBottom
   );
   const cardWidth = width - cardMarginX * 2;
