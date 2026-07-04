@@ -248,6 +248,9 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
 .admin-table th { background: #FAFBFC; }
 .link-strong { color: var(--primary); font-weight: 600; text-decoration: none; }
 
+.admin-actions { display: flex; gap: 14px; align-items: center; }
+.admin-actions form { display: inline; }
+
 .swatches { display: flex; gap: 8px; margin: 10px 0; }
 .swatch { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--border); }
 .logo-preview { max-width: 100px; border-radius: 8px; border: 1px solid var(--border); }

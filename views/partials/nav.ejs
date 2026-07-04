@@ -4,11 +4,13 @@
     <% if (isBusinessLoggedIn) { %>
       <a href="/dashboard">Mi panel</a>
       <a href="/campaigns/new">Nueva publicación</a>
+      <a href="/profile">Mi negocio</a>
       <form action="/logout" method="POST" class="inline-form">
         <button type="submit" class="link-button">Cerrar sesión</button>
       </form>
     <% } else if (isAdminLoggedIn) { %>
       <a href="/admin">Panel interno</a>
+      <a href="/admin/businesses">Negocios</a>
       <form action="/admin/logout" method="POST" class="inline-form">
         <button type="submit" class="link-button">Cerrar sesión</button>
       </form>

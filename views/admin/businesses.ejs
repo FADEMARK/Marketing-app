@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Negocios — Panel interno</title>
+  <%- include('../partials/head') %>
+</head>
+<body>
+  <%- include('../partials/nav') %>
+
+  <main class="page">
+    <a href="/admin" class="back-link">&larr; Volver a los briefs</a>
+    <h1>Negocios registrados</h1>
+    <p class="subtitle">Aquí puedes borrar negocios de prueba o que ya no necesites (también borra sus campañas).</p>
+
+    <% if (businesses.length === 0) { %>
+      <div class="empty-state"><p>No hay negocios registrados todavía.</p></div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Giro</th>
+            <th>Correo</th>
+            <th>Estado</th>
+            <th>Campañas</th>
+            <th>Registrado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% businesses.forEach(function(b) { %>
+            <tr>
+              <td><%= b.name %></td>
+              <td class="muted"><%= b.industry || '—' %></td>
+              <td class="muted"><%= b.email %></td>
+              <td>
+                <span class="status-badge <%= b.is_active ? 'status-aprobado' : 'status-pendiente_revision' %>">
+                  <%= b.is_active ? 'Activo' : 'Inactivo' %>
+                </span>
+              </td>
+              <td><%= b.campaign_count %></td>
+              <td class="muted small"><%= b.created_at %></td>
+              <td class="admin-actions">
+                <form method="POST" action="/admin/businesses/<%= b.id %>/toggle-active">
+                  <button type="submit" class="link-strong" style="background:none;border:none;cursor:pointer;font:inherit;">
+                    <%= b.is_active ? 'Desactivar' : 'Activar' %>
+                  </button>
+                </form>
+                <form method="POST" action="/admin/businesses/<%= b.id %>/delete"
+                      onsubmit="return confirm('¿Seguro que quieres borrar &quot;<%= b.name %>&quot; y todas sus campañas? Esto no se puede deshacer.');">
+                  <button type="submit" class="link-button" style="color:#B3261E;">Borrar</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

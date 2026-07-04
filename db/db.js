@@ -38,6 +38,7 @@ async function init() {
       brand_color_secondary TEXT DEFAULT '#0B0B0B',
       logo_data TEXT,
       industry TEXT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
 
@@ -78,6 +79,9 @@ async function init() {
   // Migraciones ligeras: si la tabla ya existía de antes (como en un
   // despliegue previo en Render), le agrega columnas nuevas sin borrar datos.
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS industry TEXT;`);
+  await pool.query(
+    `ALTER TABLE businesses ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;`
+  );
 }
 
 module.exports = { pool, init };

@@ -126,7 +126,10 @@ app.post("/register", upload.single("logo"), async (req, res, next) => {
 });
 
 app.get("/login", (req, res) => {
-  res.render("login", { error: null });
+  const error = req.query.inactive
+    ? "Tu cuenta está inactiva. Contacta a nuestro equipo para reactivarla."
+    : null;
+  res.render("login", { error });
 });
 
 app.post("/login", async (req, res, next) => {
@@ -137,6 +140,12 @@ app.post("/login", async (req, res, next) => {
 
     if (!business || !bcrypt.compareSync(password, business.password_hash)) {
       return res.render("login", { error: "Correo o contraseña incorrectos." });
+    }
+
+    if (!business.is_active) {
+      return res.render("login", {
+        error: "Tu cuenta está inactiva. Contacta a nuestro equipo para reactivarla.",
+      });
     }
 
     req.session.businessId = business.id;
@@ -163,6 +172,73 @@ app.get("/dashboard", requireBusinessAuth, async (req, res, next) => {
     );
 
     res.render("dashboard", { business: businessRows[0], campaigns });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/profile", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+      req.session.businessId,
+    ]);
+    res.render("profile", { business: rows[0], error: null, success: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/profile", requireBusinessAuth, upload.single("logo"), async (req, res, next) => {
+  try {
+    const {
+      name,
+      fb_page_link,
+      industry,
+      brand_color_primary,
+      brand_color_secondary,
+      new_password,
+    } = req.body;
+
+    if (!name || !fb_page_link || !industry) {
+      const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+        req.session.businessId,
+      ]);
+      return res.render("profile", {
+        business: { ...rows[0], ...req.body },
+        error: "Nombre, link de Facebook y giro son obligatorios.",
+        success: null,
+      });
+    }
+
+    const logoData = fileToDataUri(req.file); // null si no subió un archivo nuevo
+    const newPasswordHash = new_password ? bcrypt.hashSync(new_password, 10) : null;
+
+    await pool.query(
+      `UPDATE businesses SET
+        name = $1,
+        fb_page_link = $2,
+        industry = $3,
+        brand_color_primary = $4,
+        brand_color_secondary = $5,
+        logo_data = COALESCE($6, logo_data),
+        password_hash = COALESCE($7, password_hash)
+       WHERE id = $8`,
+      [
+        name,
+        fb_page_link,
+        industry,
+        brand_color_primary || "#1877F2",
+        brand_color_secondary || "#0B0B0B",
+        logoData,
+        newPasswordHash,
+        req.session.businessId,
+      ]
+    );
+
+    const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+      req.session.businessId,
+    ]);
+    res.render("profile", { business: rows[0], error: null, success: "Cambios guardados." });
   } catch (err) {
     next(err);
   }
@@ -394,6 +470,44 @@ app.get("/admin", requireAdminAuth, async (req, res, next) => {
     );
 
     res.render("admin/dashboard", { campaigns });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/admin/businesses", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { rows: businesses } = await pool.query(
+      `SELECT businesses.*, COUNT(campaigns.id)::int AS campaign_count
+       FROM businesses
+       LEFT JOIN campaigns ON campaigns.business_id = businesses.id
+       GROUP BY businesses.id
+       ORDER BY businesses.created_at DESC`
+    );
+    res.render("admin/businesses", { businesses });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/admin/businesses/:id/toggle-active", requireAdminAuth, async (req, res, next) => {
+  try {
+    await pool.query("UPDATE businesses SET is_active = NOT is_active WHERE id = $1", [
+      req.params.id,
+    ]);
+    res.redirect("/admin/businesses");
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/admin/businesses/:id/delete", requireAdminAuth, async (req, res, next) => {
+  try {
+    // Borra primero las campañas del negocio (por la relación con business_id),
+    // y luego el negocio. Todo o nada: si algo falla, no se borra a medias.
+    await pool.query("DELETE FROM campaigns WHERE business_id = $1", [req.params.id]);
+    await pool.query("DELETE FROM businesses WHERE id = $1", [req.params.id]);
+    res.redirect("/admin/businesses");
   } catch (err) {
     next(err);
   }
