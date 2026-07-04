@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Panel interno — MarketingHub</title>
+  <%- include('../partials/head') %>
+</head>
+<body>
+  <%- include('../partials/nav') %>
+
+  <main class="form-page narrow">
+    <h1>Acceso del equipo</h1>
+    <p class="subtitle">Panel interno de Marketing / Diseño.</p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/admin/login" class="card-form">
+      <label>Correo
+        <input type="email" name="email" required />
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit" class="btn-primary full-width">Entrar</button>
+    </form>
+  </main>
+</body>
+</html>

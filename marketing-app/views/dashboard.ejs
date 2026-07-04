@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Mi panel — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <div class="page-header">
+      <div>
+        <h1><%= business.name %></h1>
+        <p class="subtitle"><a href="<%= business.fb_page_link %>" target="_blank" rel="noopener">📘 <%= business.fb_page_link %></a></p>
+      </div>
+      <a href="/campaigns/new" class="btn-primary">+ Nueva publicación</a>
+    </div>
+
+    <% if (campaigns.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no has creado ninguna publicación.</p>
+        <a href="/campaigns/new" class="btn-primary">Crear mi primera publicación</a>
+      </div>
+    <% } else { %>
+      <div class="campaign-grid">
+        <% campaigns.forEach(function(c) { %>
+          <a href="/campaigns/<%= c.id %>" class="campaign-card">
+            <span class="status-badge status-<%= c.status %>"><%= STATUS_LABELS[c.status] %></span>
+            <h3><%= c.product_service %></h3>
+            <p class="muted"><%= c.objective %></p>
+            <p class="muted small">Creada el <%= c.created_at %></p>
+          </a>
+        <% }); %>
+      </div>
+    <% } %>
+  </main>
+</body>
+</html>

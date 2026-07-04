@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Panel interno — MarketingHub</title>
+  <%- include('../partials/head') %>
+</head>
+<body>
+  <%- include('../partials/nav') %>
+
+  <main class="page">
+    <h1>Briefs de clientes</h1>
+    <p class="subtitle">Todas las solicitudes de publicación, de todos los negocios registrados.</p>
+
+    <% if (campaigns.length === 0) { %>
+      <div class="empty-state"><p>No hay campañas todavía.</p></div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Negocio</th>
+            <th>Producto/Servicio</th>
+            <th>Objetivo</th>
+            <th>Estado</th>
+            <th>Creado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% campaigns.forEach(function(c) { %>
+            <tr>
+              <td><%= c.business_name %></td>
+              <td><%= c.product_service %></td>
+              <td><%= c.objective %></td>
+              <td><span class="status-badge status-<%= c.status %>"><%= STATUS_LABELS[c.status] %></span></td>
+              <td class="muted small"><%= c.created_at %></td>
+              <td><a href="/admin/campaigns/<%= c.id %>" class="link-strong">Abrir →</a></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Iniciar sesión — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page narrow">
+    <h1>Inicia sesión</h1>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/login" class="card-form">
+      <label>Correo electrónico
+        <input type="email" name="email" required />
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit" class="btn-primary full-width">Entrar</button>
+    </form>
+
+    <p class="switch-link">¿No tienes cuenta? <a href="/register">Regístrate</a></p>
+  </main>
+</body>
+</html>

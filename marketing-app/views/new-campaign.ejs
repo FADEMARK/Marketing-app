@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nueva publicación — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page">
+    <h1>Cuéntanos qué quieres publicar</h1>
+    <p class="subtitle">Con estos datos nuestro equipo de Marketing y Diseño Senior crea tu imagen y tu copy profesional, con hashtags incluidos.</p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/campaigns/new" enctype="multipart/form-data" class="card-form">
+
+      <label>Objetivo de la publicación *
+        <select name="objective" required>
+          <option value="">Selecciona una opción</option>
+          <option>Venta / Promoción</option>
+          <option>Awareness / Dar a conocer la marca</option>
+          <option>Evento</option>
+          <option>Lanzamiento de producto</option>
+          <option>Reclutamiento</option>
+          <option>Fidelización de clientes</option>
+        </select>
+      </label>
+
+      <label>Producto o servicio a destacar *
+        <input type="text" name="product_service" required placeholder="Ej. Combo de café + postre" value="<%= form.product_service || '' %>" />
+      </label>
+
+      <label>Mensaje clave / descripción *
+        <textarea name="key_message" required rows="3" placeholder="¿Qué quieres que sepan tus clientes?"><%= form.key_message || '' %></textarea>
+      </label>
+
+      <label>Público objetivo *
+        <input type="text" name="target_audience" required placeholder="Ej. Jóvenes profesionales, 25-40 años" value="<%= form.target_audience || '' %>" />
+      </label>
+
+      <label>Tono de comunicación *
+        <select name="tone" required>
+          <option value="">Selecciona una opción</option>
+          <option>Profesional</option>
+          <option>Cercano/Amigable</option>
+          <option>Divertido/Casual</option>
+          <option>Elegante/Lujo</option>
+          <option>Inspirador</option>
+        </select>
+      </label>
+
+      <label>Llamado a la acción (CTA) *
+        <input type="text" name="cta" required placeholder="Ej. Visítanos hoy / Escríbenos por WhatsApp" value="<%= form.cta || '' %>" />
+      </label>
+
+      <label>Palabras clave para los hashtags
+        <input type="text" name="keywords" placeholder="Ej. cafe, desayuno, centro" value="<%= form.keywords || '' %>" />
+      </label>
+
+      <label>Fecha deseada de publicación
+        <input type="date" name="desired_date" value="<%= form.desired_date || '' %>" />
+      </label>
+
+      <label>Imagen de referencia (opcional)
+        <input type="file" name="reference_image" accept="image/*" />
+      </label>
+
+      <label>Notas adicionales / restricciones de marca
+        <textarea name="extra_notes" rows="2" placeholder="Ej. No usar fondo rojo, incluir el logo siempre"><%= form.extra_notes || '' %></textarea>
+      </label>
+
+      <button type="submit" class="btn-primary full-width">Enviar brief al equipo de diseño</button>
+    </form>
+  </main>
+</body>
+</html>

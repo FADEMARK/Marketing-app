@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= campaign.product_service %> — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page narrow">
+    <a href="/dashboard" class="back-link">&larr; Volver a mi panel</a>
+
+    <div class="page-header">
+      <h1><%= campaign.product_service %></h1>
+      <span class="status-badge status-<%= campaign.status %>"><%= STATUS_LABELS[campaign.status] %></span>
+    </div>
+
+    <div class="detail-grid">
+      <div class="detail-box">
+        <h3>Tu brief</h3>
+        <p><strong>Objetivo:</strong> <%= campaign.objective %></p>
+        <p><strong>Mensaje clave:</strong> <%= campaign.key_message %></p>
+        <p><strong>Público objetivo:</strong> <%= campaign.target_audience %></p>
+        <p><strong>Tono:</strong> <%= campaign.tone %></p>
+        <p><strong>Llamado a la acción:</strong> <%= campaign.cta %></p>
+        <% if (campaign.desired_date) { %><p><strong>Fecha deseada:</strong> <%= campaign.desired_date %></p><% } %>
+      </div>
+
+      <% var isApproved = campaign.status === 'aprobado' || campaign.status === 'publicado'; %>
+      <div class="detail-box">
+        <h3>Propuesta de nuestro equipo</h3>
+        <% if (isApproved && campaign.final_image_data) { %>
+          <img class="preview-image" src="<%= campaign.final_image_data %>" alt="Diseño final" />
+        <% } else if (campaign.canva_design_url) { %>
+          <p><a href="<%= campaign.canva_design_url %>" target="_blank" rel="noopener">Ver borrador en Canva →</a></p>
+        <% } else { %>
+          <p class="muted">Nuestro equipo está preparando y revisando el diseño. Te avisaremos cuando esté listo.</p>
+        <% } %>
+
+        <% if (campaign.ai_caption) { %>
+          <h4>Copy propuesto</h4>
+          <p><%= campaign.ai_caption %></p>
+        <% } %>
+        <% if (campaign.ai_hashtags) { %>
+          <p class="hashtags"><%= campaign.ai_hashtags %></p>
+        <% } %>
+
+        <% if (campaign.status === 'publicado' && campaign.published_post_url) { %>
+          <p><a href="<%= campaign.published_post_url %>" target="_blank" rel="noopener" class="btn-primary">Ver publicación en Facebook →</a></p>
+        <% } %>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
