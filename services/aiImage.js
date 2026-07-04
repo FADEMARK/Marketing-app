@@ -19,11 +19,11 @@
 // (tarjeta blanca con subtítulo, CTA, contacto y logo) vía
 // services/composeDesign.js, garantizando que salgan exactos.
 //
-// Logo: con Gemini (que soporta imágenes de entrada), le mandamos el logo
-// real del negocio como imagen de referencia para que lo incorpore él mismo
-// en la fotografía — esto sí funciona bien en la práctica. Si no se pudo
-// incorporar así (OpenAI, o si Gemini no lo logró), lo agregamos nosotros en
-// la tarjeta.
+// Logo: la IA NUNCA lo dibuja ni lo recibe como referencia — le pedimos
+// explícitamente que no genere ni redibuje ningún logotipo. El logo real
+// siempre lo pegamos nosotros después, con pixeles exactos, vía
+// services/composeDesign.js. Así evitamos que la IA lo "reinterprete" y
+// quede ligeramente distinto al real.
 //
 // Foto de referencia del cliente (opcional, campo "imagen de referencia" del
 // formulario): si el cliente sube su propia foto real (su platillo, su local,
@@ -50,7 +50,7 @@ function dataUriToParts(dataUri) {
 // garantizan que el texto no salga mal escrito y que el logo/foto de
 // referencia se traten bien. Se agregan siempre, después de la parte
 // creativa (editable) del prompt.
-function buildFixedRules(brief, { logoAsInput = false, referencePhotoAsInput = false } = {}) {
+function buildFixedRules(brief, { referencePhotoAsInput = false } = {}) {
   const referencePhotoInstruction = referencePhotoAsInput
     ? [
         "IMPORTANTE SOBRE LA FOTO BASE: te adjunto una fotografía REAL del negocio,",
@@ -64,39 +64,20 @@ function buildFixedRules(brief, { logoAsInput = false, referencePhotoAsInput = f
       ].join(" ")
     : "";
 
-  const logoInstruction = logoAsInput
-    ? [
-        "IMPORTANTE SOBRE EL LOGO: te adjunto el logo REAL del negocio como imagen",
-        "de referencia. Incorpóralo de forma natural y bien integrada en el diseño",
-        "(por ejemplo, en la parte superior, con un fondo que le dé buen contraste),",
-        "usando EXACTAMENTE ese logo — conserva su forma, texto y colores reales tal",
-        "cual aparecen en la imagen de referencia. No lo rediseñes, no inventes uno",
-        "distinto, no lo omitas y no dibujes ningún otro logotipo o ícono de marca",
-        "en su lugar.",
-      ].join(" ")
-    : [
-        "IMPORTANTE SOBRE EL LOGO: dentro de la esquina superior izquierda, deja un",
-        "área simple (por ejemplo, solo parte de la foto), SIN dibujar ningún logotipo,",
-        "ícono de marca ni texto del nombre del negocio ahí — esa esquina se completa",
-        "después con el logo real de la marca en un editor aparte.",
-      ].join(" ");
-
   return [
     referencePhotoInstruction,
-    "IMPORTANTE SOBRE EL TEXTO: NO escribas NINGÚN texto en la imagen — nada de",
-    "títulos, subtítulos, párrafos descriptivos, insignias con porcentajes,",
-    "teléfono, dirección, nombre de negocio ni de doctor(a), ni botones de llamado",
-    "a la acción. Todo el texto (incluido el título de la promoción) se agrega",
-    "aparte, por separado, con texto real, para garantizar que salga bien escrito",
-    "y con el impacto visual correcto. Concéntrate 100% en la fotografía.",
-    "",
-    logoInstruction,
+    "IMPORTANTE SOBRE TEXTO Y LOGO: No escribas ningún texto dentro de la imagen.",
+    "No agregues títulos, subtítulos, porcentajes, teléfonos, direcciones, nombres",
+    "de negocio, botones, insignias, etiquetas ni letreros. No generes ni redibujes",
+    "ningún logotipo. El logo, la promoción, el CTA y todos los textos serán",
+    "agregados después por la app con texto real y el logo real — concéntrate",
+    "100% en la fotografía.",
     "",
     "Reglas de calidad: composición equilibrada sin saturar el diseño con demasiados",
     "elementos, buen respiro visual entre los elementos de la escena, no deformes",
-    "rostros, manos, productos ni logotipos, no agregues marcas de agua ni texto",
-    "adicional inventado. El resultado debe sentirse confiable, atractivo y",
-    "profesional, listo para publicarse en redes sociales.",
+    "rostros, manos ni productos, no agregues marcas de agua ni texto adicional",
+    "inventado. El resultado debe sentirse confiable, atractivo y profesional,",
+    "listo para publicarse en redes sociales.",
     "",
     "Llena todo el cuadro de lado a lado con la fotografía — sin bordes, marcos ni",
     "zonas en blanco vacías. Formato cuadrado, alta resolución.",
@@ -127,10 +108,10 @@ function templateVars(brief, { referencePhotoAsInput = false } = {}) {
   };
 }
 
-async function buildPrompt(brief, { logoAsInput = false, referencePhotoAsInput = false } = {}) {
+async function buildPrompt(brief, { referencePhotoAsInput = false } = {}) {
   const template = await getPromptTemplate();
   const creativePart = renderTemplate(template, templateVars(brief, { referencePhotoAsInput }));
-  const fixedRules = buildFixedRules(brief, { logoAsInput, referencePhotoAsInput });
+  const fixedRules = buildFixedRules(brief, { referencePhotoAsInput });
   return `${creativePart}\n\n${fixedRules}`;
 }
 
@@ -138,17 +119,12 @@ async function generateWithGemini(brief) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 
-  // Si tenemos el logo real del negocio, se lo mandamos como imagen de
-  // entrada junto con el texto, para que lo incorpore él mismo en el diseño
-  // (en vez de que nosotros lo peguemos después en una cajita aparte).
-  const logoParts = dataUriToParts(brief.logoDataUri);
-
   // Si el cliente subió su propia foto de referencia (su platillo, su local),
-  // se la mandamos también como imagen de entrada para que la use de base.
+  // se la mandamos como imagen de entrada para que la use de base. El logo
+  // NUNCA se le manda a la IA (ver nota arriba) — siempre se pega después.
   const referencePhotoParts = dataUriToParts(brief.referenceImageDataUri);
 
   const promptText = await buildPrompt(brief, {
-    logoAsInput: Boolean(logoParts),
     referencePhotoAsInput: Boolean(referencePhotoParts),
   });
   const requestParts = [{ text: promptText }];
@@ -156,9 +132,6 @@ async function generateWithGemini(brief) {
     requestParts.push({
       inlineData: { mimeType: referencePhotoParts.mimeType, data: referencePhotoParts.data },
     });
-  }
-  if (logoParts) {
-    requestParts.push({ inlineData: { mimeType: logoParts.mimeType, data: logoParts.data } });
   }
 
   const response = await fetch(
@@ -188,10 +161,7 @@ async function generateWithGemini(brief) {
   if (!inline?.data) return null;
 
   const mimeType = inline.mimeType || inline.mime_type || "image/png";
-  return {
-    dataUri: `data:${mimeType};base64,${inline.data}`,
-    logoEmbedded: Boolean(logoParts),
-  };
+  return { dataUri: `data:${mimeType};base64,${inline.data}` };
 }
 
 async function generateWithOpenAI(brief) {
@@ -242,15 +212,11 @@ function dataUriToBuffer(dataUri) {
  */
 async function generateImage(brief) {
   let rawDataUri = null;
-  let logoEmbedded = false;
 
   if (process.env.GEMINI_API_KEY) {
     try {
       const result = await generateWithGemini(brief);
-      if (result) {
-        rawDataUri = result.dataUri;
-        logoEmbedded = result.logoEmbedded;
-      }
+      if (result) rawDataUri = result.dataUri;
     } catch (err) {
       console.error("[aiImage] Fallo con Gemini, probando siguiente opción:", err.message);
     }
@@ -266,11 +232,8 @@ async function generateImage(brief) {
 
   if (!rawDataUri) return null;
 
-  // La IA a veces integra el título en la foto y a veces no (no es 100%
-  // consistente), así que el título con más impacto — el que atrae al
-  // cliente — lo garantizamos nosotros aparte, grande y en la tarjeta, junto
-  // con el subtítulo, el CTA, el contacto y — si Gemini no incorporó el logo
-  // ya como imagen de referencia — el logo.
+  // La IA nunca dibuja texto ni logo — todo eso (título, subtítulo, CTA,
+  // contacto y el logo real, pixel exacto) lo agregamos aparte, garantizado.
   try {
     const buffer = dataUriToBuffer(rawDataUri);
     if (!buffer) return rawDataUri;
@@ -282,7 +245,7 @@ async function generateImage(brief) {
       contactLine: brief.contactLine,
       brandColorPrimary: brief.brandColorPrimary,
       brandColorSecondary: brief.brandColorSecondary,
-      logoDataUri: logoEmbedded ? null : brief.logoDataUri,
+      logoDataUri: brief.logoDataUri,
     });
 
     return `data:image/png;base64,${composed.toString("base64")}`;

@@ -626,7 +626,6 @@ app.get("/admin/prompt-studio", requireAdminAuth, async (req, res, next) => {
     const template = await promptSettings.getPromptTemplate();
     const isDefault = template === promptSettings.DEFAULT_TEMPLATE;
     const preview = await aiImage.buildPrompt(SAMPLE_BRIEF_FOR_PREVIEW, {
-      logoAsInput: true,
       referencePhotoAsInput: false,
     });
     res.render("admin/prompt-studio", { template, isDefault, preview, success: null });
@@ -648,7 +647,6 @@ app.post("/admin/prompt-studio", requireAdminAuth, async (req, res, next) => {
     const savedTemplate = await promptSettings.getPromptTemplate();
     const isDefault = savedTemplate === promptSettings.DEFAULT_TEMPLATE;
     const preview = await aiImage.buildPrompt(SAMPLE_BRIEF_FOR_PREVIEW, {
-      logoAsInput: true,
       referencePhotoAsInput: false,
     });
 
