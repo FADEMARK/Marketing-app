@@ -17,7 +17,11 @@
 
     <div class="detail-box">
       <h3>Negocio</h3>
-      <p><strong><%= campaign.business_name %></strong></p>
+      <p><strong><%= campaign.business_name %></strong>
+        <span class="status-badge <%= campaign.plan === 'plus' ? 'status-aprobado' : 'status-pendiente_revision' %>">
+          Plan <%= campaign.plan === 'plus' ? 'Plus' : 'Estándar' %>
+        </span>
+      </p>
       <% if (campaign.industry) { %><p class="muted"><%= campaign.industry %></p><% } %>
       <p><a href="<%= campaign.fb_page_link %>" target="_blank" rel="noopener">📘 <%= campaign.fb_page_link %></a></p>
       <div class="swatches">
@@ -76,7 +80,13 @@
         Diseña la pieza manualmente y súbela abajo como "Imagen final".
       </div>
     <% } %>
-    <% if (!facebookConfigured) { %>
+    <% if (campaign.plan !== 'plus') { %>
+      <div class="alert alert-warning">
+        Este negocio tiene el plan Estándar — la publicación directa a Facebook es exclusiva del
+        plan Plus. Publica manualmente y pega el link abajo, o cambia su plan desde
+        <a href="/admin/businesses">Negocios</a>.
+      </div>
+    <% } else if (!facebookConfigured) { %>
       <div class="alert alert-warning">
         La publicación automática en Facebook aún no está configurada (falta META_APP_ID/META_APP_SECRET
         en el servidor). Publica manualmente en la página del cliente y pega el link del post abajo.

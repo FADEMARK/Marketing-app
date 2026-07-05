@@ -126,8 +126,11 @@ app.post("/register", upload.single("logo"), async (req, res, next) => {
       ]
     );
 
-    req.session.businessId = result.rows[0].id;
-    res.redirect("/dashboard");
+    // Los negocios nuevos arrancan INACTIVOS (ver db/db.js) hasta que el
+    // equipo los verifique manualmente — así no gastamos cuota de IA con
+    // registros falsos o de prueba. Por eso no lo dejamos entrar de una vez:
+    // lo mandamos a /login con un aviso de que su cuenta está en revisión.
+    res.redirect("/login?pending=1");
   } catch (err) {
     next(err);
   }
@@ -135,9 +138,12 @@ app.post("/register", upload.single("logo"), async (req, res, next) => {
 
 app.get("/login", (req, res) => {
   const error = req.query.inactive
-    ? "Tu cuenta está inactiva. Contacta a nuestro equipo para reactivarla."
+    ? "Tu cuenta todavía no está activa (puede estar en revisión o haber sido desactivada). Contacta a nuestro equipo si tienes dudas."
     : null;
-  res.render("login", { error });
+  const info = req.query.pending
+    ? "¡Registro exitoso! Tu cuenta está en revisión — te avisaremos en cuanto esté activa. Si tienes prisa, contacta a nuestro equipo."
+    : null;
+  res.render("login", { error, info });
 });
 
 app.post("/login", async (req, res, next) => {
@@ -152,12 +158,18 @@ app.post("/login", async (req, res, next) => {
 
     if (!business.is_active) {
       return res.render("login", {
-        error: "Tu cuenta está inactiva. Contacta a nuestro equipo para reactivarla.",
+        error:
+          "Tu cuenta todavía no está activa (puede estar en revisión o haber sido desactivada). Contacta a nuestro equipo si tienes dudas.",
       });
     }
 
-    req.session.businessId = business.id;
-    res.redirect("/dashboard");
+    // Ver nota en /register: regenerar evita que se mezcle con una sesión de
+    // admin abierta en el mismo navegador.
+    req.session.regenerate((err) => {
+      if (err) return next(err);
+      req.session.businessId = business.id;
+      res.redirect("/dashboard");
+    });
   } catch (err) {
     next(err);
   }
@@ -180,6 +192,77 @@ app.get("/dashboard", requireBusinessAuth, async (req, res, next) => {
     );
 
     res.render("dashboard", { business: businessRows[0], campaigns });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const MONTH_NAMES_ES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+app.get("/calendar", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const today = new Date();
+    let year = parseInt(req.query.year, 10) || today.getFullYear();
+    let month = parseInt(req.query.month, 10) || today.getMonth() + 1; // 1-12
+    if (month < 1 || month > 12 || Number.isNaN(year)) {
+      year = today.getFullYear();
+      month = today.getMonth() + 1;
+    }
+
+    const { rows: campaigns } = await pool.query(
+      "SELECT id, product_service, status, desired_date, created_at FROM campaigns WHERE business_id = $1",
+      [req.session.businessId]
+    );
+
+    // Ubicamos cada campaña en el día de "fecha deseada" que puso el cliente
+    // en el formulario; si no puso ninguna, cae en el día en que se creó.
+    const campaignsByDay = {};
+    campaigns.forEach((c) => {
+      const hasDesiredDate = c.desired_date && /^\d{4}-\d{2}-\d{2}/.test(c.desired_date);
+      const dateKey = hasDesiredDate
+        ? c.desired_date.slice(0, 10)
+        : new Date(c.created_at).toISOString().slice(0, 10);
+      const [y, m] = dateKey.split("-").map(Number);
+      if (y === year && m === month) {
+        campaignsByDay[dateKey] = campaignsByDay[dateKey] || [];
+        campaignsByDay[dateKey].push(c);
+      }
+    });
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const startWeekday = new Date(year, month - 1, 1).getDay(); // 0 = domingo
+
+    let prevMonth = month - 1;
+    let prevYear = year;
+    if (prevMonth < 1) {
+      prevMonth = 12;
+      prevYear -= 1;
+    }
+    let nextMonth = month + 1;
+    let nextYear = year;
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear += 1;
+    }
+
+    const todayKey = today.toISOString().slice(0, 10);
+
+    res.render("calendar", {
+      year,
+      month,
+      daysInMonth,
+      startWeekday,
+      campaignsByDay,
+      monthLabel: `${MONTH_NAMES_ES[month - 1]} ${year}`,
+      prevMonth,
+      prevYear,
+      nextMonth,
+      nextYear,
+      todayKey,
+    });
   } catch (err) {
     next(err);
   }
@@ -396,7 +479,7 @@ app.post(
       // Traemos el giro/industria y datos de marca del negocio de una vez,
       // para enfocar tanto el copy como la imagen a ESE tipo de negocio.
       const { rows: bizRows } = await pool.query(
-        "SELECT name, industry, phone, address, doctor_name, brand_color_primary, brand_color_secondary, logo_data FROM businesses WHERE id = $1",
+        "SELECT name, industry, phone, address, doctor_name, brand_color_primary, brand_color_secondary, logo_data, plan FROM businesses WHERE id = $1",
         [req.session.businessId]
       );
       const biz = bizRows[0];
@@ -439,20 +522,28 @@ app.post(
       let autoAdminNote = null;
 
       if (!canvaResult && aiImage.isConfigured()) {
-        imageCandidates = await aiImage.generateImageCandidates({
-          ...brief,
-          headline,
-          hashtags,
-          extraNotes: extra_notes,
-          referenceImageDataUri: referenceImageData,
-          brandColors: biz
-            ? `${biz.brand_color_primary} y ${biz.brand_color_secondary}`
-            : null,
-          brandColorPrimary: biz?.brand_color_primary,
-          brandColorSecondary: biz?.brand_color_secondary,
-          logoDataUri: biz?.logo_data,
-          contactLine,
-        });
+        // Plan Estándar: solo Gemini. Plan Plus: Gemini + OpenAI (mejor
+        // calidad) y además puede publicar directo a Facebook (ver la ruta
+        // /admin/campaigns/:id/publish-to-facebook, que también valida esto).
+        const allowOpenAI = biz?.plan === "plus";
+
+        imageCandidates = await aiImage.generateImageCandidates(
+          {
+            ...brief,
+            headline,
+            hashtags,
+            extraNotes: extra_notes,
+            referenceImageDataUri: referenceImageData,
+            brandColors: biz
+              ? `${biz.brand_color_primary} y ${biz.brand_color_secondary}`
+              : null,
+            brandColorPrimary: biz?.brand_color_primary,
+            brandColorSecondary: biz?.brand_color_secondary,
+            logoDataUri: biz?.logo_data,
+            contactLine,
+          },
+          { allowOpenAI }
+        );
 
         if (imageCandidates.length) {
           autoAdminNote =
@@ -592,8 +683,13 @@ app.post("/admin/login", async (req, res, next) => {
       return res.render("admin/login", { error: "Credenciales inválidas." });
     }
 
-    req.session.adminId = admin.id;
-    res.redirect("/admin");
+    // Ver nota en /register: regenerar evita que se mezcle con una sesión de
+    // negocio abierta en el mismo navegador.
+    req.session.regenerate((err) => {
+      if (err) return next(err);
+      req.session.adminId = admin.id;
+      res.redirect("/admin");
+    });
   } catch (err) {
     next(err);
   }
@@ -696,6 +792,19 @@ app.post("/admin/businesses/:id/toggle-active", requireAdminAuth, async (req, re
   }
 });
 
+app.post("/admin/businesses/:id/set-plan", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { plan } = req.body;
+    if (plan !== "estandar" && plan !== "plus") {
+      return res.status(400).send("Plan inválido.");
+    }
+    await pool.query("UPDATE businesses SET plan = $1 WHERE id = $2", [plan, req.params.id]);
+    res.redirect("/admin/businesses");
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.post("/admin/businesses/:id/delete", requireAdminAuth, async (req, res, next) => {
   try {
     // Borra primero las campañas del negocio (por la relación con business_id),
@@ -713,7 +822,7 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
     const { rows } = await pool.query(
       `SELECT campaigns.*, businesses.name AS business_name, businesses.fb_page_link, businesses.logo_data,
               businesses.industry, businesses.brand_color_primary, businesses.brand_color_secondary,
-              businesses.fb_page_id, businesses.fb_page_name
+              businesses.fb_page_id, businesses.fb_page_name, businesses.plan
        FROM campaigns
        JOIN businesses ON businesses.id = campaigns.business_id
        WHERE campaigns.id = $1`,
@@ -777,7 +886,7 @@ app.post("/admin/campaigns/:id/choose-image", requireAdminAuth, async (req, res,
 app.post("/admin/campaigns/:id/publish-to-facebook", requireAdminAuth, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
-      `SELECT campaigns.*, businesses.fb_page_id, businesses.fb_page_access_token
+      `SELECT campaigns.*, businesses.fb_page_id, businesses.fb_page_access_token, businesses.plan
        FROM campaigns
        JOIN businesses ON businesses.id = campaigns.business_id
        WHERE campaigns.id = $1`,
@@ -785,6 +894,15 @@ app.post("/admin/campaigns/:id/publish-to-facebook", requireAdminAuth, async (re
     );
     const campaign = rows[0];
     if (!campaign) return res.status(404).send("Campaña no encontrada.");
+
+    if (campaign.plan !== "plus") {
+      return res.redirect(
+        `/admin/campaigns/${req.params.id}?fb_publish_error=` +
+          encodeURIComponent(
+            "Este negocio tiene el plan Estándar. La publicación directa a Facebook es exclusiva del plan Plus — cámbialo desde /admin/businesses si corresponde."
+          )
+      );
+    }
 
     if (!campaign.fb_page_id || !campaign.fb_page_access_token) {
       return res.redirect(

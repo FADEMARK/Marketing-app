@@ -259,3 +259,57 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
   .steps, .detail-grid, .two-col { grid-template-columns: 1fr; }
   .topbar { flex-direction: column; gap: 10px; align-items: flex-start; }
 }
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 16px 0;
+}
+.calendar-nav h2 { margin: 0; font-size: 1.1rem; text-transform: capitalize; }
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.calendar-weekday {
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding-bottom: 6px;
+}
+.calendar-day {
+  min-height: 92px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+.calendar-day-empty { background: transparent; border: none; }
+.calendar-day-number { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.calendar-day-today { border-color: var(--primary); border-width: 2px; }
+.calendar-campaign {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #EEF3FF;
+  color: var(--primary);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.calendar-campaign.status-publicado { background: #1877F2; color: #fff; }
+.calendar-campaign.status-aprobado { background: #DFF5E1; color: #1E7B34; }
+
+@media (max-width: 700px) {
+  .calendar-day { min-height: 60px; font-size: 0.7rem; }
+}

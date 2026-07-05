@@ -26,8 +26,21 @@
     <% } %>
 
     <div class="card-form" style="margin-bottom: 24px;">
+      <h3 style="margin: 0;">Plan actual: <%= business.plan === 'plus' ? 'Plus' : 'Estándar' %></h3>
+      <% if (business.plan !== 'plus') { %>
+        <p class="muted small">
+          El plan Estándar genera tus imágenes con Google Gemini. El plan Plus agrega una segunda
+          versión con OpenAI (gpt-image-1) para comparar, y permite publicar directo a Facebook.
+          Contacta a nuestro equipo para mejorar tu plan.
+        </p>
+      <% } %>
+    </div>
+
+    <div class="card-form" style="margin-bottom: 24px;">
       <h3 style="margin: 0;">Publicación en Facebook</h3>
-      <% if (business.fb_page_id) { %>
+      <% if (business.plan !== 'plus') { %>
+        <p class="muted small">La publicación directa a Facebook es exclusiva del plan Plus.</p>
+      <% } else if (business.fb_page_id) { %>
         <p>Conectado a: <strong><%= business.fb_page_name %></strong></p>
         <form method="POST" action="/facebook/disconnect">
           <button type="submit" class="link-button" style="color:#B3261E;">Desconectar página</button>

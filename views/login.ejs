@@ -10,6 +10,9 @@
   <main class="form-page narrow">
     <h1>Inicia sesión</h1>
 
+    <% if (typeof info !== 'undefined' && info) { %>
+      <div class="alert alert-warning"><%= info %></div>
+    <% } %>
     <% if (error) { %>
       <div class="alert alert-error"><%= error %></div>
     <% } %>

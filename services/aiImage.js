@@ -361,7 +361,7 @@ const ENGINE_LABELS = {
  * @param {object} brief - ver generateImage()
  * @returns {Promise<Array<{engine: string, label: string, dataUri: string}>>}
  */
-async function generateImageCandidates(brief) {
+async function generateImageCandidates(brief, { allowOpenAI = true } = {}) {
   const jobs = [];
 
   if (process.env.GEMINI_API_KEY) {
@@ -375,7 +375,9 @@ async function generateImageCandidates(brief) {
     );
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  // allowOpenAI = false para negocios en plan Estándar (solo Gemini). El
+  // plan Plus habilita también OpenAI (gpt-image-1), de mejor calidad.
+  if (allowOpenAI && process.env.OPENAI_API_KEY) {
     jobs.push(
       generateWithOpenAI(brief)
         .then((raw) => (raw ? { engine: "openai", raw } : null))

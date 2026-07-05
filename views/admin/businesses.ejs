@@ -22,6 +22,7 @@
             <th>Giro</th>
             <th>Correo</th>
             <th>Estado</th>
+            <th>Plan</th>
             <th>Campañas</th>
             <th>Registrado</th>
             <th></th>
@@ -37,6 +38,14 @@
                 <span class="status-badge <%= b.is_active ? 'status-aprobado' : 'status-pendiente_revision' %>">
                   <%= b.is_active ? 'Activo' : 'Inactivo' %>
                 </span>
+              </td>
+              <td>
+                <form method="POST" action="/admin/businesses/<%= b.id %>/set-plan" class="inline-form">
+                  <select name="plan" onchange="this.form.submit()">
+                    <option value="estandar" <%= b.plan === 'estandar' ? 'selected' : '' %>>Estándar (solo Gemini)</option>
+                    <option value="plus" <%= b.plan === 'plus' ? 'selected' : '' %>>Plus (Gemini + OpenAI, publica en FB)</option>
+                  </select>
+                </form>
               </td>
               <td><%= b.campaign_count %></td>
               <td class="muted small"><%= b.created_at %></td>

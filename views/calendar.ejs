@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Calendario — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <div class="page-header">
+      <h1>Calendario de publicaciones</h1>
+      <a href="/campaigns/new" class="btn-primary">+ Nueva publicación</a>
+    </div>
+
+    <div class="calendar-nav">
+      <a href="/calendar?year=<%= prevYear %>&month=<%= prevMonth %>" class="link-strong">&larr; Mes anterior</a>
+      <h2><%= monthLabel %></h2>
+      <a href="/calendar?year=<%= nextYear %>&month=<%= nextMonth %>" class="link-strong">Mes siguiente &rarr;</a>
+    </div>
+
+    <div class="calendar-grid">
+      <div class="calendar-weekday">Dom</div>
+      <div class="calendar-weekday">Lun</div>
+      <div class="calendar-weekday">Mar</div>
+      <div class="calendar-weekday">Mié</div>
+      <div class="calendar-weekday">Jue</div>
+      <div class="calendar-weekday">Vie</div>
+      <div class="calendar-weekday">Sáb</div>
+
+      <% for (let i = 0; i < startWeekday; i++) { %>
+        <div class="calendar-day calendar-day-empty"></div>
+      <% } %>
+
+      <% for (let d = 1; d <= daysInMonth; d++) {
+           const dateKey = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+           const dayCampaigns = campaignsByDay[dateKey] || [];
+           const isToday = dateKey === todayKey;
+      %>
+        <div class="calendar-day <%= isToday ? 'calendar-day-today' : '' %>">
+          <span class="calendar-day-number"><%= d %></span>
+          <% dayCampaigns.forEach(function(c) { %>
+            <a href="/campaigns/<%= c.id %>" class="calendar-campaign status-<%= c.status %>"
+               title="<%= c.product_service %> — <%= STATUS_LABELS[c.status] %>">
+              <%= c.product_service %>
+            </a>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+
+    <p class="muted small" style="margin-top:16px;">
+      Las publicaciones se ubican según la "fecha deseada" que pusiste al crearlas. Si no pusiste
+      una, aparecen en el día en que las creaste.
+    </p>
+  </main>
+</body>
+</html>

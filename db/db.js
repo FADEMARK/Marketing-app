@@ -41,7 +41,8 @@ async function init() {
       address TEXT,
       phone TEXT,
       doctor_name TEXT,
-      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      plan TEXT NOT NULL DEFAULT 'estandar',
+      is_active BOOLEAN NOT NULL DEFAULT FALSE,
       fb_page_id TEXT,
       fb_page_name TEXT,
       fb_page_access_token TEXT,
@@ -102,6 +103,16 @@ async function init() {
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_name TEXT;`);
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS fb_page_access_token TEXT;`);
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS image_candidates TEXT;`);
+  await pool.query(
+    `ALTER TABLE businesses ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'estandar';`
+  );
+
+  // Solo cambia el DEFAULT para las próximas filas nuevas — no toca los
+  // negocios que ya existen y ya estaban activos. Antes los negocios nuevos
+  // quedaban activos automáticamente; ahora arrancan inactivos hasta que el
+  // equipo los verifique manualmente desde /admin/businesses (para no gastar
+  // cuota de IA con registros falsos o de prueba).
+  await pool.query(`ALTER TABLE businesses ALTER COLUMN is_active SET DEFAULT FALSE;`);
 }
 
 module.exports = { pool, init };
