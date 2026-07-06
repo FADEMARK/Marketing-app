@@ -20,11 +20,13 @@
 // que Gemini — revisa siempre el resultado en el panel de admin antes de
 // aprobar, sobre todo la versión de Gemini.
 //
-// Logo: en AMBOS casos la IA NUNCA lo dibuja ni lo recibe como referencia —
-// le pedimos explícitamente que no genere ni redibuje ningún logotipo. El
-// logo real siempre lo pegamos nosotros después, con pixeles exactos
-// (services/composeDesign.js), para que no salga distorsionado ni
-// reinterpretado.
+// Logo: por decisión explícita del cliente, YA NO pegamos el logo real con
+// sharp encima de la imagen — eso estaba chocando visualmente con el propio
+// diseño de la IA (bloques de texto/banners que la IA dibuja sin dejar el
+// espacio libre que le pedíamos). Ahora la IA controla el 100% del diseño
+// final sin ningún retoque posterior nuestro; solo se normaliza tamaño y
+// formato (ver finalizeImage). Esto sacrifica la precisión pixel-perfect del
+// logo a cambio de una pieza más cohesionada visualmente.
 //
 // Foto de referencia del cliente (opcional, campo "imagen de referencia" del
 // formulario): si el cliente sube su propia foto real (su platillo, su local,
@@ -33,8 +35,8 @@
 // composición) en vez de inventar una escena nueva desde cero. Así el
 // resultado sigue siendo fiel a lo que el negocio realmente ofrece.
 
+const sharp = require("sharp");
 const fetch = require("node-fetch");
-const { composeDesign, overlayLogo } = require("./composeDesign");
 const { getPromptTemplate, renderTemplate } = require("./promptSettings");
 
 function isConfigured() {
@@ -117,7 +119,7 @@ function buildFixedRules(
         : brief.key_message
         ? `- Mensaje o detalle secundario: "${brief.key_message}"`
         : "",
-      `- Botón o etiqueta de llamado a la acción, con estilo de botón de WhatsApp (verde, con ícono de WhatsApp): "${brief.cta}"`,
+      `- Botón o etiqueta de llamado a la acción (verde, forma de píldora): "${brief.cta}"`,
       contactPart,
       hashtagsPart,
       "",
@@ -129,14 +131,24 @@ function buildFixedRules(
       "consultorio, pisos, promociones ni ofertas extra que no se te hayan dado explícitamente. Si te",
       "falta un dato, simplemente omítelo; inventarlo mal es un error grave e inaceptable.",
       "",
+      "CADA bloque de texto de la lista de arriba debe escribirse UNA SOLA VEZ — nunca repitas el mismo",
+      "texto o una variación de él en dos lugares distintos del diseño (por ejemplo, no escribas el CTA",
+      "como texto suelto Y otra vez dentro del botón).",
+      "",
+      "MUY IMPORTANTE SOBRE LOS BORDES: ningún texto, letra, número ni ícono puede quedar cortado por",
+      "el borde del cuadro ni tapado por otro elemento (como el sello circular de descuento). Antes de",
+      "definir el tamaño de letra, calcula que cada bloque de texto quepa completo, con margen a los",
+      "lados, arriba y abajo — es preferible una letra un poco más chica pero completa, que una grande",
+      "y cortada.",
+      "",
       "Sí puedes agregar 1-2 líneas cortas de copy/gancho publicitario adicional de tu propia autoría",
       "(por ejemplo una frase corta motivacional relacionada al tema de la promoción), siempre y",
       "cuando se note que es una frase de marketing y no la confundas con un dato factual.",
       "",
-      "No dibujes ningún logotipo — el logo real del negocio se pega aparte después, con pixeles",
-      "exactos, para que no salga distorsionado ni reinterpretado. Deja la esquina superior izquierda",
-      "(una franja de aproximadamente 200x200 px) con un fondo simple, sin elementos importantes ahí,",
-      "para poder pegar el logo real ahí sin taparlo.",
+      "Sobre el logo/marca: tú controlas el diseño completo, incluida cualquier referencia visual a la",
+      "marca (por ejemplo el nombre del negocio en una esquina, con tipografía). No hace falta que sea",
+      "un logotipo idéntico a ninguno existente — solo que se sienta parte coherente del mismo diseño,",
+      "sin chocar ni superponerse con el encabezado ni con ningún otro texto.",
       "",
       qualityRules,
       "",
@@ -309,49 +321,22 @@ function dataUriToBuffer(dataUri) {
   return Buffer.from(match[2], "base64");
 }
 
-// Aplica la composición final (tarjeta con texto garantizado + logo real)
-// sobre una foto cruda que ya generó alguna de las IAs. Se usa para Gemini,
-// que no escribe el texto él mismo.
-async function composeFinal(rawDataUri, brief) {
+// Ya no compositamos nada encima (ni tarjeta ni logo) — la IA entrega el
+// diseño completo y terminado. Aquí solo normalizamos tamaño/formato a un
+// cuadrado 1080x1080 en PNG, por consistencia entre Gemini y OpenAI.
+async function finalizeImage(rawDataUri) {
   const buffer = dataUriToBuffer(rawDataUri);
   if (!buffer) return rawDataUri;
 
   try {
-    const composed = await composeDesign(buffer, {
-      headline: brief.headline || brief.product_service,
-      subheadline: brief.key_message,
-      cta: brief.cta,
-      contactLine: brief.contactLine,
-      brandColorPrimary: brief.brandColorPrimary,
-      brandColorSecondary: brief.brandColorSecondary,
-      logoDataUri: brief.logoDataUri,
-    });
-
-    return `data:image/png;base64,${composed.toString("base64")}`;
+    const normalized = await sharp(buffer)
+      .resize(1080, 1080, { fit: "cover" })
+      .png()
+      .toBuffer();
+    return `data:image/png;base64,${normalized.toString("base64")}`;
   } catch (err) {
     console.error(
-      "[aiImage] Fallo componiendo la tarjeta final, se deja la foto tal cual la generó la IA:",
-      err.message
-    );
-    return rawDataUri;
-  }
-}
-
-// Solo pega el logo real (sin tarjeta ni texto propio) sobre una foto que la
-// IA ya generó completa CON su propio texto. Se usa para OpenAI (gpt-image-1),
-// que escribe el título/CTA/contacto directamente en la imagen.
-async function composeLogoOnly(rawDataUri, brief) {
-  if (!brief.logoDataUri) return rawDataUri; // sin logo que pegar, se deja tal cual
-
-  const buffer = dataUriToBuffer(rawDataUri);
-  if (!buffer) return rawDataUri;
-
-  try {
-    const composed = await overlayLogo(buffer, brief.logoDataUri);
-    return `data:image/png;base64,${composed.toString("base64")}`;
-  } catch (err) {
-    console.error(
-      "[aiImage] Fallo pegando el logo, se deja la foto tal cual la generó la IA:",
+      "[aiImage] Fallo normalizando el tamaño de la imagen, se deja tal cual la generó la IA:",
       err.message
     );
     return rawDataUri;
@@ -407,10 +392,10 @@ async function generateImageCandidates(brief, { allowOpenAI = true } = {}) {
     results.map(async ({ engine, raw }) => ({
       engine,
       label: ENGINE_LABELS[engine] || engine,
-      // Ambos motores escriben el texto real (título, mensaje, CTA, contacto
-      // completo) directamente en la foto — aquí solo pegamos el logo real,
-      // sin tarjeta ni texto adicional nuestro.
-      dataUri: await composeLogoOnly(raw, brief),
+      // Ambos motores escriben el texto y diseñan la pieza completa ellos
+      // mismos — ya no hacemos ningún retoque posterior (ni logo ni tarjeta),
+      // solo normalizamos tamaño/formato.
+      dataUri: await finalizeImage(raw),
     }))
   );
 }

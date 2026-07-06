@@ -514,64 +514,22 @@ app.post(
         .join(" | ");
       const fullCaption = contactLine ? `${caption}\n\n${contactLine}` : caption;
 
-      // 2. Intentar generar el diseño automáticamente: primero Canva (si está
-      //    configurado), y si no, con IA de imagen (si hay OPENAI_API_KEY).
+      // 2. Intentar generar el diseño automáticamente con Canva (si está
+      //    configurado). Si no hay Canva pero sí IA de imagen, YA NO
+      //    generamos la imagen aquí mismo: el negocio primero ve, en la
+      //    página de la campaña, exactamente qué se le va a mandar a la IA
+      //    (logo, dirección, teléfono, giro, el post ya redactado) y decide
+      //    cuándo darle "Generar imagen ahora" (ruta
+      //    /campaigns/:id/generate-image) — así no se gasta una generación
+      //    sin que el negocio la haya revisado primero.
       const canvaResult = await canva.createDesignFromBrief(brief);
 
-      let imageCandidates = [];
-      let autoAdminNote = null;
-
-      if (!canvaResult && aiImage.isConfigured()) {
-        // Plan Estándar: solo Gemini. Plan Plus: Gemini + OpenAI (mejor
-        // calidad) y además puede publicar directo a Facebook (ver la ruta
-        // /admin/campaigns/:id/publish-to-facebook, que también valida esto).
-        const allowOpenAI = biz?.plan === "plus";
-
-        imageCandidates = await aiImage.generateImageCandidates(
-          {
-            ...brief,
-            headline,
-            hashtags,
-            // Primero se genera el post (headline + caption, ya corregidos de
-            // ortografía/redacción por generateCopy más arriba) y ENTONCES
-            // eso es lo que se manda a crear la imagen — no el texto crudo
-            // que escribió el cliente en "Mensaje clave". aiImage.js usa
-            // postCaption (si viene) en vez de key_message para el mensaje
-            // secundario del diseño.
-            postCaption: caption,
-            extraNotes: extra_notes,
-            referenceImageDataUri: referenceImageData,
-            brandColors: biz
-              ? `${biz.brand_color_primary} y ${biz.brand_color_secondary}`
-              : null,
-            brandColorPrimary: biz?.brand_color_primary,
-            brandColorSecondary: biz?.brand_color_secondary,
-            logoDataUri: biz?.logo_data,
-            contactLine,
-          },
-          { allowOpenAI }
-        );
-
-        if (imageCandidates.length) {
-          autoAdminNote =
-            imageCandidates.length > 1
-              ? "Se generaron varias versiones con distintas IAs. Elige la que se vea mejor antes de aprobar/publicar."
-              : "Imagen generada automáticamente por IA. Revísala (y ajústala si hace falta) antes de aprobar/publicar.";
-        }
-      }
-
-      // Por defecto usamos la primera versión disponible como "final"; el
-      // equipo puede cambiarla por cualquiera de las otras candidatas desde
-      // el panel interno antes de aprobar/publicar.
-      const aiImageData = imageCandidates[0]?.dataUri || null;
-
-      const hasAutoDesign = Boolean(canvaResult || aiImageData);
-      const status = hasAutoDesign ? STATUSES.LISTO_PARA_APROBACION : STATUSES.EN_DISENO;
+      const status = canvaResult ? STATUSES.LISTO_PARA_APROBACION : STATUSES.PENDIENTE_REVISION;
 
       const result = await pool.query(
         `INSERT INTO campaigns
-          (business_id, objective, product_service, key_message, target_audience, tone, cta, keywords, desired_date, reference_image_data, extra_notes, status, ai_caption, ai_hashtags, canva_design_id, canva_design_url, final_image_data, image_candidates, admin_notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          (business_id, objective, product_service, key_message, target_audience, tone, cta, keywords, desired_date, reference_image_data, extra_notes, status, ai_caption, ai_hashtags, ai_headline, canva_design_id, canva_design_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING id`,
         [
           req.session.businessId,
@@ -588,11 +546,9 @@ app.post(
           status,
           fullCaption,
           hashtags,
+          headline,
           canvaResult?.designId || null,
           canvaResult?.editUrl || null,
-          aiImageData,
-          imageCandidates.length ? JSON.stringify(imageCandidates) : null,
-          autoAdminNote,
         ]
       );
 
@@ -603,17 +559,140 @@ app.post(
   }
 );
 
+// Arma, a partir de una fila de campaña + negocio (ya con JOIN), el mismo
+// objeto "brief" que se le manda a aiImage.generateImageCandidates(). Se usa
+// tanto para la vista previa (mostrar qué se va a mandar) como para la
+// generación real, garantizando que ambas vean exactamente lo mismo.
+function buildImageBriefFromCampaign(campaign) {
+  const contactLine = [
+    campaign.doctor_name || null,
+    campaign.phone ? `Tel: ${campaign.phone}` : null,
+    campaign.address ? `Dirección: ${campaign.address}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  return {
+    brief: {
+      objective: campaign.objective,
+      product_service: campaign.product_service,
+      key_message: campaign.key_message,
+      target_audience: campaign.target_audience,
+      tone: campaign.tone,
+      cta: campaign.cta,
+      keywords: campaign.keywords,
+      businessName: campaign.business_name,
+      businessIndustry: campaign.industry,
+      businessDoctorName: campaign.doctor_name,
+      headline: campaign.ai_headline,
+      hashtags: campaign.ai_hashtags,
+      postCaption: campaign.ai_caption,
+      extraNotes: campaign.extra_notes,
+      referenceImageDataUri: campaign.reference_image_data,
+      brandColors:
+        campaign.brand_color_primary && campaign.brand_color_secondary
+          ? `${campaign.brand_color_primary} y ${campaign.brand_color_secondary}`
+          : null,
+      brandColorPrimary: campaign.brand_color_primary,
+      brandColorSecondary: campaign.brand_color_secondary,
+      logoDataUri: campaign.logo_data,
+      contactLine,
+    },
+    contactLine,
+  };
+}
+
+const CAMPAIGN_WITH_BUSINESS_SELECT = `
+  SELECT campaigns.*, businesses.name AS business_name, businesses.industry, businesses.phone,
+         businesses.address, businesses.doctor_name, businesses.brand_color_primary,
+         businesses.brand_color_secondary, businesses.logo_data, businesses.plan
+  FROM campaigns
+  JOIN businesses ON businesses.id = campaigns.business_id
+  WHERE campaigns.id = $1 AND campaigns.business_id = $2
+`;
+
 app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
   try {
-    const { rows } = await pool.query(
-      "SELECT * FROM campaigns WHERE id = $1 AND business_id = $2",
-      [req.params.id, req.session.businessId]
-    );
+    const { rows } = await pool.query(CAMPAIGN_WITH_BUSINESS_SELECT, [
+      req.params.id,
+      req.session.businessId,
+    ]);
     const campaign = rows[0];
 
     if (!campaign) return res.status(404).send("Campaña no encontrada.");
 
-    res.render("campaign-detail", { campaign });
+    // Si todavía no hay imagen ni diseño de Canva, y sí hay IA de imagen
+    // configurada, armamos la vista previa de lo que se le mandará a la IA
+    // (para que el negocio la revise antes de generar).
+    let imagePreview = null;
+    const needsImageStep =
+      !campaign.final_image_data && !campaign.canva_design_url && aiImage.isConfigured();
+
+    if (needsImageStep) {
+      const { brief, contactLine } = buildImageBriefFromCampaign(campaign);
+      imagePreview = {
+        logoDataUri: campaign.logo_data,
+        contactLine,
+        businessIndustry: campaign.industry,
+        headline: campaign.ai_headline,
+        postCaption: campaign.ai_caption,
+        cta: campaign.cta,
+        hashtags: campaign.ai_hashtags,
+        allowOpenAI: campaign.plan === "plus",
+        promptPreview: await aiImage.buildPrompt(brief, { writeTextDirectly: true }),
+      };
+    }
+
+    res.render("campaign-detail", { campaign, imagePreview });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/campaigns/:id/generate-image", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(CAMPAIGN_WITH_BUSINESS_SELECT, [
+      req.params.id,
+      req.session.businessId,
+    ]);
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).send("Campaña no encontrada.");
+
+    if (!aiImage.isConfigured()) {
+      return res.redirect(`/campaigns/${campaign.id}`);
+    }
+
+    const { brief } = buildImageBriefFromCampaign(campaign);
+    const allowOpenAI = campaign.plan === "plus";
+
+    const imageCandidates = await aiImage.generateImageCandidates(brief, { allowOpenAI });
+
+    const finalImageData = imageCandidates[0]?.dataUri || null;
+    const newStatus = finalImageData ? STATUSES.LISTO_PARA_APROBACION : campaign.status;
+    const adminNote = imageCandidates.length
+      ? imageCandidates.length > 1
+        ? "Se generaron varias versiones con distintas IAs. Elige la que se vea mejor antes de aprobar/publicar."
+        : "Imagen generada automáticamente por IA. Revísala (y ajústala si hace falta) antes de aprobar/publicar."
+      : campaign.admin_notes;
+
+    await pool.query(
+      `UPDATE campaigns SET
+        final_image_data = $1,
+        image_candidates = $2,
+        status = $3,
+        admin_notes = $4,
+        updated_at = NOW()
+       WHERE id = $5`,
+      [
+        finalImageData,
+        imageCandidates.length ? JSON.stringify(imageCandidates) : null,
+        newStatus,
+        adminNote,
+        campaign.id,
+      ]
+    );
+
+    res.redirect(`/campaigns/${campaign.id}`);
   } catch (err) {
     next(err);
   }
