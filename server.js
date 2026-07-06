@@ -532,6 +532,13 @@ app.post(
             ...brief,
             headline,
             hashtags,
+            // Primero se genera el post (headline + caption, ya corregidos de
+            // ortografía/redacción por generateCopy más arriba) y ENTONCES
+            // eso es lo que se manda a crear la imagen — no el texto crudo
+            // que escribió el cliente en "Mensaje clave". aiImage.js usa
+            // postCaption (si viene) en vez de key_message para el mensaje
+            // secundario del diseño.
+            postCaption: caption,
             extraNotes: extra_notes,
             referenceImageDataUri: referenceImageData,
             brandColors: biz

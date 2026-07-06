@@ -104,19 +104,30 @@ function buildFixedRules(
       "organizados. Este es el nivel de sofisticación gráfica esperado — no una foto simple con texto",
       "encima.",
       "",
-      "IMPORTANTE SOBRE EL TEXTO: escribe estos textos EXACTOS dentro del diseño:",
+      "IMPORTANTE SOBRE EL TEXTO: escribe estos textos dentro del diseño:",
       `- Título/promoción principal, como encabezado grande y llamativo: "${brief.headline || brief.product_service}"`,
-      brief.key_message ? `- Mensaje o detalle secundario: "${brief.key_message}"` : "",
+      // El "post" (headline + caption) ya se generó y corrigió con IA en
+      // aiCopy.generateCopy ANTES de llegar aquí — brief.postCaption trae ese
+      // texto ya redactado y corregido. Se lo damos a la IA de imagen para
+      // que RESUMA de ahí una sola frase corta (no que copie el post entero,
+      // que puede ser largo), en vez de usar el texto crudo sin corregir que
+      // escribió el cliente en el campo "Mensaje clave".
+      brief.postCaption
+        ? `- Mensaje o detalle secundario: resume en UNA sola frase corta y llamativa (máximo 12 palabras) el siguiente post ya redactado: "${brief.postCaption}"`
+        : brief.key_message
+        ? `- Mensaje o detalle secundario: "${brief.key_message}"`
+        : "",
       `- Botón o etiqueta de llamado a la acción, con estilo de botón de WhatsApp (verde, con ícono de WhatsApp): "${brief.cta}"`,
       contactPart,
       hashtagsPart,
       "",
-      "MUY IMPORTANTE SOBRE PRECISIÓN: copia estos textos EXACTOS como están escritos arriba, letra",
-      "por letra — incluidos acentos, mayúsculas, números de teléfono y nombres propios. NO resumas,",
-      "traduzcas ni corrijas nada de esto. Y sobre todo: NO INVENTES datos adicionales que no estén",
-      "listados arriba — nada de precios, números de consultorio, pisos, promociones ni ofertas extra",
-      "que no se te hayan dado explícitamente. Si te falta un dato, simplemente omítelo; inventarlo",
-      "mal es un error grave e inaceptable.",
+      "MUY IMPORTANTE SOBRE PRECISIÓN: el título, el botón de CTA, el contacto y los hashtags cópialos",
+      "EXACTOS como están escritos arriba, letra por letra — incluidos acentos, mayúsculas, números de",
+      "teléfono y nombres propios. NO los traduzcas ni corrijas. La única excepción es el 'mensaje o",
+      "detalle secundario', donde SÍ debes resumir/condensar como se indicó arriba. Y sobre todo: NO",
+      "INVENTES datos adicionales que no estén listados arriba — nada de precios, números de",
+      "consultorio, pisos, promociones ni ofertas extra que no se te hayan dado explícitamente. Si te",
+      "falta un dato, simplemente omítelo; inventarlo mal es un error grave e inaceptable.",
       "",
       "Sí puedes agregar 1-2 líneas cortas de copy/gancho publicitario adicional de tu propia autoría",
       "(por ejemplo una frase corta motivacional relacionada al tema de la promoción), siempre y",
@@ -169,7 +180,9 @@ function templateVars(brief, { referencePhotoAsInput = false, writeTextDirectly 
       : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
     nombre_negocio: brief.businessName || "N/D",
     giro_negocio: brief.businessIndustry || "N/D",
-    mensaje_clave: brief.key_message || "",
+    // Preferimos el post ya redactado/corregido (postCaption) sobre el texto
+    // crudo del cliente para el contexto creativo también, por consistencia.
+    mensaje_clave: brief.postCaption || brief.key_message || "",
     publico_objetivo: brief.target_audience || "",
     tono: brief.tone || "",
     fidelidad_giro: !referencePhotoAsInput
