@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nueva semana de contenido — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page">
+    <a href="/dashboard" class="back-link">&larr; Volver a mi panel</a>
+    <h1>Nueva semana de contenido</h1>
+    <p class="subtitle">
+      Dinos el tema y te armamos el copy de 7 publicaciones distintas (sin repetirse) para toda la
+      semana. Después subes tú el diseño de cada día y, en cuanto lo autorices, se publica solo en
+      Facebook en su fecha y hora — sin pasar por revisión de nuestro equipo.
+    </p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/week/new" class="card-form">
+      <label>Tema de la semana *
+        <input type="text" name="topic" required placeholder="Ej. Productos, Promoción de verano, Testimonios de clientes" value="<%= form.topic || '' %>" />
+      </label>
+
+      <label>Tono de comunicación
+        <select name="tone">
+          <option value="Cercano/Amigable">Cercano/Amigable</option>
+          <option value="Profesional">Profesional</option>
+          <option value="Divertido/Casual">Divertido/Casual</option>
+          <option value="Elegante/Lujo">Elegante/Lujo</option>
+          <option value="Inspirador">Inspirador</option>
+        </select>
+      </label>
+
+      <label>Llamado a la acción (CTA)
+        <input type="text" name="cta" placeholder="Ej. Escríbenos por WhatsApp / Visítanos hoy" value="<%= form.cta || '' %>" />
+      </label>
+
+      <div class="two-col">
+        <label>Fecha de inicio *
+          <input type="date" name="start_date" required value="<%= form.start_date || '' %>" />
+        </label>
+        <label>Hora de publicación (todos los días)
+          <input type="time" name="post_time" value="<%= form.post_time || '10:00' %>" />
+        </label>
+      </div>
+
+      <button type="submit" class="btn-primary full-width">Generar copy de la semana</button>
+    </form>
+  </main>
+</body>
+</html>

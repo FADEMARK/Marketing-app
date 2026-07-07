@@ -10,11 +10,12 @@ const multer = require("multer");
 
 const { pool, init } = require("./db/db");
 const { STATUSES, STATUS_LABELS } = require("./services/status");
-const { generateCopy } = require("./services/aiCopy");
+const { generateCopy, generateWeekCopy } = require("./services/aiCopy");
 const aiImage = require("./services/aiImage");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const promptSettings = require("./services/promptSettings");
+const scheduler = require("./services/scheduler");
 const { requireBusinessAuth, requireAdminAuth } = require("./services/middleware");
 
 const app = express();
@@ -268,6 +269,206 @@ app.get("/calendar", requireBusinessAuth, async (req, res, next) => {
       nextYear,
       todayKey,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- FadeMarkSuite: semana de contenido para diseñadores ----------
+//
+// Plan aparte (businesses.plan === 'fademarksuite'): el negocio/diseñador pide
+// una semana de copy sobre un tema, sube su propio diseño (ya terminado, sin
+// pasar por generación de IA) para cada día, y al autorizar cada uno queda
+// programado para publicarse solo en Facebook en su fecha/hora — sin revisión
+// del equipo interno, a diferencia del flujo Estándar/Plus.
+
+function isFadeMarkSuite(business) {
+  return business && business.plan === "fademarksuite";
+}
+
+app.get("/week/new", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+      req.session.businessId,
+    ]);
+    const business = rows[0];
+    if (!isFadeMarkSuite(business)) {
+      return res.status(403).render("week-upsell", { business });
+    }
+    res.render("week-new", { error: null, form: {} });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/week/new", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows: bizRows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+      req.session.businessId,
+    ]);
+    const business = bizRows[0];
+    if (!isFadeMarkSuite(business)) {
+      return res.status(403).render("week-upsell", { business });
+    }
+
+    const { topic, tone, cta, start_date, post_time } = req.body;
+    if (!topic || !start_date) {
+      return res.render("week-new", {
+        error: "Por favor completa al menos el tema y la fecha de inicio.",
+        form: req.body,
+      });
+    }
+
+    const days = 7;
+    const posts = await generateWeekCopy({
+      topic,
+      businessName: business.name,
+      businessIndustry: business.industry,
+      tone: tone || "Cercano/Amigable",
+      days,
+    });
+
+    const contactLine = [
+      business.doctor_name || null,
+      business.phone ? `Tel: ${business.phone}` : null,
+      business.address ? `Dirección: ${business.address}` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const weekBatchId = crypto.randomUUID();
+    const time = /^\d{2}:\d{2}$/.test(post_time || "") ? post_time : "10:00";
+    const [startYear, startMonth, startDay] = start_date.split("-").map(Number);
+
+    for (let i = 0; i < posts.length; i++) {
+      const post = posts[i];
+      const dayDate = new Date(startYear, startMonth - 1, startDay + i);
+      const dateKey = dayDate.toISOString().slice(0, 10);
+      const scheduledAt = new Date(`${dateKey}T${time}:00`);
+
+      const fullCaption = contactLine ? `${post.caption}\n\n${contactLine}` : post.caption;
+
+      await pool.query(
+        `INSERT INTO campaigns
+          (business_id, objective, product_service, key_message, target_audience, tone, cta,
+           desired_date, status, ai_caption, ai_hashtags, ai_headline,
+           is_designer_upload, scheduled_at, week_batch_id, week_topic)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,$13,$14,$15)`,
+        [
+          req.session.businessId,
+          `Semana de contenido — ${topic}`,
+          topic,
+          post.caption,
+          "Público general",
+          tone || "Cercano/Amigable",
+          cta || "Escríbenos para más información",
+          dateKey,
+          STATUSES.FADEMARKSUITE_BORRADOR,
+          fullCaption,
+          post.hashtags,
+          post.headline,
+          scheduledAt.toISOString(),
+          weekBatchId,
+          topic,
+        ]
+      );
+    }
+
+    res.redirect(`/week/${weekBatchId}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/week/:batchId", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM campaigns WHERE week_batch_id = $1 AND business_id = $2 ORDER BY scheduled_at ASC",
+      [req.params.batchId, req.session.businessId]
+    );
+    if (rows.length === 0) return res.status(404).send("Semana no encontrada.");
+
+    res.render("week-detail", { posts: rows, topic: rows[0].week_topic, batchId: req.params.batchId });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  "/campaigns/:id/upload-design",
+  requireBusinessAuth,
+  upload.single("design"),
+  async (req, res, next) => {
+    try {
+      const { rows } = await pool.query(
+        "SELECT * FROM campaigns WHERE id = $1 AND business_id = $2",
+        [req.params.id, req.session.businessId]
+      );
+      const campaign = rows[0];
+      if (!campaign || !campaign.is_designer_upload) {
+        return res.status(404).send("Publicación no encontrada.");
+      }
+      if (!req.file) {
+        return res.redirect(`/week/${campaign.week_batch_id}`);
+      }
+
+      const imageData = fileToDataUri(req.file);
+      await pool.query(
+        "UPDATE campaigns SET final_image_data = $1, status = $2, updated_at = NOW() WHERE id = $3",
+        [imageData, STATUSES.FADEMARKSUITE_LISTO, req.params.id]
+      );
+
+      res.redirect(`/week/${campaign.week_batch_id}`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post("/campaigns/:id/authorize", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM campaigns WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const campaign = rows[0];
+    if (!campaign || !campaign.is_designer_upload) {
+      return res.status(404).send("Publicación no encontrada.");
+    }
+    if (!campaign.final_image_data) {
+      return res.redirect(`/week/${campaign.week_batch_id}`);
+    }
+
+    await pool.query(
+      `UPDATE campaigns SET status = $1, auto_publish_authorized = TRUE, authorized_at = NOW(), updated_at = NOW()
+       WHERE id = $2`,
+      [STATUSES.FADEMARKSUITE_PROGRAMADO, req.params.id]
+    );
+
+    // Si su horario ya venció justo al momento de autorizar, no hace falta
+    // esperar al siguiente tick del cron — lo intentamos publicar de una vez.
+    const scheduledAt = campaign.scheduled_at ? new Date(campaign.scheduled_at) : null;
+    if (scheduledAt && scheduledAt <= new Date()) {
+      await scheduler.publishOne(req.params.id);
+    }
+
+    res.redirect(`/week/${campaign.week_batch_id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Endpoint para que un cron EXTERNO (Render Cron Jobs, cron-job.org, etc.)
+// dispare la publicación de posts vencidos aunque el servicio esté dormido
+// (ver README para la guía de configuración). Protegido con CRON_SECRET.
+app.all("/cron/publish-due", async (req, res, next) => {
+  try {
+    const key = req.query.key || req.headers["x-cron-secret"];
+    if (!process.env.CRON_SECRET || key !== process.env.CRON_SECRET) {
+      return res.status(403).json({ error: "CRON_SECRET inválido o no configurado." });
+    }
+    const results = await scheduler.publishDuePosts();
+    res.json({ ok: true, processed: results.length, results });
   } catch (err) {
     next(err);
   }
@@ -996,7 +1197,7 @@ app.post("/admin/businesses/:id/toggle-active", requireAdminAuth, async (req, re
 app.post("/admin/businesses/:id/set-plan", requireAdminAuth, async (req, res, next) => {
   try {
     const { plan } = req.body;
-    if (plan !== "estandar" && plan !== "plus") {
+    if (plan !== "estandar" && plan !== "plus" && plan !== "fademarksuite") {
       return res.status(400).send("Plan inválido.");
     }
     await pool.query("UPDATE businesses SET plan = $1 WHERE id = $2", [plan, req.params.id]);
@@ -1072,11 +1273,11 @@ app.post("/admin/campaigns/:id/publish-to-facebook", requireAdminAuth, async (re
     const campaign = rows[0];
     if (!campaign) return res.status(404).send("Campaña no encontrada.");
 
-    if (campaign.plan !== "plus") {
+    if (campaign.plan !== "plus" && campaign.plan !== "fademarksuite") {
       return res.redirect(
         `/admin/campaigns/${req.params.id}?fb_publish_error=` +
           encodeURIComponent(
-            "Este negocio tiene el plan Estándar. La publicación directa a Facebook es exclusiva del plan Plus — cámbialo desde /admin/businesses si corresponde."
+            "Este negocio tiene el plan Estándar. La publicación directa a Facebook es exclusiva de los planes Plus y FadeMarkSuite — cámbialo desde /admin/businesses si corresponde."
           )
       );
     }
@@ -1172,6 +1373,17 @@ init()
     app.listen(PORT, () => {
       console.log(`Marketing App corriendo en http://localhost:${PORT}`);
     });
+
+    // Respaldo en memoria: mientras el servidor esté despierto, revisa cada 5
+    // minutos si hay posts de FadeMarkSuite autorizados cuyo horario ya
+    // venció, y los publica. No sustituye al cron externo (ver README) porque
+    // en el plan gratis de Render el servicio se duerme por inactividad, pero
+    // ayuda a que no dependa 100% de que alguien llame al endpoint /cron.
+    setInterval(() => {
+      scheduler.publishDuePosts().catch((err) => {
+        console.error("[scheduler] Error revisando posts programados:", err.message);
+      });
+    }, 5 * 60 * 1000);
   })
   .catch((err) => {
     console.error("No se pudo conectar/inicializar la base de datos:", err.message);

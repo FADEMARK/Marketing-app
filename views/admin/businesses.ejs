@@ -44,6 +44,7 @@
                   <select name="plan" onchange="this.form.submit()">
                     <option value="estandar" <%= b.plan === 'estandar' ? 'selected' : '' %>>Estándar (solo Gemini)</option>
                     <option value="plus" <%= b.plan === 'plus' ? 'selected' : '' %>>Plus (Gemini + OpenAI, publica en FB)</option>
+                    <option value="fademarksuite" <%= b.plan === 'fademarksuite' ? 'selected' : '' %>>FadeMarkSuite (diseñador, sube su diseño, auto-publica)</option>
                   </select>
                 </form>
               </td>

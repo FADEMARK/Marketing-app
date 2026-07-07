@@ -282,6 +282,32 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
 .status-listo_para_aprobacion { background: #F3E8FD; color: #7B2FF2; }
 .status-aprobado { background: #E6F4EA; color: #1E7E34; }
 .status-publicado { background: #1877F2; color: #fff; }
+.status-fademarksuite_borrador { background: #FFF0E5; color: #B25A00; }
+.status-fademarksuite_listo { background: #E8F0FE; color: #1967D2; }
+.status-fademarksuite_programado { background: #E6F4EA; color: #1E7E34; }
+.status-fademarksuite_error { background: #FDECEA; color: #B3261E; }
+
+/* --- Semana de contenido (FadeMarkSuite) --- */
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.week-day-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.week-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }

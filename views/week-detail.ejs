@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Semana: <%= topic %> — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <a href="/dashboard" class="back-link">&larr; Volver a mi panel</a>
+    <div class="page-header">
+      <h1>Semana: <%= topic %></h1>
+    </div>
+    <p class="subtitle">
+      Sube el diseño de cada día y autorízalo cuando esté listo. En cuanto lo autorices queda
+      programado para publicarse solo en Facebook en su fecha y hora — revisa bien antes de autorizar,
+      porque no pasa por revisión de nuestro equipo.
+    </p>
+
+    <div class="week-grid">
+      <% posts.forEach(function(p, i) { %>
+        <div class="week-day-card">
+          <div class="week-day-header">
+            <strong>Día <%= i + 1 %></strong>
+            <span class="muted small">
+              <%= p.scheduled_at ? new Date(p.scheduled_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : (p.desired_date || '—') %>
+            </span>
+          </div>
+          <span class="status-badge status-<%= p.status %>"><%= STATUS_LABELS[p.status] %></span>
+
+          <% if (p.final_image_data) { %>
+            <img class="preview-image" src="<%= p.final_image_data %>" alt="Diseño día <%= i + 1 %>" />
+          <% } %>
+
+          <h4 style="margin-bottom: 4px;"><%= p.ai_headline %></h4>
+          <p class="muted small" style="white-space: pre-wrap;"><%= p.ai_caption %></p>
+          <% if (p.ai_hashtags) { %><p class="hashtags small"><%= p.ai_hashtags %></p><% } %>
+
+          <% if (p.status === 'fademarksuite_borrador') { %>
+            <form method="POST" action="/campaigns/<%= p.id %>/upload-design" enctype="multipart/form-data" style="margin-top: 10px;">
+              <label class="muted small">Sube tu diseño (imagen)
+                <input type="file" name="design" accept="image/*" required />
+              </label>
+              <button type="submit" class="btn-primary full-width" style="margin-top: 8px;">Subir diseño</button>
+            </form>
+          <% } else if (p.status === 'fademarksuite_listo') { %>
+            <form method="POST" action="/campaigns/<%= p.id %>/authorize" style="margin-top: 10px;"
+                  onsubmit="return confirm('¿Autorizar esta publicación? Se publicará sola en Facebook en su fecha/hora, sin revisión de nuestro equipo.');">
+              <button type="submit" class="btn-primary full-width">✓ Autorizar publicación</button>
+            </form>
+          <% } else if (p.status === 'fademarksuite_programado') { %>
+            <p class="muted small" style="margin-top: 10px;">Autorizado — se publicará automáticamente en su horario.</p>
+          <% } else if (p.status === 'fademarksuite_error') { %>
+            <p class="alert alert-error small" style="margin-top: 10px;"><%= p.admin_notes %></p>
+            <form method="POST" action="/campaigns/<%= p.id %>/authorize">
+              <button type="submit" class="btn-secondary full-width">Reintentar publicación</button>
+            </form>
+          <% } else if (p.status === 'publicado') { %>
+            <p class="muted small" style="margin-top: 10px;">
+              ✅ Publicado —
+              <a href="<%= p.published_post_url %>" target="_blank" rel="noopener">ver en Facebook</a>
+            </p>
+          <% } %>
+        </div>
+      <% }); %>
+    </div>
+  </main>
+</body>
+</html>

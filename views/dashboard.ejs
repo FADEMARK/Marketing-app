@@ -16,6 +16,35 @@
       <a href="/campaigns/new" class="btn-primary">+ Nueva publicación</a>
     </div>
 
+    <% if (business.plan === 'fademarksuite') { %>
+      <% var weekBatches = {}; %>
+      <% campaigns.forEach(function(c) {
+           if (c.week_batch_id) {
+             weekBatches[c.week_batch_id] = weekBatches[c.week_batch_id] || { topic: c.week_topic, count: 0, created_at: c.created_at };
+             weekBatches[c.week_batch_id].count++;
+           }
+         }); %>
+      <div class="card-form" style="margin: 20px 0;">
+        <div class="page-header" style="margin: 0;">
+          <h3 style="margin: 0;">FadeMarkSuite — Semanas de contenido</h3>
+          <a href="/week/new" class="btn-secondary">+ Nueva semana</a>
+        </div>
+        <% var batchIds = Object.keys(weekBatches); %>
+        <% if (batchIds.length === 0) { %>
+          <p class="muted small">Todavía no has generado ninguna semana de contenido.</p>
+        <% } else { %>
+          <div class="campaign-grid" style="margin-top: 14px;">
+            <% batchIds.forEach(function(id) { %>
+              <a href="/week/<%= id %>" class="campaign-card">
+                <h3><%= weekBatches[id].topic %></h3>
+                <p class="muted small"><%= weekBatches[id].count %> publicaciones</p>
+              </a>
+            <% }); %>
+          </div>
+        <% } %>
+      </div>
+    <% } %>
+
     <% if (campaigns.length === 0) { %>
       <div class="empty-state">
         <p>Todavía no has creado ninguna publicación.</p>
@@ -23,7 +52,7 @@
       </div>
     <% } else { %>
       <div class="campaign-grid">
-        <% campaigns.forEach(function(c) { %>
+        <% campaigns.filter(function(c) { return !c.week_batch_id; }).forEach(function(c) { %>
           <a href="/campaigns/<%= c.id %>" class="campaign-card">
             <span class="status-badge status-<%= c.status %>"><%= STATUS_LABELS[c.status] %></span>
             <h3><%= c.product_service %></h3>

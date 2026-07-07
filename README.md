@@ -112,6 +112,41 @@ Publicar automáticamente en la página de Facebook de **cada cliente** requiere
 
 Mientras tanto, el flujo manual ya funciona: tu equipo descarga la imagen final aprobada, publica a mano en la página del cliente, y pega el link del post en el panel interno para cerrar el ciclo (el cliente lo ve reflejado en su panel).
 
+## FadeMarkSuite: semana de contenido con publicación automática programada
+
+Plan aparte pensado para **diseñadores**: en vez de que la IA genere la imagen, el negocio/diseñador
+pide el copy de una semana completa (7 publicaciones, cada una con un ángulo distinto sobre el mismo
+tema), sube él mismo el diseño ya terminado para cada día, y al autorizar cada publicación queda
+programada para publicarse **sola** en Facebook en su fecha y hora — sin pasar por la revisión del
+equipo interno (a diferencia de los planes Estándar/Plus).
+
+Para activarlo:
+
+1. Cambia el plan del negocio a **FadeMarkSuite** desde `/admin/businesses`.
+2. El negocio debe tener conectada su página de Facebook desde `/profile` (igual que el plan Plus).
+3. El negocio entra a **"Semana de contenido"** en su menú, pone el tema y la fecha/hora de inicio, y
+   se generan 7 publicaciones con copy distinto.
+4. Sube su diseño para cada día y le da **"Autorizar publicación"** — a partir de ahí queda programada.
+
+### Por qué necesitas configurar un cron externo
+
+El plan gratis de Render "duerme" el servicio por inactividad. La app revisa cada 5 minutos (mientras
+esté despierta) si hay publicaciones autorizadas cuyo horario ya venció, pero si nadie visita el sitio
+el servicio puede estar dormido justo cuando le toca publicar algo. Para que sea confiable de verdad,
+configura un cron **externo** que llame periódicamente a un endpoint protegido:
+
+```
+GET https://tu-app.onrender.com/cron/publish-due?key=EL_VALOR_DE_CRON_SECRET
+```
+
+1. Define `CRON_SECRET` en las variables de entorno de Render (un valor largo y aleatorio).
+2. Configura alguna de estas opciones para que llame a esa URL cada 5-15 minutos:
+   - **Render Cron Jobs** (si tienes un plan que los incluye).
+   - **[cron-job.org](https://cron-job.org)** (gratis) — crea un "cronjob" con esa URL y el intervalo que quieras.
+   - Un **GitHub Actions** programado (`schedule:` con `cron:`) que haga un `curl` a esa URL.
+
+La respuesta es un JSON con cuántas publicaciones se procesaron, útil para confirmar que está funcionando.
+
 ## Generar el copy Y la imagen automáticamente con IA (la forma más simple)
 
 Con una sola variable de entorno, la app genera automáticamente **tanto el texto del post como la imagen** para cada brief nuevo, sin necesidad de configurar Canva.

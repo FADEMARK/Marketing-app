@@ -117,6 +117,22 @@ async function init() {
     `ALTER TABLE businesses ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'estandar';`
   );
 
+  // --- FadeMarkSuite: plan para diseñadores que suben su propio diseño ya
+  // terminado (sin generación por IA) y arman una semana completa de copy de
+  // un jalón. El negocio autoriza cada publicación y esta se publica sola en
+  // Facebook cuando llega su fecha/hora programada (ver services/scheduler.js).
+  await pool.query(
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS is_designer_upload BOOLEAN NOT NULL DEFAULT FALSE;`
+  );
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP;`);
+  await pool.query(
+    `ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS auto_publish_authorized BOOLEAN NOT NULL DEFAULT FALSE;`
+  );
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS authorized_at TIMESTAMP;`);
+  // Agrupa los ~7 posts generados juntos en una sola "semana de contenido".
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS week_batch_id TEXT;`);
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS week_topic TEXT;`);
+
   // Solo cambia el DEFAULT para las próximas filas nuevas — no toca los
   // negocios que ya existen y ya estaban activos. Antes los negocios nuevos
   // quedaban activos automáticamente; ahora arrancan inactivos hasta que el
