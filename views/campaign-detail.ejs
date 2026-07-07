@@ -42,21 +42,21 @@
               ✎ Editar de nuevo
             </a>
             <p class="muted small" style="margin-top:6px;">
-              ¿Algo no quedó bien? Vuelve al editor con todo tal como lo dejaste — no se gasta otra
-              generación de IA, solo corriges lo que haga falta.
+              ¿Quieres mover algo, cambiar un color o editar el texto? Vuelve al editor con todo tal
+              como lo dejaste — no se gasta otra generación de IA.
             </p>
           <% } %>
         <% } else if (campaign.canva_design_url) { %>
           <p><a href="<%= campaign.canva_design_url %>" target="_blank" rel="noopener">Ver borrador en Canva →</a></p>
         <% } else if (campaign.background_image_data) { %>
           <div style="background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 16px;">
-            <h4 style="margin-top:0;">Diseño generado por IA</h4>
+            <h4 style="margin-top:0;">Fondo fotográfico generado por IA</h4>
             <p class="muted small">
-              Revísalo con calma, sobre todo el texto — si alguna palabra salió mal escrita o alguna
-              letra se ve rara, ábrelo en el editor y corrígela ahí mismo (no hace falta generar de
-              nuevo).
+              Esta es la foto de fondo. En el editor ya te dejamos armado encima un punto de partida
+              (logo, título, una insignia, una barra de WhatsApp y un recuadro aparte para tu
+              dirección) — cada pieza se puede mover, recolorear, editar o borrar libremente.
             </p>
-            <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Diseño generado" />
+            <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Fondo generado" />
 
             <% if (typeof imageCandidates !== 'undefined' && imageCandidates && imageCandidates.length > 1) { %>
               <p class="muted small" style="margin-top:12px;"><strong>Otras versiones generadas:</strong></p>
@@ -75,31 +75,33 @@
             <% } %>
 
             <a href="/campaigns/<%= campaign.id %>/editor" class="btn-primary full-width" style="display:block; text-align:center; margin-top:16px;">
-              Revisar y corregir en el editor →
+              Personalizar en el editor →
             </a>
           </div>
         <% } else if (typeof imagePreview !== 'undefined' && imagePreview) { %>
           <div style="background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 16px;">
-            <h4 style="margin-top:0;">Esto es lo que se va a mandar para crear tu imagen</h4>
+            <h4 style="margin-top:0;">Esto es lo que se va a mandar para crear la foto de fondo</h4>
             <p class="muted small">
-              Revisa que todo esté correcto antes de generar — la generación tiene un costo, así que
-              mejor confirmar antes que repetirla.
+              La IA solo genera la fotografía — no escribe texto ni dibuja el logo (eso falla seguido en
+              los modelos de imagen). Revisa el prompt antes de generar, ya que tiene un costo. El logo,
+              el título, la oferta y los datos de contacto de abajo NO se le mandan a la IA — se usan
+              para armarte un punto de partida ya personalizable en el editor, después de generar la foto.
             </p>
 
             <% if (imagePreview.logoDataUri) { %>
-              <p class="muted small" style="margin-bottom:4px;"><strong>Logo:</strong></p>
+              <p class="muted small" style="margin-bottom:4px;"><strong>Tu logo (se agrega en el editor, no en la foto):</strong></p>
               <img class="logo-preview" src="<%= imagePreview.logoDataUri %>" alt="Logo" />
             <% } else { %>
               <p class="muted small">
-                <strong>Logo:</strong> no tienes uno cargado — súbelo desde "Mi negocio" si quieres
-                que la IA lo tome en cuenta.
+                <strong>Logo:</strong> no tienes uno cargado — súbelo desde "Mi negocio" si quieres que
+                el editor te lo agregue automáticamente.
               </p>
             <% } %>
-            <p class="muted small"><strong>Giro del negocio:</strong> <%= imagePreview.businessIndustry || '—' %></p>
-            <p class="muted small"><strong>Contacto (dirección/teléfono):</strong> <%= imagePreview.contactLine || '—' %></p>
-            <p class="muted small"><strong>Título (generado por IA):</strong> <%= imagePreview.headline %></p>
+            <p class="muted small"><strong>Giro del negocio (contexto para la foto):</strong> <%= imagePreview.businessIndustry || '—' %></p>
+            <p class="muted small"><strong>Contacto (se agrega en el editor):</strong> <%= imagePreview.contactLine || '—' %></p>
+            <p class="muted small"><strong>Título (se agrega en el editor):</strong> <%= imagePreview.headline %></p>
             <p class="muted small"><strong>Post generado:</strong> <%= imagePreview.postCaption %></p>
-            <p class="muted small"><strong>Llamado a la acción:</strong> <%= imagePreview.cta %></p>
+            <p class="muted small"><strong>Llamado a la acción (se agrega en el editor):</strong> <%= imagePreview.cta %></p>
             <% if (imagePreview.hashtags) { %>
               <p class="muted small"><strong>Hashtags:</strong> <%= imagePreview.hashtags %></p>
             <% } %>
@@ -113,7 +115,7 @@
             </details>
 
             <form method="POST" action="/campaigns/<%= campaign.id %>/generate-image">
-              <button type="submit" class="btn-primary full-width">Generar imagen ahora</button>
+              <button type="submit" class="btn-primary full-width">Generar fondo ahora</button>
             </form>
           </div>
         <% } else { %>

@@ -27,21 +27,24 @@
       </p>
     <% } else { %>
       <p class="muted">
-        La IA ya generó el diseño completo (texto, logo e insignias incluidos). Revísalo con calma: si
-        alguna palabra salió mal escrita o alguna letra se ve rara, usa "Parche de corrección" para
-        taparla y escribe la palabra correcta encima — no hace falta generar de nuevo. También puedes
-        agregar formas, íconos o texto extra si quieres.
+        La IA generó la fotografía de fondo. Ya te dejamos armado encima un punto de partida — logo,
+        título, una insignia circular, una barra de WhatsApp y un recuadro aparte para tu dirección —
+        pero cada pieza es un objeto de verdad:
+        muévela, cambia su color o tamaño, edita el texto o bórrala. Mantén Shift y haz clic para
+        seleccionar varias piezas a la vez (por ejemplo el círculo + su texto) y moverlas o duplicarlas
+        juntas.
       </p>
     <% } %>
 
     <div class="editor-layout">
       <aside class="editor-toolbar">
         <div class="tool-group" style="background: var(--bg); border: 1px solid var(--primary); border-radius: 8px; padding: 10px;">
-          <h4 style="color: var(--primary);">Parche de corrección</h4>
-          <button type="button" class="tool-btn" id="btn-color-patch">🩹 Corregir una palabra</button>
+          <h4 style="color: var(--primary);">Parche de color</h4>
+          <button type="button" class="tool-btn" id="btn-color-patch">🩹 Tapar una zona</button>
           <p class="muted small" style="margin-top:6px;">
-            1) Clic aquí. 2) Clic sobre el diseño, cerca del error, para copiar ese color. 3) Mueve/ajusta
-            el parche hasta tapar el texto malo. 4) Agrega arriba un texto nuevo con la palabra correcta.
+            1) Clic aquí. 2) Clic sobre la foto, donde quieras tapar algo, para copiar ese color. 3)
+            Mueve/ajusta el parche hasta cubrir esa zona. 4) Agrega texto o una forma nueva encima si
+            hace falta.
           </p>
         </div>
 
@@ -78,6 +81,10 @@
           </div>
           <label class="muted small" style="display:block; margin-top:10px;">Color de forma</label>
           <input type="color" id="shape-color" value="<%= editorData.brandColorPrimary %>" />
+          <p class="muted small" style="margin-top:6px;">
+            Funciona con lo que tengas seleccionado: círculos, rectángulos, líneas, íconos e incluso
+            insignias de redes sociales (recolorea el fondo de la insignia).
+          </p>
         </div>
 
         <div class="tool-group">
@@ -144,7 +151,8 @@
             </button>
           </div>
           <p class="muted small" style="margin-top:8px;">
-            Insignias listas para poner junto a tu usuario/handle de cada red.
+            Insignias listas para poner junto a tu usuario/handle de cada red. Selecciónalas y usa
+            "Color de forma" arriba para adaptar el fondo a tu marca.
           </p>
         </div>
 
@@ -159,9 +167,14 @@
 
         <div class="tool-group">
           <h4>Capas</h4>
+          <button type="button" class="tool-btn" id="btn-duplicate">⧉ Duplicar seleccionado</button>
           <button type="button" class="tool-btn" id="btn-front">Traer al frente</button>
           <button type="button" class="tool-btn" id="btn-back">Enviar atrás</button>
           <button type="button" class="tool-btn" id="btn-delete">Eliminar seleccionado</button>
+          <p class="muted small" style="margin-top:6px;">
+            Tip: con Shift, haz clic en varias piezas (ej. un círculo + su texto) para moverlas o
+            duplicarlas juntas.
+          </p>
         </div>
       </aside>
 
@@ -320,8 +333,9 @@
 
     function addLogo() {
       fabric.Image.fromURL(editorData.logoDataUri, function (img) {
-        img.scaleToWidth(110);
-        img.set({ left: DISPLAY_SIZE - 130, top: 20 });
+        const logoWidth = 110;
+        img.scaleToWidth(logoWidth);
+        img.set({ left: (DISPLAY_SIZE - logoWidth) / 2, top: 20 });
         canvas.add(img);
         canvas.setActiveObject(img);
         canvas.renderAll();
@@ -434,15 +448,130 @@
       canvas.renderAll();
     }
 
+    // Punto de partida cuando el negocio entra por primera vez (sin edición
+    // guardada): arma, ENCIMA de la foto de la IA, un layout ya "diseñado" —
+    // logo, título, una insignia circular con texto editable, una barra de
+    // WhatsApp/CTA, y — separado, en su propio recuadro — la dirección/contacto.
+    // Cada pieza es un objeto real e independiente (círculo, texto, rectángulo,
+    // imagen), no un solo bloque de píxeles. Así el negocio puede mover el
+    // círculo, editar el texto o cambiar el color de cada barra por separado,
+    // sin tener que regenerar nada.
+    function buildDefaultLayout() {
+      if (editorData.logoDataUri) {
+        addLogo();
+      }
+
+      if (editorData.headline) {
+        addText(editorData.headline, {
+          left: 40,
+          top: 140,
+          width: DISPLAY_SIZE - 80,
+          fontSize: 34,
+          fontFamily: "Anton, sans-serif",
+          fontWeight: "400",
+        });
+      }
+
+      // Insignia circular editable con un texto de oferta de ejemplo — el
+      // negocio la mueve, la recolorea y reemplaza el texto por su oferta
+      // real. Usa "Duplicar seleccionado" (con Shift+clic para tomar el
+      // círculo y su texto juntos) para armar una segunda insignia.
+      const badgeColor = editorData.brandColorPrimary || "#1877F2";
+      const badge = new fabric.Circle({ left: 50, top: 230, radius: 70, fill: badgeColor });
+      canvas.add(badge);
+      addText("Tu oferta aquí", {
+        left: 60,
+        top: 278,
+        width: 120,
+        fontSize: 20,
+        fontFamily: "Montserrat, sans-serif",
+        fontWeight: "800",
+        fill: "#FFFFFF",
+        shadow: null,
+      });
+
+      // Barra de CTA (WhatsApp) — su propio recuadro, independiente y recolorable.
+      const barColor = editorData.brandColorPrimary || "#1877F2";
+      const bar = new fabric.Rect({ left: 0, top: 452, width: DISPLAY_SIZE, height: 55, fill: barColor });
+      canvas.add(bar);
+
+      const waIcon = new fabric.Path(ICONS.whatsapp.d, {
+        left: 24,
+        top: 465,
+        fill: "#FFFFFF",
+        scaleX: 1.2,
+        scaleY: 1.2,
+      });
+      canvas.add(waIcon);
+
+      if (editorData.cta) {
+        addText(editorData.cta, {
+          left: 90,
+          top: 464,
+          width: DISPLAY_SIZE - 110,
+          fontSize: 22,
+          fontFamily: "Montserrat, sans-serif",
+          fontWeight: "800",
+          fill: "#FFFFFF",
+          textAlign: "left",
+          shadow: null,
+        });
+      }
+
+      // Barra de contacto/dirección — su PROPIO recuadro, separado del de
+      // arriba, en el color secundario de marca para diferenciarlo. Es un
+      // rectángulo independiente: se puede mover, recolorear o borrar sin
+      // afectar la barra de CTA.
+      if (editorData.contactLine) {
+        const contactBarColor = editorData.brandColorSecondary || "#0B0B0B";
+        const contactBar = new fabric.Rect({ left: 0, top: 507, width: DISPLAY_SIZE, height: 33, fill: contactBarColor });
+        canvas.add(contactBar);
+
+        const locationIcon = new fabric.Path(ICONS.location.d, {
+          left: 24,
+          top: 514,
+          fill: "#FFFFFF",
+          scaleX: 0.9,
+          scaleY: 0.9,
+        });
+        canvas.add(locationIcon);
+
+        addText(editorData.contactLine, {
+          left: 56,
+          top: 513,
+          width: DISPLAY_SIZE - 76,
+          fontSize: 13,
+          fontFamily: "Lato, sans-serif",
+          fontWeight: "400",
+          fill: "#FFFFFF",
+          textAlign: "left",
+          shadow: null,
+        });
+      }
+
+      canvas.discardActiveObject();
+      canvas.renderAll();
+    }
+
     // Insignias de redes sociales para que el negocio marque dónde seguirlo
     // (junto a su usuario/handle). Son formas simples armadas con
     // rectángulos/círculos + una letra o símbolo — no son el archivo oficial
     // de cada marca, pero se leen igual de claro y evitan depender de
     // recursos externos con licencias restringidas.
+    //
+    // La primera pieza de cada insignia se marca con isBadgeBackground=true:
+    // es la que se recolorea cuando el negocio usa "Color de forma" sobre la
+    // insignia completa (para poder adaptarla a sus colores de marca), sin
+    // tocar la letra/ícono blanco de encima y perder la legibilidad.
+    function markBadgeBackground(obj) {
+      obj.isBadgeBackground = true;
+      return obj;
+    }
+
     const SOCIAL_BADGES = {
       facebook: function () {
         return new fabric.Group([
-          new fabric.Circle({ left: 0, top: 0, radius: 40, fill: "#1877F2" }),
+          markBadgeBackground(new fabric.Circle({ left: 0, top: 0, radius: 40, fill: "#1877F2" })),
           new fabric.Text("f", {
             left: 30, top: 10, fontSize: 54, fontWeight: "700",
             fontFamily: "Georgia, 'Times New Roman', serif", fill: "#fff",
@@ -451,7 +580,7 @@
       },
       instagram: function () {
         return new fabric.Group([
-          new fabric.Rect({
+          markBadgeBackground(new fabric.Rect({
             left: 0, top: 0, width: 80, height: 80, rx: 20, ry: 20,
             fill: new fabric.Gradient({
               type: "linear",
@@ -463,14 +592,14 @@
                 { offset: 1, color: "#962FBF" },
               ],
             }),
-          }),
+          })),
           new fabric.Circle({ left: 22, top: 22, radius: 16, fill: "transparent", stroke: "#fff", strokeWidth: 6 }),
           new fabric.Circle({ left: 56, top: 12, radius: 4, fill: "#fff" }),
         ]);
       },
       tiktok: function () {
         return new fabric.Group([
-          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#010101" }),
+          markBadgeBackground(new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#010101" })),
           new fabric.Text("♪", { left: 20, top: 8, fontSize: 46, fill: "#25F4EE" }),
           new fabric.Text("♪", { left: 26, top: 14, fontSize: 46, fill: "#FE2C55" }),
           new fabric.Text("♪", { left: 23, top: 11, fontSize: 46, fill: "#fff" }),
@@ -478,13 +607,13 @@
       },
       youtube: function () {
         return new fabric.Group([
-          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 20, ry: 20, fill: "#FF0000" }),
+          markBadgeBackground(new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 20, ry: 20, fill: "#FF0000" })),
           new fabric.Polygon([{ x: 30, y: 22 }, { x: 30, y: 58 }, { x: 58, y: 40 }], { fill: "#fff" }),
         ]);
       },
       x: function () {
         return new fabric.Group([
-          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#000000" }),
+          markBadgeBackground(new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#000000" })),
           new fabric.Text("X", {
             left: 21, top: 12, fontSize: 50, fontWeight: "800",
             fontFamily: "Helvetica, Arial, sans-serif", fill: "#fff",
@@ -493,7 +622,7 @@
       },
       linkedin: function () {
         return new fabric.Group([
-          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#0A66C2" }),
+          markBadgeBackground(new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#0A66C2" })),
           new fabric.Text("in", {
             left: 12, top: 22, fontSize: 34, fontWeight: "800",
             fontFamily: "Arial, sans-serif", fill: "#fff",
@@ -535,7 +664,7 @@
       canvas.renderAll();
       canvas.defaultCursor = "crosshair";
       canvas.hoverCursor = "crosshair";
-      if (statusEl) statusEl.textContent = "Haz clic sobre el diseño, junto al error, para tomar ese color…";
+      if (statusEl) statusEl.textContent = "Haz clic sobre la foto, donde quieras tapar algo, para tomar ese color…";
     });
 
     canvas.on("mouse:down", function (opt) {
@@ -571,7 +700,7 @@
       canvas.defaultCursor = "default";
       canvas.hoverCursor = "move";
       if (statusEl) {
-        statusEl.textContent = "Listo — ajusta el tamaño/posición del parche y agrega el texto correcto encima.";
+        statusEl.textContent = "Listo — ajusta el tamaño/posición del parche y agrega texto o una forma encima si hace falta.";
       }
     });
 
@@ -617,11 +746,43 @@
       }
     });
 
+    // Aplica un color a CUALQUIER objeto o selección — círculos, rectángulos,
+    // texto, íconos, líneas (que se colorean por su trazo, no su relleno),
+    // e insignias/grupos (solo la pieza de fondo, para no perder el ícono
+    // blanco de encima). Si hay varios objetos seleccionados a la vez (con
+    // Shift+clic), se colorean todos juntos.
+    //
+    // Nota: la marca isBadgeBackground no sobrevive a duplicar (clone) ni a
+    // guardar/recuperar el lienzo (toJSON solo serializa propiedades
+    // estándar) — por eso, si ningún hijo la tiene, se usa el primer objeto
+    // del grupo como respaldo. En todas las insignias de este editor, el
+    // fondo siempre se agrega primero, así que ese orden es un respaldo
+    // confiable incluso después de duplicar o recargar.
+    function findBadgeBackground(kids) {
+      return kids.find(function (child) { return child.isBadgeBackground; }) || kids[0];
+    }
+
+    function applyColorToObject(obj, color) {
+      if (!obj) return;
+      if (obj.type === "line") {
+        obj.set("stroke", color);
+        return;
+      }
+      if (obj.type === "group" || obj.type === "activeSelection") {
+        const kids = obj._objects || [];
+        if (!kids.length) return;
+        const bg = findBadgeBackground(kids);
+        if (bg) applyColorToObject(bg, color);
+        return;
+      }
+      obj.set("fill", color);
+    }
+
     document.getElementById("shape-color").addEventListener("input", function (e) {
       const obj = canvas.getActiveObject();
-      if (obj && obj.type !== "textbox" && obj.type !== "image" && obj.type !== "group") {
-        obj.set("fill", e.target.value);
-        canvas.renderAll();
+      if (obj && obj.type !== "textbox" && obj.type !== "image") {
+        applyColorToObject(obj, e.target.value);
+        canvas.requestRenderAll();
       }
     });
 
@@ -640,16 +801,57 @@
         if (obj.fontFamily && Array.from(fontSelect.options).some((o) => o.value === obj.fontFamily)) {
           fontSelect.value = obj.fontFamily;
         }
-      } else if (obj.type !== "image" && obj.type !== "group") {
-        if (typeof obj.fill === "string" && obj.fill.startsWith("#")) {
-          document.getElementById("shape-color").value = obj.fill;
+        return;
+      }
+      if (obj.type === "image") return;
+
+      const shapeColorInput = document.getElementById("shape-color");
+      if (obj.type === "line") {
+        if (typeof obj.stroke === "string" && obj.stroke.startsWith("#")) {
+          shapeColorInput.value = obj.stroke;
         }
+        return;
+      }
+      if (obj.type === "group" || obj.type === "activeSelection") {
+        const kids = obj._objects || [];
+        const bg = kids.find(function (child) { return child.isBadgeBackground; }) || kids[0];
+        if (bg && typeof bg.fill === "string" && bg.fill.startsWith("#")) {
+          shapeColorInput.value = bg.fill;
+        }
+        return;
+      }
+      if (typeof obj.fill === "string" && obj.fill.startsWith("#")) {
+        shapeColorInput.value = obj.fill;
       }
     }
     canvas.on("selection:created", syncControlsToSelection);
     canvas.on("selection:updated", syncControlsToSelection);
 
     document.getElementById("btn-add-logo").addEventListener("click", addLogo);
+
+    // Duplica el objeto seleccionado (o varios, si seleccionaste más de uno
+    // con Shift+clic) — útil para armar una segunda insignia igual a la
+    // primera sin tener que rehacerla desde cero.
+    document.getElementById("btn-duplicate").addEventListener("click", function () {
+      const activeObj = canvas.getActiveObject();
+      if (!activeObj) return;
+      activeObj.clone(function (cloned) {
+        canvas.discardActiveObject();
+        if (cloned.type === "activeSelection") {
+          cloned.canvas = canvas;
+          cloned.forEachObject(function (obj) {
+            obj.set({ left: (obj.left || 0) + 24, top: (obj.top || 0) + 24 });
+            canvas.add(obj);
+          });
+          cloned.setCoords();
+        } else {
+          cloned.set({ left: (cloned.left || 0) + 24, top: (cloned.top || 0) + 24 });
+          canvas.add(cloned);
+        }
+        canvas.setActiveObject(cloned);
+        canvas.renderAll();
+      });
+    });
 
     document.getElementById("btn-front").addEventListener("click", function () {
       const obj = canvas.getActiveObject();
@@ -665,10 +867,11 @@
     });
 
     document.getElementById("btn-reset").addEventListener("click", function () {
-      if (!confirm("¿Borrar todos tus parches/textos/formas agregados y volver al diseño tal como lo entregó la IA?")) return;
+      if (!confirm("¿Borrar todo lo que agregaste/moviste y volver a armar el punto de partida original?")) return;
       canvas.getObjects().slice().forEach(function (o) { canvas.remove(o); });
       canvas.discardActiveObject();
       canvas.renderAll();
+      buildDefaultLayout();
     });
 
     document.getElementById("btn-save").addEventListener("click", function () {
@@ -712,10 +915,9 @@
       loadBackground();
       if (initialCanvasState) {
         restoreCanvasState(initialCanvasState);
+      } else {
+        buildDefaultLayout();
       }
-      // Si no hay estado guardado, el lienzo arranca vacío sobre el diseño
-      // que entregó la IA — ya trae su propio texto/logo/insignias. El
-      // negocio solo agrega algo encima si necesita corregir o reforzar.
     });
   </script>
 </body>

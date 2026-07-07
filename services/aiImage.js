@@ -1,20 +1,24 @@
-// Genera el DISEÑO COMPLETO de la imagen del post con IA — encabezado, la
-// oferta/mensaje destacado en insignias, una fotografía relevante, el logo
-// real del negocio y una franja de contacto, todo en una sola pieza lista
-// para publicar (como el ejemplo de referencia que aprobó el cliente).
+// Genera el FONDO FOTOGRÁFICO de la imagen del post con IA — nada más. La
+// IA se dedica a lo que hace bien (una fotografía realista y bien compuesta)
+// y NO dibuja texto, logo, círculos, insignias, barras ni ningún elemento
+// gráfico de la pieza.
 //
-// Por qué esto y no solo un fondo limpio: se probó generar solo un fondo y
-// dejar que el negocio agregara todo a mano en el editor, pero el cliente
-// prefiere que la IA entregue la pieza ya armada — se ve más profesional y es
-// más rápido. A cambio, el editor (ver views/editor.ejs) se queda como red de
-// seguridad: si algún texto sale mal escrito o alguna letra sale rara (el
-// problema #1 de los modelos de imagen), el negocio puede "parchar" esa zona
-// y volver a escribir la palabra correcta ahí mismo, sin tener que gastar
-// otra generación completa.
+// Por qué: se probó pedirle a la IA que compusiera la pieza COMPLETA (texto,
+// logo, insignias, barra de contacto, todo baked-in en un solo PNG plano) y
+// el resultado se veía bien a primera vista, pero tenía un problema serio:
+// una vez generada, esa imagen es un solo bloque de píxeles — no se puede
+// mover un círculo, editar una palabra ni recolorear una barra que quedó con
+// mal contraste contra el logo, sin regenerar toda la imagen de nuevo. El
+// cliente pidió justo eso: poder mover los círculos, editar el texto y
+// cambiar colores de fondo que no combinan bien.
 //
-// Para minimizar el riesgo de texto mal escrito, el prompt es explícito y
-// estricto sobre copiar cada palabra tal cual se le da, letra por letra, y
-// sobre no inventar texto que no se le haya dado.
+// La solución es un editor de capas reales: la IA entrega solo la foto/fondo,
+// y el editor (ver views/editor.ejs) arma automáticamente, ENCIMA de esa
+// foto, un layout inicial ya "diseñado" (logo, título, una insignia circular,
+// una barra de contacto con WhatsApp) — pero cada pieza es un objeto de
+// verdad (círculo, texto, rectángulo, imagen) que el negocio puede mover,
+// redimensionar, recolorear, editar el texto o borrar libremente, sin gastar
+// otra generación de IA.
 //
 // Orden de preferencia:
 //   1. GEMINI_API_KEY (Google Gemini 2.5 Flash Image, "Nano Banana") — tiene
@@ -25,17 +29,17 @@
 //   3. Si no hay ninguna clave, se deja pendiente para que el equipo diseñe
 //      la pieza a mano desde el panel admin.
 //
-// Logo y foto de referencia del cliente (ambos opcionales): si están
-// disponibles, se le mandan a la IA como imágenes de entrada reales (no como
-// descripciones de texto). Gemini puede recibir varias imágenes de entrada a
-// la vez (logo + foto), así que se le mandan ambas cuando existen. OpenAI
-// (endpoint de edición /v1/images/edits) solo acepta UNA imagen de entrada
-// por llamada, así que si hay ambas se prioriza la foto real del negocio
-// (más importante mantenerla fiel) y el logo se pide como texto.
+// Foto de referencia del cliente (opcional, campo "imagen de referencia" del
+// formulario): si el cliente sube su propia foto real (su platillo, su local,
+// su espacio), se la mandamos también a Gemini como imagen de entrada y le
+// pedimos que la use como BASE — mejorándola profesionalmente (luz, color,
+// composición) en vez de inventar una escena nueva desde cero.
+//
+// El logo NO se le manda a la IA (ni como texto ni como imagen) — el editor
+// lo coloca como una imagen real y movible, con su tamaño y posición reales.
 
 const sharp = require("sharp");
 const fetch = require("node-fetch");
-const FormData = require("form-data");
 const { getPromptTemplate, renderTemplate } = require("./promptSettings");
 
 function isConfigured() {
@@ -54,77 +58,51 @@ function dataUriToBuffer(dataUri) {
   return Buffer.from(match[2], "base64");
 }
 
-// Reglas técnicas fijas (no editables desde el prompt studio): garantizan la
-// estructura de la pieza completa y, sobre todo, que el texto salga bien
-// escrito — eso es lo que más falla en los modelos de generación de imagen.
-function buildFixedRules(brief, { hasLogo = false, hasReferencePhoto = false } = {}) {
-  const lines = [];
+// Reglas técnicas fijas (no editables desde el prompt studio): garantizan
+// que la IA se quede solo en la fotografía y no intente escribir texto ni
+// dibujar logos/círculos/barras — esos los agrega el editor como objetos
+// reales, movibles y editables.
+function buildFixedRules(brief, { hasReferencePhoto = false } = {}) {
+  const referencePhotoInstruction = hasReferencePhoto
+    ? "IMPORTANTE SOBRE LA FOTO BASE: te adjunto una fotografía REAL del negocio, el producto o el " +
+      "lugar (tal cual son en la vida real). Usa ESA foto como base y mejórala profesionalmente: ajusta " +
+      "iluminación, color, contraste, nitidez y encuadre para que se vea como una fotografía de campaña " +
+      "publicitaria de alta gama. NO inventes un lugar, platillo o producto distinto — conserva " +
+      "fielmente lo que aparece realmente en la foto. Si hace falta, puedes recortar o ajustar la " +
+      "composición, pero el contenido real debe seguir siendo reconocible como el mismo."
+    : "";
 
-  lines.push(
-    "IMPORTANTE — ESTRUCTURA DE LA PIEZA: diseña una publicación COMPLETA y lista para publicar en redes " +
-      "sociales (no solo un fondo vacío). Debe incluir, bien organizados dentro del cuadro: un encabezado con " +
-      "el nombre del negocio destacado, el mensaje/oferta principal en una o dos insignias o tarjetas " +
-      "redondeadas bien visibles (con el porcentaje o beneficio en grande si el mensaje menciona un descuento " +
-      "o promoción), una fotografía relevante al negocio bien integrada en el diseño (puede llevar marco o " +
-      "recuadro si ayuda a la composición), y una franja de contacto en la parte inferior. Usa acentos " +
-      "decorativos sutiles (líneas, destellos, hojas u otros detalles) del color de marca para que se vea como " +
-      "una pieza hecha por una agencia, no una plantilla genérica."
-  );
-
-  lines.push(
-    "REGLA #1, LA MÁS IMPORTANTE — ORTOGRAFÍA PERFECTA: cada palabra de texto que incluyas debe copiarse " +
-      "EXACTA, letra por letra, tal como aparece en la lista de abajo — sin inventar, abreviar, repetir, cortar " +
-      "ni deformar ninguna letra o palabra. Revisa mentalmente cada palabra antes de dibujarla. Si una palabra " +
-      "es larga, hazla más grande o ponla en su propia línea en vez de arriesgarte a que salga ilegible o mal " +
-      "escrita. NUNCA inventes texto, precios ni ofertas que no se te hayan dado."
-  );
-
-  const textPieces = [
-    brief.businessName ? `Nombre del negocio (debe aparecer, escrito exactamente así): "${brief.businessName}".` : "",
-    brief.headline ? `Encabezado/título principal: "${brief.headline}".` : "",
-    brief.postCaption ? `Mensaje/oferta a destacar en las insignias: "${brief.postCaption}".` : "",
-    brief.cta ? `Llamado a la acción: "${brief.cta}".` : "",
-    brief.contactLine ? `Datos de contacto (inclúyelos en la franja inferior): "${brief.contactLine}".` : "",
+  return [
+    referencePhotoInstruction,
+    "IMPORTANTE SOBRE TEXTO, LOGO Y ELEMENTOS GRÁFICOS: NO escribas ningún texto dentro de la imagen — " +
+      "ni títulos, subtítulos, porcentajes, teléfonos, direcciones, nombres de negocio, botones ni " +
+      "letreros. NO generes ni redibujes ningún logotipo. NO dibujes círculos, insignias, barras, marcos " +
+      "ni ningún elemento gráfico de diseño — esos se agregan después, como piezas independientes y " +
+      "editables, en un editor aparte. Esta imagen es SOLO la fotografía de fondo: concéntrate 100% en " +
+      "entregar una foto limpia, profesional y sin ningún elemento gráfico superpuesto.",
+    "Reglas de calidad: composición equilibrada sin saturar la escena, buen respiro visual, no deformes " +
+      "rostros, manos ni productos, no agregues marcas de agua. El resultado debe sentirse confiable, " +
+      "atractivo y profesional, listo para servir de fondo de una publicación de redes sociales.",
+    "Como después se le va a agregar encima un logo, un título y una barra de contacto, procura dejar la " +
+      "franja superior y la franja inferior de la imagen (aproximadamente el primer y el último 20% del " +
+      "alto) con buen contraste y sin detalle demasiado ocupado ahí — pero sin dejar bordes, marcos ni " +
+      "franjas en blanco vacías: debe seguir leyéndose como una fotografía completa y natural.",
+    "Formato cuadrado, alta resolución.",
   ]
     .filter(Boolean)
     .join(" ");
-
-  if (textPieces) {
-    lines.push("TEXTO EXACTO A INCLUIR EN LA IMAGEN (cópialo tal cual, no lo parafrasees ni lo resumas): " + textPieces);
-  }
-
-  lines.push(
-    hasLogo
-      ? "LOGO: te adjunto el logotipo real del negocio como imagen de entrada — colócalo cerca de la parte " +
-          "superior, íntegro y legible, sin redibujarlo, deformarlo ni inventar uno nuevo."
-      : "No hay logo disponible — no inventes ni dibujes un logotipo genérico; deja esa zona limpia o usa " +
-          "únicamente el nombre del negocio en texto."
-  );
-
-  if (hasReferencePhoto) {
-    lines.push(
-      "FOTO BASE: además del logo (si lo hay), te adjunto una fotografía REAL del negocio, el equipo o el " +
-        "producto — intégrala en el diseño mejorándola profesionalmente (luz, color, encuadre) sin inventar un " +
-        "lugar, platillo o persona distinta a lo que aparece realmente en la foto."
-    );
-  }
-
-  lines.push(
-    "Reglas de calidad: composición equilibrada, buen contraste para que el texto se lea bien incluso a tamaño " +
-      "de celular, no deformes rostros, manos ni productos, no agregues marcas de agua ni texto de relleno " +
-      '("lorem ipsum" o similar). Formato cuadrado, alta resolución.'
-  );
-
-  return lines.filter(Boolean).join(" ");
 }
 
 function templateVars(brief, { hasReferencePhoto = false } = {}) {
   return {
     modo_intro: hasReferencePhoto
-      ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto e integrarla dentro de una pieza publicitaria completa (ver instrucciones abajo), no generar una escena nueva desde cero."
-      : "Genera una pieza publicitaria completa y profesional para una campaña real, con una fotografía relevante integrada en el diseño.",
+      ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto (ver instrucciones abajo), no generar una escena nueva desde cero."
+      : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
     nombre_negocio: brief.businessName || "N/D",
     giro_negocio: brief.businessIndustry || "N/D",
+    // El mensaje clave se usa aquí solo como CONTEXTO para que la escena sea
+    // relevante al tema de la promoción — la IA no va a escribir este texto,
+    // solo entender de qué trata para elegir una buena imagen.
     mensaje_clave: brief.postCaption || brief.key_message || "",
     publico_objetivo: brief.target_audience || "",
     tono: brief.tone || "",
@@ -132,7 +110,7 @@ function templateVars(brief, { hasReferencePhoto = false } = {}) {
       ? "MUY IMPORTANTE — fidelidad al giro del negocio: la fotografía debe ser 100% coherente con el giro de arriba, no una oficina corporativa genérica ni personas sin relación con el negocio."
       : "",
     colores_marca: brief.brandColors
-      ? `Usa estos colores de marca de forma consistente en las insignias, acentos y la franja de contacto: ${brief.brandColors}.`
+      ? `Si es posible sin sacrificar el realismo, incorpora sutilmente estos colores de marca en la paleta general: ${brief.brandColors}.`
       : "",
     notas_adicionales: brief.extraNotes
       ? `Instrucciones adicionales del cliente a considerar: ${brief.extraNotes}.`
@@ -140,10 +118,10 @@ function templateVars(brief, { hasReferencePhoto = false } = {}) {
   };
 }
 
-async function buildPrompt(brief, { hasLogo = false, hasReferencePhoto = false } = {}) {
+async function buildPrompt(brief, { hasReferencePhoto = false } = {}) {
   const template = await getPromptTemplate();
   const creativePart = renderTemplate(template, templateVars(brief, { hasReferencePhoto }));
-  const fixedRules = buildFixedRules(brief, { hasLogo, hasReferencePhoto });
+  const fixedRules = buildFixedRules(brief, { hasReferencePhoto });
   return `${creativePart}\n\n${fixedRules}`;
 }
 
@@ -151,24 +129,16 @@ async function generateWithGemini(brief) {
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 
-  // Gemini puede recibir varias imágenes de entrada en el mismo prompt, así
-  // que le mandamos el logo y la foto de referencia cuando existan, cada una
-  // con una nota de texto que aclara cuál es cuál.
-  const logoParts = dataUriToParts(brief.logoDataUri);
+  // Si el cliente subió su propia foto de referencia (su platillo, su local),
+  // se la mandamos como imagen de entrada para que la use de base. El logo
+  // ya NO se manda (lo agrega el editor como objeto movible).
   const referencePhotoParts = dataUriToParts(brief.referenceImageDataUri);
 
   const promptText = await buildPrompt(brief, {
-    hasLogo: Boolean(logoParts),
     hasReferencePhoto: Boolean(referencePhotoParts),
   });
-
   const requestParts = [{ text: promptText }];
-  if (logoParts) {
-    requestParts.push({ text: "Este es el logotipo real del negocio (úsalo tal cual, sin redibujarlo):" });
-    requestParts.push({ inlineData: { mimeType: logoParts.mimeType, data: logoParts.data } });
-  }
   if (referencePhotoParts) {
-    requestParts.push({ text: "Esta es una fotografía real del negocio/equipo/producto para usar como base:" });
     requestParts.push({
       inlineData: { mimeType: referencePhotoParts.mimeType, data: referencePhotoParts.data },
     });
@@ -205,57 +175,18 @@ async function generateWithGemini(brief) {
 }
 
 async function generateWithOpenAI(brief) {
+  const promptText = await buildPrompt(brief);
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
   const quality = process.env.OPENAI_IMAGE_QUALITY || "high";
 
-  const referencePhotoBuffer = dataUriToBuffer(brief.referenceImageDataUri);
-  const logoBuffer = dataUriToBuffer(brief.logoDataUri);
-
-  // El endpoint de edición de OpenAI solo acepta UNA imagen de entrada, así
-  // que si hay ambas priorizamos la foto real del negocio (más importante
-  // mantenerla fiel) y le pedimos el logo como texto en su lugar.
-  const inputBuffer = referencePhotoBuffer || logoBuffer;
-  const usingLogoAsInput = !referencePhotoBuffer && Boolean(logoBuffer);
-  const droppedLogo = Boolean(referencePhotoBuffer) && Boolean(logoBuffer);
-
-  const promptText = await buildPrompt(brief, {
-    hasLogo: Boolean(logoBuffer),
-    hasReferencePhoto: Boolean(referencePhotoBuffer),
+  const response = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({ model, prompt: promptText, size: "1024x1024", quality }),
   });
-
-  const extraNote = usingLogoAsInput
-    ? " (La imagen adjunta es el logotipo real del negocio: consérvalo tal cual e impórtalo dentro del diseño.)"
-    : droppedLogo
-      ? " (Nota: además hay un logotipo del negocio que no se pudo adjuntar en esta llamada — dibuja el nombre del negocio en texto en su lugar, con ortografía exacta, en vez de inventar un logo.)"
-      : "";
-
-  let response;
-  if (inputBuffer) {
-    const form = new FormData();
-    form.append("model", model);
-    form.append("prompt", promptText + extraNote);
-    form.append("size", "1024x1024");
-    form.append("quality", quality);
-    form.append("image", inputBuffer, { filename: "input.png", contentType: "image/png" });
-
-    response = await fetch("https://api.openai.com/v1/images/edits", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        ...form.getHeaders(),
-      },
-      body: form,
-    });
-  } else {
-    response = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({ model, prompt: promptText, size: "1024x1024", quality }),
-    });
-  }
 
   if (!response.ok) {
     const errText = await response.text();
@@ -269,9 +200,9 @@ async function generateWithOpenAI(brief) {
   return `data:image/png;base64,${b64}`;
 }
 
-// Solo normalizamos tamaño/formato a un cuadrado 1080x1080 en PNG,
-// consistente entre Gemini y OpenAI — el diseño (texto, logo, insignias) ya
-// lo compuso la IA.
+// La IA ya no dibuja nada más que la fotografía — aquí solo normalizamos
+// tamaño/formato a un cuadrado 1080x1080 en PNG, consistente entre Gemini y
+// OpenAI, listo para usarse como fondo en el editor.
 async function finalizeImage(rawDataUri) {
   const buffer = dataUriToBuffer(rawDataUri);
   if (!buffer) return rawDataUri;
@@ -297,9 +228,9 @@ const ENGINE_LABELS = {
 };
 
 /**
- * Genera un diseño candidato por CADA IA que esté configurada (en paralelo),
- * para que el negocio pueda comparar y elegir con cuál quedarse antes de
- * revisarlo/corregirlo en el editor.
+ * Genera un fondo candidato por CADA IA que esté configurada (en paralelo),
+ * para que el negocio pueda comparar y elegir con cuál fondo quedarse antes
+ * de personalizarlo en el editor.
  *
  * @param {object} brief - ver generateImage()
  * @returns {Promise<Array<{engine: string, label: string, dataUri: string}>>}
