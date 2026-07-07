@@ -21,6 +21,15 @@ const { requireBusinessAuth, requireAdminAuth } = require("./services/middleware
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Render (y la mayoría de hostings) ponen la app detrás de un proxy que
+// termina el HTTPS y le reenvía la petición a Express por HTTP interno. Sin
+// esto, Express no confía en el header X-Forwarded-Proto y req.protocol
+// devuelve "http" aunque el usuario esté en https — eso rompe cosas que
+// dependen de la URL exacta, como el redirect_uri que le mandamos a Facebook
+// OAuth (services/facebook.js / getFacebookRedirectUri), que debe coincidir
+// EXACTO con lo configurado en el dashboard de Meta.
+app.set("trust proxy", 1);
+
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
