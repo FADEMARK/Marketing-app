@@ -11,9 +11,11 @@
     <a href="/dashboard" class="back-link">&larr; Volver a mi panel</a>
     <h1>Nueva semana de contenido</h1>
     <p class="subtitle">
-      Dinos el tema y te armamos el copy de 7 publicaciones distintas (sin repetirse) para toda la
-      semana. Después subes tú el diseño de cada día y, en cuanto lo autorices, se publica solo en
-      Facebook en su fecha y hora — sin pasar por revisión de nuestro equipo.
+      Elige cuántos días quieres dejar programados. Si le das un tema, armamos el copy de cada
+      publicación sobre ese tema con ángulos distintos. Si lo dejas vacío, nosotros decidimos los
+      temas de cada día (promociones, tips, testimonios, etc.) según tu negocio. Después subes tú el
+      diseño de cada día y, en cuanto lo autorices, se publica solo en Facebook en su fecha y hora —
+      sin pasar por revisión de nuestro equipo.
     </p>
 
     <% if (error) { %>
@@ -21,8 +23,17 @@
     <% } %>
 
     <form method="POST" action="/week/new" class="card-form">
-      <label>Tema de la semana *
-        <input type="text" name="topic" required placeholder="Ej. Productos, Promoción de verano, Testimonios de clientes" value="<%= form.topic || '' %>" />
+      <label>Tema (opcional — si lo dejas vacío, nosotros elegimos los temas de cada día)
+        <input type="text" name="topic" placeholder="Ej. Productos, Promoción de verano, Testimonios de clientes" value="<%= form.topic || '' %>" />
+      </label>
+
+      <label>Duración
+        <select name="days">
+          <option value="7" selected>1 semana (7 días)</option>
+          <option value="14">2 semanas (14 días)</option>
+          <option value="15">15 días</option>
+          <option value="30">1 mes (30 días)</option>
+        </select>
       </label>
 
       <label>Tono de comunicación

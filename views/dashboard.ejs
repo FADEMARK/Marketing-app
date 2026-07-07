@@ -36,7 +36,7 @@
           <div class="campaign-grid" style="margin-top: 14px;">
             <% batchIds.forEach(function(id) { %>
               <a href="/week/<%= id %>" class="campaign-card">
-                <h3><%= weekBatches[id].topic %></h3>
+                <h3><%= weekBatches[id].topic || 'Varios temas' %></h3>
                 <p class="muted small"><%= weekBatches[id].count %> publicaciones</p>
               </a>
             <% }); %>

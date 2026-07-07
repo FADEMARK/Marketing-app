@@ -192,6 +192,21 @@ const WEEK_ANGLES = [
   "cierra la semana con un mensaje motivacional o de agradecimiento a la comunidad",
 ];
 
+// Cuando el negocio NO da un tema (modo "elige tú los temas"), rotamos por
+// estos tipos de contenido — mezcla típica de un calendario de marketing —
+// en vez de repetir siempre el mismo ángulo sobre un único tema.
+const AUTO_THEME_TYPES = [
+  { theme: "Promoción / oferta especial", angle: "presenta una promoción u oferta especial, con un incentivo claro para actuar ahora" },
+  { theme: "Tip útil", angle: "comparte un tip o consejo útil relacionado con lo que ofrece el negocio" },
+  { theme: "Testimonio / prueba social", angle: "usa prueba social o testimonio genérico (sin inventar nombres reales)" },
+  { theme: "Producto o servicio destacado", angle: "presenta o destaca un producto/servicio puntual del negocio" },
+  { theme: "Pregunta a la audiencia", angle: "haz una pregunta a la audiencia para generar comentarios/interacción" },
+  { theme: "Detrás de cámaras", angle: "muestra un vistazo \"detrás de cámaras\" del proceso o del equipo" },
+  { theme: "Dato curioso del sector", angle: "comparte un dato curioso o educativo relacionado con el giro del negocio" },
+  { theme: "Urgencia / últimos días", angle: "genera urgencia (cupo limitado, últimos días, etc., sin inventar fechas falsas)" },
+  { theme: "Agradecimiento a la comunidad", angle: "cierra con un mensaje motivacional o de agradecimiento a la comunidad" },
+];
+
 function fallbackGenerateWeekCopy({ topic, businessName, businessIndustry, tone, days = 7 }) {
   const toneOpeners = {
     Profesional: (t) => `Sobre ${t}: esto es lo que debes saber.`,
@@ -201,38 +216,66 @@ function fallbackGenerateWeekCopy({ topic, businessName, businessIndustry, tone,
     Inspirador: (t) => `${t}: otra forma de mejorar tu día a día.`,
   };
   const opener = toneOpeners[tone] || ((t) => `Sobre ${t}:`);
+  const hasTopic = Boolean(topic && topic.trim());
 
   return Array.from({ length: days }).map((_, i) => {
-    const angle = WEEK_ANGLES[i % WEEK_ANGLES.length];
-    const headline = `${topic}`.length > 40 ? `${topic}`.slice(0, 39).trim() + "…" : `${topic}`;
-    const caption = `${opener(topic)} ${angle.charAt(0).toUpperCase() + angle.slice(1)}.`.trim();
-    const baseWords = `${topic} ${businessIndustry || ""}`
+    const dayTheme = hasTopic ? topic : AUTO_THEME_TYPES[i % AUTO_THEME_TYPES.length].theme;
+    const angle = hasTopic
+      ? WEEK_ANGLES[i % WEEK_ANGLES.length]
+      : AUTO_THEME_TYPES[i % AUTO_THEME_TYPES.length].angle;
+    const subject = hasTopic ? topic : businessIndustry || businessName || "tu negocio";
+    const headline = `${dayTheme}`.length > 40 ? `${dayTheme}`.slice(0, 39).trim() + "…" : `${dayTheme}`;
+    const caption = `${opener(subject)} ${angle.charAt(0).toUpperCase() + angle.slice(1)}.`.trim();
+    const baseWords = `${dayTheme} ${businessIndustry || ""}`
       .split(/[,\s]+/)
       .filter((w) => w.length > 2)
       .slice(0, 6);
     const hashtags = Array.from(
       new Set(baseWords.map(slugifyHashtag).filter((h) => h.length > 1))
     ).join(" ");
-    return { headline, caption, hashtags };
+    return { theme: dayTheme, headline, caption, hashtags };
   });
 }
 
 function buildWeekPrompt({ topic, businessName, businessIndustry, tone, days }) {
-  return `Actúa como un estratega de contenido para redes sociales senior. Vas a armar el copy de ${days} publicaciones para UNA SEMANA de contenido, todas sobre el mismo tema, pero cada una con un ángulo distinto para que no se sientan repetidas entre sí.
+  const hasTopic = Boolean(topic && topic.trim());
 
-${businessName ? `Negocio: ${businessName}\n` : ""}${businessIndustry ? `Giro del negocio: ${businessIndustry}\n` : ""}Tema/eje de la semana: "${topic}".
+  if (hasTopic) {
+    return `Actúa como un estratega de contenido para redes sociales senior. Vas a armar el copy de ${days} publicaciones de contenido, todas sobre el mismo tema, pero cada una con un ángulo distinto para que no se sientan repetidas entre sí.
+
+${businessName ? `Negocio: ${businessName}\n` : ""}${businessIndustry ? `Giro del negocio: ${businessIndustry}\n` : ""}Tema/eje de las publicaciones: "${topic}".
 Tono: ${tone || "Cercano/Amigable"}.
 
-Ángulos sugeridos, uno por publicación (puedes ajustarlos si tiene más sentido, pero manténlos variados):
-${WEEK_ANGLES.slice(0, days).map((a, i) => `${i + 1}. ${a}`).join("\n")}
+Ángulos sugeridos, cíclicos si hay más publicaciones que ángulos (puedes ajustarlos si tiene más sentido, pero manténlos variados):
+${WEEK_ANGLES.map((a, i) => `${i + 1}. ${a}`).join("\n")}
 
 Para cada publicación genera:
+- "theme": el mismo tema "${topic}" (puedes agregar una coletilla corta del ángulo si ayuda, ej. "${topic} — oferta").
 - "headline": título corto (máximo 6 palabras) para usarse como texto grande.
 - "caption": copy corto y persuasivo, en español, bien redactado.
 - "hashtags": 3 a 5 hashtags relevantes.
 
-Responde ÚNICAMENTE con un JSON válido (sin texto adicional ni bloques de código) con este formato exacto, un array con exactamente ${days} elementos en el mismo orden que los ángulos:
-[{"headline":"...","caption":"...","hashtags":"#tag1 #tag2"}, ...]`;
+Responde ÚNICAMENTE con un JSON válido (sin texto adicional ni bloques de código) con este formato exacto, un array con exactamente ${days} elementos:
+[{"theme":"...","headline":"...","caption":"...","hashtags":"#tag1 #tag2"}, ...]`;
+  }
+
+  return `Actúa como un estratega de contenido para redes sociales senior. El negocio te pidió un calendario de ${days} publicaciones SIN darte un tema fijo — tú decides de qué habla cada una, mezclando tipos de contenido (no repitas siempre lo mismo) para que se vea como un calendario de marketing real y bien pensado.
+
+${businessName ? `Negocio: ${businessName}\n` : ""}${businessIndustry ? `Giro del negocio: ${businessIndustry}\n` : ""}Tono: ${tone || "Cercano/Amigable"}.
+
+Mezcla tipos de contenido apropiados para este negocio a lo largo de las ${days} publicaciones, por ejemplo (ajusta libremente según el giro del negocio):
+${AUTO_THEME_TYPES.map((t, i) => `${i + 1}. ${t.theme}: ${t.angle}`).join("\n")}
+
+Si ${days} es mayor al número de ejemplos de arriba, repite tipos pero varía el enfoque específico para que no se sientan iguales. No inventes fechas, precios, ni promociones específicas que no te dimos — mantente en generalidades creíbles para ese giro de negocio.
+
+Para cada publicación genera:
+- "theme": nombre corto del tema/tipo de contenido que elegiste para ese día (ej. "Promoción de temporada", "Tip de cuidado", "Testimonio").
+- "headline": título corto (máximo 6 palabras) para usarse como texto grande.
+- "caption": copy corto y persuasivo, en español, bien redactado.
+- "hashtags": 3 a 5 hashtags relevantes.
+
+Responde ÚNICAMENTE con un JSON válido (sin texto adicional ni bloques de código) con este formato exacto, un array con exactamente ${days} elementos:
+[{"theme":"...","headline":"...","caption":"...","hashtags":"#tag1 #tag2"}, ...]`;
 }
 
 function parseWeekJsonResponse(text, fallbackArgs) {
@@ -241,7 +284,8 @@ function parseWeekJsonResponse(text, fallbackArgs) {
     const parsed = JSON.parse(cleaned);
     if (Array.isArray(parsed) && parsed.length > 0) {
       return parsed.map((item, i) => ({
-        headline: item.headline || fallbackArgs.topic,
+        theme: item.theme || fallbackArgs.topic || `Publicación ${i + 1}`,
+        headline: item.headline || fallbackArgs.topic || `Publicación ${i + 1}`,
         caption: item.caption || "",
         hashtags: item.hashtags || "",
       }));

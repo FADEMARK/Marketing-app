@@ -15,6 +15,10 @@
       <span class="status-badge status-<%= campaign.status %>"><%= STATUS_LABELS[campaign.status] %></span>
     </div>
 
+    <% if (typeof fb_publish_error !== 'undefined' && fb_publish_error) { %>
+      <div class="alert alert-error">Facebook: <%= fb_publish_error %></div>
+    <% } %>
+
     <div class="detail-grid">
       <div class="detail-box">
         <h3>Tu brief</h3>
@@ -45,6 +49,19 @@
               ¿Quieres mover algo, cambiar un color o editar el texto? Vuelve al editor con todo tal
               como lo dejaste — no se gasta otra generación de IA.
             </p>
+          <% } %>
+
+          <% if (campaign.status !== 'publicado' && (campaign.plan === 'plus' || campaign.plan === 'fademarksuite')) { %>
+            <% if (campaign.fb_page_id) { %>
+              <form method="POST" action="/campaigns/<%= campaign.id %>/publish" style="margin-top: 10px;"
+                    onsubmit="return confirm('¿Publicar esta imagen y copy ahora mismo en tu página de Facebook?');">
+                <button type="submit" class="btn-primary full-width">📘 Publicar en Facebook ahora</button>
+              </form>
+            <% } else { %>
+              <p class="muted small" style="margin-top:10px;">
+                Para publicar directo desde aquí, primero <a href="/profile">conecta tu página de Facebook</a>.
+              </p>
+            <% } %>
           <% } %>
         <% } else if (campaign.canva_design_url) { %>
           <p><a href="<%= campaign.canva_design_url %>" target="_blank" rel="noopener">Ver borrador en Canva →</a></p>

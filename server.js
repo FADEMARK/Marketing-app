@@ -321,16 +321,19 @@ app.post("/week/new", requireBusinessAuth, async (req, res, next) => {
     }
 
     const { topic, tone, cta, start_date, post_time } = req.body;
-    if (!topic || !start_date) {
+    if (!start_date) {
       return res.render("week-new", {
-        error: "Por favor completa al menos el tema y la fecha de inicio.",
+        error: "Por favor indica al menos la fecha de inicio.",
         form: req.body,
       });
     }
 
-    const days = 7;
+    const requestedDays = parseInt(req.body.days, 10);
+    const days = Number.isFinite(requestedDays) ? Math.min(Math.max(requestedDays, 1), 30) : 7;
+    const hasTopic = Boolean(topic && topic.trim());
+
     const posts = await generateWeekCopy({
-      topic,
+      topic: hasTopic ? topic.trim() : "",
       businessName: business.name,
       businessIndustry: business.industry,
       tone: tone || "Cercano/Amigable",
@@ -348,9 +351,14 @@ app.post("/week/new", requireBusinessAuth, async (req, res, next) => {
     const weekBatchId = crypto.randomUUID();
     const time = /^\d{2}:\d{2}$/.test(post_time || "") ? post_time : "10:00";
     const [startYear, startMonth, startDay] = start_date.split("-").map(Number);
+    // Si el negocio no dio un tema fijo, cada publicación puede traer su propio
+    // tema (elegido por la IA); week_topic queda vacío para mostrar "Varios
+    // temas" en la vista, en vez de forzar un tema único que no aplica.
+    const weekTopicLabel = hasTopic ? topic.trim() : null;
 
     for (let i = 0; i < posts.length; i++) {
       const post = posts[i];
+      const dayTheme = post.theme || (hasTopic ? topic.trim() : `Publicación ${i + 1}`);
       const dayDate = new Date(startYear, startMonth - 1, startDay + i);
       const dateKey = dayDate.toISOString().slice(0, 10);
       const scheduledAt = new Date(`${dateKey}T${time}:00`);
@@ -365,8 +373,8 @@ app.post("/week/new", requireBusinessAuth, async (req, res, next) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,TRUE,$13,$14,$15)`,
         [
           req.session.businessId,
-          `Semana de contenido — ${topic}`,
-          topic,
+          `Semana de contenido — ${dayTheme}`,
+          dayTheme,
           post.caption,
           "Público general",
           tone || "Cercano/Amigable",
@@ -378,7 +386,7 @@ app.post("/week/new", requireBusinessAuth, async (req, res, next) => {
           post.headline,
           scheduledAt.toISOString(),
           weekBatchId,
-          topic,
+          weekTopicLabel,
         ]
       );
     }
@@ -397,7 +405,11 @@ app.get("/week/:batchId", requireBusinessAuth, async (req, res, next) => {
     );
     if (rows.length === 0) return res.status(404).send("Semana no encontrada.");
 
-    res.render("week-detail", { posts: rows, topic: rows[0].week_topic, batchId: req.params.batchId });
+    res.render("week-detail", {
+      posts: rows,
+      topic: rows[0].week_topic || "Varios temas (elegidos automáticamente)",
+      batchId: req.params.batchId,
+    });
   } catch (err) {
     next(err);
   }
@@ -826,7 +838,8 @@ function buildCampaignContext(campaign) {
 const CAMPAIGN_WITH_BUSINESS_SELECT = `
   SELECT campaigns.*, businesses.name AS business_name, businesses.industry, businesses.phone,
          businesses.address, businesses.doctor_name, businesses.brand_color_primary,
-         businesses.brand_color_secondary, businesses.logo_data, businesses.plan
+         businesses.brand_color_secondary, businesses.logo_data, businesses.plan,
+         businesses.fb_page_id, businesses.fb_page_name, businesses.fb_page_access_token
   FROM campaigns
   JOIN businesses ON businesses.id = campaigns.business_id
   WHERE campaigns.id = $1 AND campaigns.business_id = $2
@@ -875,9 +888,63 @@ app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
       };
     }
 
-    res.render("campaign-detail", { campaign, imagePreview, imageCandidates });
+    res.render("campaign-detail", { campaign, imagePreview, imageCandidates, fb_publish_error: req.query.fb_publish_error || null });
   } catch (err) {
     next(err);
+  }
+});
+
+// El propio negocio puede publicar directo, sin esperar a que el equipo
+// interno lo haga desde el panel admin (planes Plus/FadeMarkSuite). El panel
+// admin conserva su propio botón de publicar como respaldo/supervisión, pero
+// ya no es el único camino.
+app.post("/campaigns/:id/publish", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(CAMPAIGN_WITH_BUSINESS_SELECT, [
+      req.params.id,
+      req.session.businessId,
+    ]);
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).send("Campaña no encontrada.");
+
+    if (campaign.plan !== "plus" && campaign.plan !== "fademarksuite") {
+      return res.redirect(
+        `/campaigns/${req.params.id}?fb_publish_error=` +
+          encodeURIComponent("Publicar directo a Facebook es exclusivo de los planes Plus y FadeMarkSuite.")
+      );
+    }
+    if (!campaign.fb_page_id || !campaign.fb_page_access_token) {
+      return res.redirect(
+        `/campaigns/${req.params.id}?fb_publish_error=` +
+          encodeURIComponent("Primero conecta tu página de Facebook desde \"Mi negocio\".")
+      );
+    }
+    if (!campaign.final_image_data) {
+      return res.redirect(
+        `/campaigns/${req.params.id}?fb_publish_error=` +
+          encodeURIComponent("Todavía no hay una imagen final para publicar.")
+      );
+    }
+    if (campaign.status === STATUSES.PUBLICADO) {
+      return res.redirect(`/campaigns/${req.params.id}`);
+    }
+
+    const message = [campaign.ai_caption, campaign.ai_hashtags].filter(Boolean).join("\n\n");
+    const { postUrl } = await facebook.publishPhotoToPage({
+      pageId: campaign.fb_page_id,
+      pageAccessToken: campaign.fb_page_access_token,
+      imageDataUri: campaign.final_image_data,
+      message,
+    });
+
+    await pool.query(
+      "UPDATE campaigns SET status = $1, published_post_url = $2, updated_at = NOW() WHERE id = $3",
+      [STATUSES.PUBLICADO, postUrl, req.params.id]
+    );
+
+    res.redirect(`/campaigns/${req.params.id}`);
+  } catch (err) {
+    res.redirect(`/campaigns/${req.params.id}?fb_publish_error=` + encodeURIComponent(err.message));
   }
 });
 

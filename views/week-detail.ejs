@@ -28,6 +28,7 @@
             </span>
           </div>
           <span class="status-badge status-<%= p.status %>"><%= STATUS_LABELS[p.status] %></span>
+          <p class="muted small" style="margin: 2px 0 0;"><strong>Tema:</strong> <%= p.product_service %></p>
 
           <% if (p.final_image_data) { %>
             <img class="preview-image" src="<%= p.final_image_data %>" alt="Diseño día <%= i + 1 %>" />
