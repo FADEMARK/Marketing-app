@@ -119,8 +119,10 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
   color: var(--text);
 }
 .editor-toolbar button.tool-btn:hover { border-color: var(--primary); }
-.editor-toolbar .shape-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.editor-toolbar .shape-grid button { padding: 10px 4px; font-size: 1.1rem; }
+.editor-toolbar .shape-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.editor-toolbar .shape-grid button { padding: 10px 4px; font-size: 1.1rem; text-align: center; }
+.editor-toolbar .icon-btn svg { width: 20px; height: 20px; display: block; margin: 0 auto; }
+.editor-toolbar .icon-btn:hover svg { opacity: 0.8; }
 .editor-toolbar input[type="color"] { width: 100%; height: 32px; border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
 .editor-canvas-wrap {
   background: var(--card-bg);

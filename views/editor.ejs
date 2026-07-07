@@ -45,6 +45,45 @@
         </div>
 
         <div class="tool-group">
+          <h4>Íconos de contacto</h4>
+          <div class="shape-grid">
+            <button type="button" class="tool-btn icon-btn" data-icon="location" title="Ubicación / Dirección" style="color:#EA4335;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-icon="phone" title="Teléfono" style="color:#1877F2;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-icon="whatsapp" title="WhatsApp" style="color:#25D366;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z"/></svg>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-icon="mail" title="Correo" style="color:#1877F2;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+            </button>
+          </div>
+          <p class="muted small" style="margin-top:8px;">
+            Se agregan con el color típico de cada uno — puedes recolorearlos abajo si prefieres que combinen con tu marca.
+          </p>
+        </div>
+
+        <div class="tool-group">
+          <h4>Íconos de marketing</h4>
+          <div class="shape-grid">
+            <button type="button" class="tool-btn icon-btn" data-icon="tag" title="Etiqueta de precio / oferta" style="color:#F59E0B;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-icon="clock" title="Tiempo limitado" style="color:#111111;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-icon="bolt" title="Oferta relámpago" style="color:#F59E0B;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z"/></svg>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-icon="check" title="Garantía / beneficio" style="color:#22C55E;">
+              <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="tool-group">
           <h4>Logo</h4>
           <% if (editorData.logoDataUri) { %>
             <button type="button" class="tool-btn" id="btn-add-logo">+ Agregar logo</button>
@@ -213,6 +252,61 @@
       return new fabric.Polygon(points, { left: 200, top: 200, fill: color });
     }
 
+    // Íconos comunes en diseño de marketing (contacto y promociones), como
+    // rutas vectoriales (Material Icons, licencia Apache 2.0 — libres de usar).
+    // Se agregan con su color habitual, pero son formas normales: se pueden
+    // recolorear, mover, redimensionar y borrar igual que cualquier otra.
+    const ICONS = {
+      location: {
+        d: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
+        color: "#EA4335",
+      },
+      phone: {
+        d: "M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z",
+        color: "#1877F2",
+      },
+      whatsapp: {
+        d: "M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 9h12v2H6V9zm8 5H6v-2h8v2zm4-6H6V6h12v2z",
+        color: "#25D366",
+      },
+      mail: {
+        d: "M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z",
+        color: "#1877F2",
+      },
+      tag: {
+        d: "M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.41l9 9c.36.36.86.59 1.41.59.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z",
+        color: "#F59E0B",
+      },
+      clock: {
+        d: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z",
+        color: "#111111",
+      },
+      bolt: {
+        d: "M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.51l-.07.15C12.96 17.55 11 21 11 21z",
+        color: "#F59E0B",
+      },
+      check: {
+        d: "M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
+        color: "#22C55E",
+      },
+    };
+
+    function addIcon(key) {
+      const icon = ICONS[key];
+      if (!icon) return;
+      const path = new fabric.Path(icon.d, {
+        left: 180,
+        top: 180,
+        fill: icon.color,
+        scaleX: 2.2,
+        scaleY: 2.2,
+        shadow: "rgba(0,0,0,0.35) 0px 1px 4px",
+      });
+      canvas.add(path);
+      canvas.setActiveObject(path);
+      canvas.renderAll();
+    }
+
     document.getElementById("btn-add-text").addEventListener("click", function () {
       const color = document.getElementById("text-color").value;
       const size = parseInt(document.getElementById("text-size").value, 10);
@@ -222,6 +316,12 @@
     document.querySelectorAll("[data-shape]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         addShape(btn.getAttribute("data-shape"));
+      });
+    });
+
+    document.querySelectorAll("[data-icon]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        addIcon(btn.getAttribute("data-icon"));
       });
     });
 
