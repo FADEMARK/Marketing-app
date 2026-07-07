@@ -3,6 +3,12 @@
 <head>
   <title>Editor — <%= campaign.product_service %> — MarketingHub</title>
   <%- include('partials/head') %>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:wght@500;700;800&family=Poppins:wght@400;500;600;700&family=Oswald:wght@500;700&family=Playfair+Display:wght@700;900&family=Raleway:wght@400;700&family=Lato:wght@400;700&display=swap"
+    rel="stylesheet"
+  />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
 </head>
 <body>
@@ -14,17 +20,35 @@
     <div class="page-header">
       <h1>Personaliza tu imagen</h1>
     </div>
-    <p class="muted">
-      La IA ya generó el fondo. Agrega o ajusta tu texto, formas y logo, y guarda cuando quede como
-      quieres — es tuyo, muévelo y edítalo libremente.
-    </p>
+    <% if (typeof initialCanvasState !== 'undefined' && initialCanvasState) { %>
+      <p class="muted">
+        Recuperamos tu edición anterior tal como la dejaste — sigue ajustándola libremente, no se
+        gasta otra generación de IA por volver a entrar.
+      </p>
+    <% } else { %>
+      <p class="muted">
+        La IA ya generó el fondo. Agrega o ajusta tu texto, formas y logo, y guarda cuando quede como
+        quieres — es tuyo, muévelo y edítalo libremente.
+      </p>
+    <% } %>
 
     <div class="editor-layout">
       <aside class="editor-toolbar">
         <div class="tool-group">
           <h4>Texto</h4>
           <button type="button" class="tool-btn" id="btn-add-text">+ Agregar texto</button>
-          <label class="muted small">Color de texto</label>
+          <label class="muted small" style="display:block; margin-top:8px;">Tipo de letra</label>
+          <select id="text-font">
+            <option value="Montserrat, sans-serif">Montserrat</option>
+            <option value="Poppins, sans-serif">Poppins</option>
+            <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
+            <option value="Anton, sans-serif">Anton</option>
+            <option value="Oswald, sans-serif">Oswald</option>
+            <option value="'Playfair Display', serif">Playfair Display</option>
+            <option value="Raleway, sans-serif">Raleway</option>
+            <option value="Lato, sans-serif">Lato</option>
+          </select>
+          <label class="muted small" style="display:block; margin-top:8px;">Color de texto</label>
           <input type="color" id="text-color" value="#FFFFFF" />
           <label class="muted small" style="display:block; margin-top:8px;">Tamaño</label>
           <input type="range" id="text-size" min="14" max="120" value="36" style="width:100%;" />
@@ -84,6 +108,35 @@
         </div>
 
         <div class="tool-group">
+          <h4>Redes sociales</h4>
+          <div class="shape-grid">
+            <button type="button" class="tool-btn icon-btn" data-social="facebook" title="Facebook">
+              <span class="social-swatch" style="background:#1877F2; font-family:Georgia, serif; font-weight:700;">f</span>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-social="instagram" title="Instagram">
+              <span class="social-swatch" style="background:linear-gradient(45deg,#FEDA75,#FA7E1E,#D62976,#962FBF); border-radius:6px;"></span>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-social="tiktok" title="TikTok">
+              <span class="social-swatch" style="background:#010101; border-radius:6px;">♪</span>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-social="youtube" title="YouTube">
+              <span class="social-swatch" style="background:#FF0000; border-radius:6px;">
+                <span style="display:inline-block; width:0; height:0; border-top:5px solid transparent; border-bottom:5px solid transparent; border-left:8px solid #fff; margin-left:2px;"></span>
+              </span>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-social="x" title="X (Twitter)">
+              <span class="social-swatch" style="background:#000; border-radius:6px; font-weight:800;">X</span>
+            </button>
+            <button type="button" class="tool-btn icon-btn" data-social="linkedin" title="LinkedIn">
+              <span class="social-swatch" style="background:#0A66C2; border-radius:6px; font-weight:800; font-size:10px;">in</span>
+            </button>
+          </div>
+          <p class="muted small" style="margin-top:8px;">
+            Insignias listas para poner junto a tu usuario/handle de cada red.
+          </p>
+        </div>
+
+        <div class="tool-group">
           <h4>Logo</h4>
           <% if (editorData.logoDataUri) { %>
             <button type="button" class="tool-btn" id="btn-add-logo">+ Agregar logo</button>
@@ -116,6 +169,7 @@
   <script>
     const backgroundImageData = <%- JSON.stringify(backgroundImageData) %>;
     const editorData = <%- JSON.stringify(editorData) %>;
+    const initialCanvasState = <%- JSON.stringify(typeof initialCanvasState !== 'undefined' ? initialCanvasState : null) %>;
     const saveUrl = "/campaigns/<%= campaign.id %>/save-edited-image";
 
     const DISPLAY_SIZE = 540;
@@ -126,6 +180,30 @@
       height: DISPLAY_SIZE,
       preserveObjectStacking: true,
     });
+
+    // Tipografías de marketing (Google Fonts) que se pueden elegir para
+    // cualquier texto. Las precargamos antes de dibujar nada en el lienzo
+    // para que el primer render ya use la fuente correcta (si no, el canvas
+    // a veces dibuja con la fuente de respaldo del sistema).
+    const FONT_LOAD_SPECS = [
+      "700 40px Montserrat",
+      "600 40px Poppins",
+      "400 40px 'Bebas Neue'",
+      "400 40px Anton",
+      "600 40px Oswald",
+      "700 40px 'Playfair Display'",
+      "700 40px Raleway",
+      "700 40px Lato",
+    ];
+
+    function loadFonts() {
+      if (!document.fonts || !document.fonts.load) return Promise.resolve();
+      return Promise.all(
+        FONT_LOAD_SPECS.map(function (spec) {
+          return document.fonts.load(spec).catch(function () { return null; });
+        })
+      );
+    }
 
     function loadBackground() {
       fabric.Image.fromURL(backgroundImageData, function (img) {
@@ -140,13 +218,16 @@
 
     function addText(text, opts) {
       opts = opts || {};
+      const defaultFont = document.getElementById("text-font")
+        ? document.getElementById("text-font").value
+        : "Montserrat, sans-serif";
       const t = new fabric.Textbox(text, Object.assign({
         left: 40,
         top: 40,
         width: DISPLAY_SIZE - 80,
         fontSize: 36,
         fill: "#FFFFFF",
-        fontFamily: "Helvetica, Arial, sans-serif",
+        fontFamily: defaultFont,
         fontWeight: "600",
         textAlign: "center",
         shadow: "rgba(0,0,0,0.45) 0px 2px 6px",
@@ -157,22 +238,36 @@
     }
 
     // Precarga de texto con el post ya generado (recomendado) — el negocio
-    // puede mover, editar o borrar cualquiera de estos bloques.
+    // puede mover, editar o borrar cualquiera de estos bloques. Usa una
+    // combinación de tipografías típica en diseño de marketing: una fuente
+    // de impacto para el título, una legible para el cuerpo, y algo con
+    // peso para el llamado a la acción.
     function preloadContent() {
       let y = 36;
       if (editorData.headline) {
-        addText(editorData.headline, { top: y, fontSize: 44, fontWeight: "800" });
+        addText(editorData.headline, {
+          top: y,
+          fontSize: 46,
+          fontFamily: "Anton, sans-serif",
+          fontWeight: "400",
+        });
         y += 90;
       }
       if (editorData.keyMessage) {
-        addText(editorData.keyMessage, { top: y, fontSize: 26, fontWeight: "500" });
+        addText(editorData.keyMessage, {
+          top: y,
+          fontSize: 26,
+          fontFamily: "Poppins, sans-serif",
+          fontWeight: "500",
+        });
         y += 70;
       }
       if (editorData.cta) {
         addText(editorData.cta, {
           top: DISPLAY_SIZE - 130,
           fontSize: 28,
-          fontWeight: "700",
+          fontFamily: "Montserrat, sans-serif",
+          fontWeight: "800",
           fill: "#FFFFFF",
         });
       }
@@ -180,6 +275,7 @@
         addText(editorData.contactLine, {
           top: DISPLAY_SIZE - 70,
           fontSize: 18,
+          fontFamily: "Lato, sans-serif",
           fontWeight: "400",
         });
       }
@@ -189,6 +285,28 @@
       if (editorData.logoDataUri) {
         addLogo();
       }
+    }
+
+    // Reconstruye exactamente lo que el negocio dejó guardado la última vez
+    // (textos, formas, íconos, logo) sobre el fondo — así puede volver a
+    // editar sin tener que gastar otra generación de IA ni perder su trabajo.
+    function restoreCanvasState(jsonStr) {
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch (err) {
+        preloadContent();
+        return;
+      }
+      const objects = (parsed && parsed.objects) || [];
+      if (!objects.length) {
+        preloadContent();
+        return;
+      }
+      fabric.util.enlivenObjects(objects, function (enlivened) {
+        enlivened.forEach(function (obj) { canvas.add(obj); });
+        canvas.renderAll();
+      });
     }
 
     function addLogo() {
@@ -307,6 +425,84 @@
       canvas.renderAll();
     }
 
+    // Insignias de redes sociales para que el negocio marque dónde seguirlo
+    // (junto a su usuario/handle). Son formas simples armadas con
+    // rectángulos/círculos + una letra o símbolo — no son el archivo oficial
+    // de cada marca, pero se leen igual de claro y evitan depender de
+    // recursos externos con licencias restringidas.
+    const SOCIAL_BADGES = {
+      facebook: function () {
+        return new fabric.Group([
+          new fabric.Circle({ left: 0, top: 0, radius: 40, fill: "#1877F2" }),
+          new fabric.Text("f", {
+            left: 30, top: 10, fontSize: 54, fontWeight: "700",
+            fontFamily: "Georgia, 'Times New Roman', serif", fill: "#fff",
+          }),
+        ]);
+      },
+      instagram: function () {
+        return new fabric.Group([
+          new fabric.Rect({
+            left: 0, top: 0, width: 80, height: 80, rx: 20, ry: 20,
+            fill: new fabric.Gradient({
+              type: "linear",
+              coords: { x1: 0, y1: 80, x2: 80, y2: 0 },
+              colorStops: [
+                { offset: 0, color: "#FEDA75" },
+                { offset: 0.3, color: "#FA7E1E" },
+                { offset: 0.6, color: "#D62976" },
+                { offset: 1, color: "#962FBF" },
+              ],
+            }),
+          }),
+          new fabric.Circle({ left: 22, top: 22, radius: 16, fill: "transparent", stroke: "#fff", strokeWidth: 6 }),
+          new fabric.Circle({ left: 56, top: 12, radius: 4, fill: "#fff" }),
+        ]);
+      },
+      tiktok: function () {
+        return new fabric.Group([
+          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#010101" }),
+          new fabric.Text("♪", { left: 20, top: 8, fontSize: 46, fill: "#25F4EE" }),
+          new fabric.Text("♪", { left: 26, top: 14, fontSize: 46, fill: "#FE2C55" }),
+          new fabric.Text("♪", { left: 23, top: 11, fontSize: 46, fill: "#fff" }),
+        ]);
+      },
+      youtube: function () {
+        return new fabric.Group([
+          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 20, ry: 20, fill: "#FF0000" }),
+          new fabric.Polygon([{ x: 30, y: 22 }, { x: 30, y: 58 }, { x: 58, y: 40 }], { fill: "#fff" }),
+        ]);
+      },
+      x: function () {
+        return new fabric.Group([
+          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#000000" }),
+          new fabric.Text("X", {
+            left: 21, top: 12, fontSize: 50, fontWeight: "800",
+            fontFamily: "Helvetica, Arial, sans-serif", fill: "#fff",
+          }),
+        ]);
+      },
+      linkedin: function () {
+        return new fabric.Group([
+          new fabric.Rect({ left: 0, top: 0, width: 80, height: 80, rx: 16, ry: 16, fill: "#0A66C2" }),
+          new fabric.Text("in", {
+            left: 12, top: 22, fontSize: 34, fontWeight: "800",
+            fontFamily: "Arial, sans-serif", fill: "#fff",
+          }),
+        ]);
+      },
+    };
+
+    function addSocialBadge(key) {
+      const factory = SOCIAL_BADGES[key];
+      if (!factory) return;
+      const badge = factory();
+      badge.set({ left: 160, top: 160 });
+      canvas.add(badge);
+      canvas.setActiveObject(badge);
+      canvas.renderAll();
+    }
+
     document.getElementById("btn-add-text").addEventListener("click", function () {
       const color = document.getElementById("text-color").value;
       const size = parseInt(document.getElementById("text-size").value, 10);
@@ -322,6 +518,12 @@
     document.querySelectorAll("[data-icon]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         addIcon(btn.getAttribute("data-icon"));
+      });
+    });
+
+    document.querySelectorAll("[data-social]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        addSocialBadge(btn.getAttribute("data-social"));
       });
     });
 
@@ -341,13 +543,45 @@
       }
     });
 
+    document.getElementById("text-font").addEventListener("change", function (e) {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "textbox") {
+        obj.set("fontFamily", e.target.value);
+        canvas.renderAll();
+      }
+    });
+
     document.getElementById("shape-color").addEventListener("input", function (e) {
       const obj = canvas.getActiveObject();
-      if (obj && obj.type !== "textbox" && obj.type !== "image") {
+      if (obj && obj.type !== "textbox" && obj.type !== "image" && obj.type !== "group") {
         obj.set("fill", e.target.value);
         canvas.renderAll();
       }
     });
+
+    // Al seleccionar un objeto existente, refleja sus valores reales en los
+    // controles (color, tamaño, fuente) — así no parece que el control "no
+    // hace nada" cuando en realidad estaba desincronizado con la selección.
+    function syncControlsToSelection() {
+      const obj = canvas.getActiveObject();
+      if (!obj) return;
+      if (obj.type === "textbox") {
+        if (typeof obj.fill === "string" && obj.fill.startsWith("#")) {
+          document.getElementById("text-color").value = obj.fill;
+        }
+        document.getElementById("text-size").value = Math.round(obj.fontSize || 36);
+        const fontSelect = document.getElementById("text-font");
+        if (obj.fontFamily && Array.from(fontSelect.options).some((o) => o.value === obj.fontFamily)) {
+          fontSelect.value = obj.fontFamily;
+        }
+      } else if (obj.type !== "image" && obj.type !== "group") {
+        if (typeof obj.fill === "string" && obj.fill.startsWith("#")) {
+          document.getElementById("shape-color").value = obj.fill;
+        }
+      }
+    }
+    canvas.on("selection:created", syncControlsToSelection);
+    canvas.on("selection:updated", syncControlsToSelection);
 
     document.getElementById("btn-add-logo").addEventListener("click", addLogo);
 
@@ -378,13 +612,20 @@
         multiplier: EXPORT_SIZE / DISPLAY_SIZE,
       });
 
+      // Guardamos también el estado editable (textos/formas/íconos/logo) sin
+      // el fondo — así, si el negocio vuelve a entrar al editor, se le
+      // devuelve exactamente lo que dejó, sin gastar otra generación de IA.
+      const stateJson = canvas.toJSON();
+      delete stateJson.backgroundImage;
+      const canvasStateStr = JSON.stringify(stateJson);
+
       const statusEl = document.getElementById("save-status");
       statusEl.textContent = "Guardando...";
 
       fetch(saveUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl }),
+        body: JSON.stringify({ image: dataUrl, canvasState: canvasStateStr }),
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {
@@ -400,8 +641,14 @@
         });
     });
 
-    loadBackground();
-    preloadContent();
+    loadFonts().then(function () {
+      loadBackground();
+      if (initialCanvasState) {
+        restoreCanvasState(initialCanvasState);
+      } else {
+        preloadContent();
+      }
+    });
   </script>
 </body>
 </html>

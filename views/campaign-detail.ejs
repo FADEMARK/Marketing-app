@@ -37,6 +37,15 @@
               de aprobarla/publicarla. Puede cambiar un poco antes de la versión final.
             </p>
           <% } %>
+          <% if (campaign.background_image_data && campaign.status !== 'publicado') { %>
+            <a href="/campaigns/<%= campaign.id %>/editor" class="btn-secondary full-width" style="display:block; text-align:center; margin-top:10px;">
+              ✎ Editar de nuevo
+            </a>
+            <p class="muted small" style="margin-top:6px;">
+              ¿Algo no quedó bien? Vuelve al editor con todo tal como lo dejaste — no se gasta otra
+              generación de IA, solo ajustas lo que ya tienes.
+            </p>
+          <% } %>
         <% } else if (campaign.canva_design_url) { %>
           <p><a href="<%= campaign.canva_design_url %>" target="_blank" rel="noopener">Ver borrador en Canva →</a></p>
         <% } else if (campaign.background_image_data) { %>

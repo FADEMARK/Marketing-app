@@ -23,11 +23,13 @@ const PORT = process.env.PORT || 3000;
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
-app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 // Límite más alto de lo normal: el editor de imágenes manda la imagen final
-// ya exportada como PNG en base64 dentro del body JSON (puede pesar unos
-// cuantos MB en una pieza de 1080x1080).
-app.use(express.json({ limit: "15mb" }));
+// ya exportada como PNG en base64, MÁS el estado editable del lienzo
+// (canvasState — textos, formas, íconos, logo) para poder reabrir el editor
+// después sin gastar otra generación de IA. Entre ambas cosas puede pesar
+// varios MB en una pieza de 1080x1080.
+app.use(express.json({ limit: "20mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 app.use(
   session({
@@ -761,6 +763,12 @@ app.get("/campaigns/:id/editor", requireBusinessAuth, async (req, res, next) => 
     res.render("editor", {
       campaign,
       backgroundImageData: campaign.background_image_data,
+      // Si el negocio ya había editado esta imagen antes, le regresamos
+      // exactamente sus textos/formas/íconos/logo (canvas_state) para que
+      // pueda seguir ajustándolos — sin gastar otra generación de fondo con
+      // IA. Si nunca ha editado, arranca de la precarga (editorData) sobre
+      // el fondo tal cual salió de la IA.
+      initialCanvasState: campaign.canvas_state || null,
       editorData,
     });
   } catch (err) {
@@ -770,7 +778,7 @@ app.get("/campaigns/:id/editor", requireBusinessAuth, async (req, res, next) => 
 
 app.post("/campaigns/:id/save-edited-image", requireBusinessAuth, async (req, res, next) => {
   try {
-    const { image } = req.body;
+    const { image, canvasState } = req.body;
     if (!image || typeof image !== "string" || !image.startsWith("data:image/")) {
       return res.status(400).json({ error: "Imagen inválida." });
     }
@@ -784,12 +792,14 @@ app.post("/campaigns/:id/save-edited-image", requireBusinessAuth, async (req, re
     await pool.query(
       `UPDATE campaigns SET
         final_image_data = $1,
-        status = $2,
-        admin_notes = $3,
+        canvas_state = $2,
+        status = $3,
+        admin_notes = $4,
         updated_at = NOW()
-       WHERE id = $4`,
+       WHERE id = $5`,
       [
         image,
+        typeof canvasState === "string" ? canvasState : null,
         STATUSES.LISTO_PARA_APROBACION,
         "El negocio personalizó su imagen con el editor. Revísala antes de aprobar/publicar.",
         req.params.id,

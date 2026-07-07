@@ -78,6 +78,7 @@ async function init() {
       ai_headline TEXT,
       background_image_data TEXT,
       final_image_data TEXT,
+      canvas_state TEXT,
       image_candidates TEXT,
       published_post_url TEXT,
       admin_notes TEXT,
@@ -107,6 +108,11 @@ async function init() {
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS image_candidates TEXT;`);
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS ai_headline TEXT;`);
   await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS background_image_data TEXT;`);
+  // Guarda el estado editable del lienzo (textos, formas, íconos, logo — sin
+  // el fondo, que ya vive en background_image_data) para poder reabrir el
+  // editor más adelante y seguir ajustando el mismo diseño sin tener que
+  // generar un fondo nuevo con IA (eso es lo que realmente cuesta cuota).
+  await pool.query(`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS canvas_state TEXT;`);
   await pool.query(
     `ALTER TABLE businesses ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'estandar';`
   );
