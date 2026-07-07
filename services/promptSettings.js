@@ -13,11 +13,11 @@ const { pool } = require("../db/db");
 
 const SETTING_KEY = "image_prompt_template";
 
-const DEFAULT_TEMPLATE = `Eres un diseñador gráfico publicitario senior especializado en anuncios de alto impacto para redes sociales. {{modo_intro}} Debe verse como una pieza hecha por una agencia de marketing premium, no como una plantilla básica ni un anuncio genérico de internet. Fotorrealista, con buena iluminación, composición equilibrada y moderna — NO un ícono plano, NO un clipart, NO una ilustración vectorial genérica tipo stock, NO un dibujo de caricatura.
+const DEFAULT_TEMPLATE = `Eres un diseñador gráfico publicitario senior especializado en anuncios de alto impacto para redes sociales. {{modo_intro}} Debe verse como una pieza hecha por una agencia de marketing premium, no como una plantilla básica ni un anuncio genérico de internet. La fotografía dentro del diseño debe ser fotorrealista, con buena iluminación y composición moderna — NO un ícono plano, NO un clipart, NO una ilustración vectorial genérica tipo stock, NO un dibujo de caricatura (los elementos gráficos de apoyo como insignias, íconos o acentos sí pueden ser ilustrados).
 
 Nombre del negocio: {{nombre_negocio}}.
 Giro del negocio: {{giro_negocio}}.
-Concepto/mensaje de la publicación (para ambientar la escena, NO lo escribas como texto): "{{mensaje_clave}}".
+Concepto/mensaje de la publicación (debe aparecer destacado como texto dentro del diseño — el texto exacto a copiar se especifica más abajo): "{{mensaje_clave}}".
 Público objetivo de la escena: {{publico_objetivo}}.
 Tono visual: {{tono}}.
 

@@ -565,11 +565,12 @@ app.post(
 );
 
 // Arma, a partir de una fila de campaña + negocio (ya con JOIN), tanto el
-// "brief" que se le manda a la IA para el FONDO (aiBrief — ya no incluye
-// texto/CTA/contacto/logo, la IA solo genera la fotografía) como los datos
-// que el mini-editor usa para precargar el texto, formas y logo
-// (editorData). Centralizado aquí para que la vista previa, la generación
-// real y el editor usen siempre la misma información.
+// "brief" que se le manda a la IA (aiBrief — ahora incluye título, mensaje,
+// CTA, contacto y logo, porque la IA vuelve a componer el diseño COMPLETO,
+// no solo el fondo) como los datos que el mini-editor usa para precargar
+// texto/formas si el negocio lo pide (editorData). Centralizado aquí para
+// que la vista previa, la generación real y el editor usen siempre la misma
+// información.
 function buildCampaignContext(campaign) {
   const contactLine = [
     campaign.doctor_name || null,
@@ -588,9 +589,13 @@ function buildCampaignContext(campaign) {
     keywords: campaign.keywords,
     businessName: campaign.business_name,
     businessIndustry: campaign.industry,
+    headline: campaign.ai_headline,
     postCaption: campaign.ai_caption,
+    cta: campaign.cta,
+    contactLine,
     extraNotes: campaign.extra_notes,
     referenceImageDataUri: campaign.reference_image_data,
+    logoDataUri: campaign.logo_data,
     brandColors:
       campaign.brand_color_primary && campaign.brand_color_secondary
         ? `${campaign.brand_color_primary} y ${campaign.brand_color_secondary}`
@@ -659,7 +664,8 @@ app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
         hashtags: editorData.hashtags,
         allowOpenAI: campaign.plan === "plus",
         promptPreview: await aiImage.buildPrompt(aiBrief, {
-          referencePhotoAsInput: Boolean(campaign.reference_image_data),
+          hasLogo: Boolean(campaign.logo_data),
+          hasReferencePhoto: Boolean(campaign.reference_image_data),
         }),
       };
     }

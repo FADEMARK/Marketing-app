@@ -27,16 +27,28 @@
       </p>
     <% } else { %>
       <p class="muted">
-        La IA ya generó el fondo. Agrega o ajusta tu texto, formas y logo, y guarda cuando quede como
-        quieres — es tuyo, muévelo y edítalo libremente.
+        La IA ya generó el diseño completo (texto, logo e insignias incluidos). Revísalo con calma: si
+        alguna palabra salió mal escrita o alguna letra se ve rara, usa "Parche de corrección" para
+        taparla y escribe la palabra correcta encima — no hace falta generar de nuevo. También puedes
+        agregar formas, íconos o texto extra si quieres.
       </p>
     <% } %>
 
     <div class="editor-layout">
       <aside class="editor-toolbar">
+        <div class="tool-group" style="background: var(--bg); border: 1px solid var(--primary); border-radius: 8px; padding: 10px;">
+          <h4 style="color: var(--primary);">Parche de corrección</h4>
+          <button type="button" class="tool-btn" id="btn-color-patch">🩹 Corregir una palabra</button>
+          <p class="muted small" style="margin-top:6px;">
+            1) Clic aquí. 2) Clic sobre el diseño, cerca del error, para copiar ese color. 3) Mueve/ajusta
+            el parche hasta tapar el texto malo. 4) Agrega arriba un texto nuevo con la palabra correcta.
+          </p>
+        </div>
+
         <div class="tool-group">
           <h4>Texto</h4>
           <button type="button" class="tool-btn" id="btn-add-text">+ Agregar texto</button>
+          <button type="button" class="tool-btn" id="btn-add-post-texts">+ Agregar textos del post (título, mensaje, CTA, contacto)</button>
           <label class="muted small" style="display:block; margin-top:8px;">Tipo de letra</label>
           <select id="text-font">
             <option value="Montserrat, sans-serif">Montserrat</option>
@@ -237,12 +249,15 @@
       return t;
     }
 
-    // Precarga de texto con el post ya generado (recomendado) — el negocio
-    // puede mover, editar o borrar cualquiera de estos bloques. Usa una
-    // combinación de tipografías típica en diseño de marketing: una fuente
-    // de impacto para el título, una legible para el cuerpo, y algo con
-    // peso para el llamado a la acción.
-    function preloadContent() {
+    // La IA ya escribe el título/mensaje/CTA/contacto DENTRO del diseño, así
+    // que ya NO los precargamos automáticamente (duplicaría el texto). Esta
+    // función queda como una acción opcional ("+ Agregar textos del post")
+    // por si el negocio quiere agregar alguno de estos como texto editable
+    // extra — por ejemplo, para reforzar el CTA o agregarlo si la IA lo dejó
+    // fuera. Usa una combinación de tipografías típica en diseño de
+    // marketing: una fuente de impacto para el título, una legible para el
+    // cuerpo, y algo con peso para el llamado a la acción.
+    function addAllPostTexts() {
       let y = 36;
       if (editorData.headline) {
         addText(editorData.headline, {
@@ -281,28 +296,22 @@
       }
       canvas.discardActiveObject();
       canvas.renderAll();
-
-      if (editorData.logoDataUri) {
-        addLogo();
-      }
     }
 
     // Reconstruye exactamente lo que el negocio dejó guardado la última vez
-    // (textos, formas, íconos, logo) sobre el fondo — así puede volver a
-    // editar sin tener que gastar otra generación de IA ni perder su trabajo.
+    // (parches, textos, formas, íconos, logo) sobre el diseño — así puede
+    // volver a editar sin tener que gastar otra generación de IA ni perder
+    // su trabajo. Si nunca ha guardado nada, el lienzo arranca vacío sobre
+    // el diseño tal como lo entregó la IA (ver comentario de addAllPostTexts).
     function restoreCanvasState(jsonStr) {
       let parsed;
       try {
         parsed = JSON.parse(jsonStr);
       } catch (err) {
-        preloadContent();
         return;
       }
       const objects = (parsed && parsed.objects) || [];
-      if (!objects.length) {
-        preloadContent();
-        return;
-      }
+      if (!objects.length) return;
       fabric.util.enlivenObjects(objects, function (enlivened) {
         enlivened.forEach(function (obj) { canvas.add(obj); });
         canvas.renderAll();
@@ -509,6 +518,63 @@
       addText("Escribe aquí", { fill: color, fontSize: size, top: 200 });
     });
 
+    document.getElementById("btn-add-post-texts").addEventListener("click", function () {
+      addAllPostTexts();
+    });
+
+    // Herramienta de corrección: arma el flujo completo "clic para tomar el
+    // color de fondo → aparece un rectángulo de ese color listo para mover y
+    // agrandar" — así el negocio puede tapar una palabra mal escrita sin
+    // tener que adivinar qué color de fondo usar.
+    let colorPatchMode = false;
+    const statusEl = document.getElementById("save-status");
+
+    document.getElementById("btn-color-patch").addEventListener("click", function () {
+      colorPatchMode = true;
+      canvas.discardActiveObject();
+      canvas.renderAll();
+      canvas.defaultCursor = "crosshair";
+      canvas.hoverCursor = "crosshair";
+      if (statusEl) statusEl.textContent = "Haz clic sobre el diseño, junto al error, para tomar ese color…";
+    });
+
+    canvas.on("mouse:down", function (opt) {
+      if (!colorPatchMode) return;
+      const pointer = canvas.getPointer(opt.e);
+      let hex = "#FFFFFF";
+      try {
+        const ctx = canvas.lowerCanvasEl.getContext("2d");
+        const scaleX = canvas.lowerCanvasEl.width / canvas.getWidth();
+        const scaleY = canvas.lowerCanvasEl.height / canvas.getHeight();
+        const px = Math.max(0, Math.round(pointer.x * scaleX));
+        const py = Math.max(0, Math.round(pointer.y * scaleY));
+        const pixel = ctx.getImageData(px, py, 1, 1).data;
+        hex = "#" + [pixel[0], pixel[1], pixel[2]].map(function (v) {
+          return v.toString(16).padStart(2, "0");
+        }).join("");
+      } catch (err) {
+        // si por lo que sea no se puede leer el pixel, seguimos con blanco
+      }
+
+      const patch = new fabric.Rect({
+        left: pointer.x - 60,
+        top: pointer.y - 18,
+        width: 120,
+        height: 36,
+        fill: hex,
+      });
+      canvas.add(patch);
+      canvas.setActiveObject(patch);
+      canvas.renderAll();
+
+      colorPatchMode = false;
+      canvas.defaultCursor = "default";
+      canvas.hoverCursor = "move";
+      if (statusEl) {
+        statusEl.textContent = "Listo — ajusta el tamaño/posición del parche y agrega el texto correcto encima.";
+      }
+    });
+
     document.querySelectorAll("[data-shape]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         addShape(btn.getAttribute("data-shape"));
@@ -599,9 +665,10 @@
     });
 
     document.getElementById("btn-reset").addEventListener("click", function () {
-      if (!confirm("¿Borrar todo tu texto/formas y empezar de nuevo con el fondo original?")) return;
+      if (!confirm("¿Borrar todos tus parches/textos/formas agregados y volver al diseño tal como lo entregó la IA?")) return;
       canvas.getObjects().slice().forEach(function (o) { canvas.remove(o); });
-      preloadContent();
+      canvas.discardActiveObject();
+      canvas.renderAll();
     });
 
     document.getElementById("btn-save").addEventListener("click", function () {
@@ -645,9 +712,10 @@
       loadBackground();
       if (initialCanvasState) {
         restoreCanvasState(initialCanvasState);
-      } else {
-        preloadContent();
       }
+      // Si no hay estado guardado, el lienzo arranca vacío sobre el diseño
+      // que entregó la IA — ya trae su propio texto/logo/insignias. El
+      // negocio solo agrega algo encima si necesita corregir o reforzar.
     });
   </script>
 </body>

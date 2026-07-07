@@ -43,19 +43,20 @@
             </a>
             <p class="muted small" style="margin-top:6px;">
               ¿Algo no quedó bien? Vuelve al editor con todo tal como lo dejaste — no se gasta otra
-              generación de IA, solo ajustas lo que ya tienes.
+              generación de IA, solo corriges lo que haga falta.
             </p>
           <% } %>
         <% } else if (campaign.canva_design_url) { %>
           <p><a href="<%= campaign.canva_design_url %>" target="_blank" rel="noopener">Ver borrador en Canva →</a></p>
         <% } else if (campaign.background_image_data) { %>
           <div style="background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 16px;">
-            <h4 style="margin-top:0;">Fondo generado por IA</h4>
+            <h4 style="margin-top:0;">Diseño generado por IA</h4>
             <p class="muted small">
-              Este es solo el fondo — todavía falta agregarle tu texto, logo y formas. Usa el editor
-              para terminarlo.
+              Revísalo con calma, sobre todo el texto — si alguna palabra salió mal escrita o alguna
+              letra se ve rara, ábrelo en el editor y corrígela ahí mismo (no hace falta generar de
+              nuevo).
             </p>
-            <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Fondo generado" />
+            <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Diseño generado" />
 
             <% if (typeof imageCandidates !== 'undefined' && imageCandidates && imageCandidates.length > 1) { %>
               <p class="muted small" style="margin-top:12px;"><strong>Otras versiones generadas:</strong></p>
@@ -66,7 +67,7 @@
                     <p class="muted small" style="margin:4px 0;"><%= c.label %></p>
                     <form method="POST" action="/campaigns/<%= campaign.id %>/choose-background">
                       <input type="hidden" name="engine" value="<%= c.engine %>" />
-                      <button type="submit" class="btn-secondary">Usar este fondo</button>
+                      <button type="submit" class="btn-secondary">Usar esta versión</button>
                     </form>
                   </div>
                 <% }); %>
@@ -74,7 +75,7 @@
             <% } %>
 
             <a href="/campaigns/<%= campaign.id %>/editor" class="btn-primary full-width" style="display:block; text-align:center; margin-top:16px;">
-              Continuar en el editor →
+              Revisar y corregir en el editor →
             </a>
           </div>
         <% } else if (typeof imagePreview !== 'undefined' && imagePreview) { %>
