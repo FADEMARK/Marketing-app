@@ -46,31 +46,22 @@
       <% } %>
     </div>
 
-    <% if (typeof imageCandidates !== 'undefined' && imageCandidates.length > 0) { %>
+    <% if (campaign.background_image_data && !campaign.final_image_data) { %>
       <div class="detail-box">
-        <h3>Versiones generadas por IA</h3>
+        <h3>Fondo generado por IA (todavía sin editar)</h3>
         <p class="muted small">
-          Se generó una versión por cada IA disponible. Compáralas y elige la que se vea mejor —
-          esa quedará como la "Imagen final" para aprobar/publicar.
+          El negocio ya tiene este fondo pero aún no termina de personalizarlo en su editor
+          (texto, logo, formas). Cuando lo guarde, aparecerá aquí como "Imagen final".
         </p>
-        <div class="image-candidates" style="display:flex; gap:16px; flex-wrap:wrap;">
-          <% imageCandidates.forEach(function(candidate) { %>
-            <% var isActive = candidate.dataUri === campaign.final_image_data; %>
-            <div class="image-candidate" style="flex:1; min-width:220px; max-width:320px;">
-              <img class="preview-image" src="<%= candidate.dataUri %>" alt="Versión <%= candidate.label %>" />
-              <p class="muted small" style="text-align:center; margin:4px 0;">
-                <%= candidate.label %>
-                <% if (isActive) { %> — <strong>en uso</strong><% } %>
-              </p>
-              <form method="POST" action="/admin/campaigns/<%= campaign.id %>/choose-image">
-                <input type="hidden" name="engine" value="<%= candidate.engine %>" />
-                <button type="submit" class="btn-primary full-width" <%= isActive ? 'disabled' : '' %>>
-                  <%= isActive ? 'Ya es la imagen final' : 'Usar esta' %>
-                </button>
-              </form>
-            </div>
-          <% }); %>
-        </div>
+        <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Fondo generado" />
+        <% if (typeof imageCandidates !== 'undefined' && imageCandidates.length > 1) { %>
+          <p class="muted small" style="margin-top:10px;"><strong>Otras versiones de fondo generadas:</strong></p>
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <% imageCandidates.forEach(function(candidate) { %>
+              <img src="<%= candidate.dataUri %>" alt="<%= candidate.label %>" style="width:110px; height:110px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" title="<%= candidate.label %>" />
+            <% }); %>
+          </div>
+        <% } %>
       </div>
     <% } %>
 

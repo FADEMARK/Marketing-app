@@ -23,8 +23,11 @@ const PORT = process.env.PORT || 3000;
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
+// Límite más alto de lo normal: el editor de imágenes manda la imagen final
+// ya exportada como PNG en base64 dentro del body JSON (puede pesar unos
+// cuantos MB en una pieza de 1080x1080).
+app.use(express.json({ limit: "15mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 app.use(
   session({
@@ -559,11 +562,13 @@ app.post(
   }
 );
 
-// Arma, a partir de una fila de campaña + negocio (ya con JOIN), el mismo
-// objeto "brief" que se le manda a aiImage.generateImageCandidates(). Se usa
-// tanto para la vista previa (mostrar qué se va a mandar) como para la
-// generación real, garantizando que ambas vean exactamente lo mismo.
-function buildImageBriefFromCampaign(campaign) {
+// Arma, a partir de una fila de campaña + negocio (ya con JOIN), tanto el
+// "brief" que se le manda a la IA para el FONDO (aiBrief — ya no incluye
+// texto/CTA/contacto/logo, la IA solo genera la fotografía) como los datos
+// que el mini-editor usa para precargar el texto, formas y logo
+// (editorData). Centralizado aquí para que la vista previa, la generación
+// real y el editor usen siempre la misma información.
+function buildCampaignContext(campaign) {
   const contactLine = [
     campaign.doctor_name || null,
     campaign.phone ? `Tel: ${campaign.phone}` : null,
@@ -572,34 +577,37 @@ function buildImageBriefFromCampaign(campaign) {
     .filter(Boolean)
     .join(" | ");
 
-  return {
-    brief: {
-      objective: campaign.objective,
-      product_service: campaign.product_service,
-      key_message: campaign.key_message,
-      target_audience: campaign.target_audience,
-      tone: campaign.tone,
-      cta: campaign.cta,
-      keywords: campaign.keywords,
-      businessName: campaign.business_name,
-      businessIndustry: campaign.industry,
-      businessDoctorName: campaign.doctor_name,
-      headline: campaign.ai_headline,
-      hashtags: campaign.ai_hashtags,
-      postCaption: campaign.ai_caption,
-      extraNotes: campaign.extra_notes,
-      referenceImageDataUri: campaign.reference_image_data,
-      brandColors:
-        campaign.brand_color_primary && campaign.brand_color_secondary
-          ? `${campaign.brand_color_primary} y ${campaign.brand_color_secondary}`
-          : null,
-      brandColorPrimary: campaign.brand_color_primary,
-      brandColorSecondary: campaign.brand_color_secondary,
-      logoDataUri: campaign.logo_data,
-      contactLine,
-    },
-    contactLine,
+  const aiBrief = {
+    objective: campaign.objective,
+    product_service: campaign.product_service,
+    key_message: campaign.key_message,
+    target_audience: campaign.target_audience,
+    tone: campaign.tone,
+    keywords: campaign.keywords,
+    businessName: campaign.business_name,
+    businessIndustry: campaign.industry,
+    postCaption: campaign.ai_caption,
+    extraNotes: campaign.extra_notes,
+    referenceImageDataUri: campaign.reference_image_data,
+    brandColors:
+      campaign.brand_color_primary && campaign.brand_color_secondary
+        ? `${campaign.brand_color_primary} y ${campaign.brand_color_secondary}`
+        : null,
   };
+
+  const editorData = {
+    headline: campaign.ai_headline || campaign.product_service,
+    postCaption: campaign.ai_caption,
+    keyMessage: campaign.key_message,
+    cta: campaign.cta,
+    hashtags: campaign.ai_hashtags,
+    contactLine,
+    logoDataUri: campaign.logo_data,
+    brandColorPrimary: campaign.brand_color_primary || "#1877F2",
+    brandColorSecondary: campaign.brand_color_secondary || "#0B0B0B",
+  };
+
+  return { aiBrief, editorData, contactLine };
 }
 
 const CAMPAIGN_WITH_BUSINESS_SELECT = `
@@ -621,29 +629,40 @@ app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
 
     if (!campaign) return res.status(404).send("Campaña no encontrada.");
 
-    // Si todavía no hay imagen ni diseño de Canva, y sí hay IA de imagen
-    // configurada, armamos la vista previa de lo que se le mandará a la IA
-    // (para que el negocio la revise antes de generar).
-    let imagePreview = null;
-    const needsImageStep =
-      !campaign.final_image_data && !campaign.canva_design_url && aiImage.isConfigured();
+    let imageCandidates = [];
+    if (campaign.image_candidates) {
+      try {
+        imageCandidates = JSON.parse(campaign.image_candidates);
+      } catch (err) {
+        console.error("[campaigns] No se pudo parsear image_candidates:", err.message);
+      }
+    }
 
-    if (needsImageStep) {
-      const { brief, contactLine } = buildImageBriefFromCampaign(campaign);
+    // Si todavía no hay fondo generado ni diseño de Canva, y sí hay IA de
+    // imagen configurada, armamos la vista previa de lo que se le mandará a
+    // la IA (para que el negocio la revise antes de generar).
+    let imagePreview = null;
+    const needsBackgroundStep =
+      !campaign.background_image_data && !campaign.canva_design_url && aiImage.isConfigured();
+
+    if (needsBackgroundStep) {
+      const { aiBrief, editorData } = buildCampaignContext(campaign);
       imagePreview = {
-        logoDataUri: campaign.logo_data,
-        contactLine,
+        logoDataUri: editorData.logoDataUri,
+        contactLine: editorData.contactLine,
         businessIndustry: campaign.industry,
-        headline: campaign.ai_headline,
-        postCaption: campaign.ai_caption,
-        cta: campaign.cta,
-        hashtags: campaign.ai_hashtags,
+        headline: editorData.headline,
+        postCaption: editorData.postCaption,
+        cta: editorData.cta,
+        hashtags: editorData.hashtags,
         allowOpenAI: campaign.plan === "plus",
-        promptPreview: await aiImage.buildPrompt(brief, { writeTextDirectly: true }),
+        promptPreview: await aiImage.buildPrompt(aiBrief, {
+          referencePhotoAsInput: Boolean(campaign.reference_image_data),
+        }),
       };
     }
 
-    res.render("campaign-detail", { campaign, imagePreview });
+    res.render("campaign-detail", { campaign, imagePreview, imageCandidates });
   } catch (err) {
     next(err);
   }
@@ -662,37 +681,122 @@ app.post("/campaigns/:id/generate-image", requireBusinessAuth, async (req, res, 
       return res.redirect(`/campaigns/${campaign.id}`);
     }
 
-    const { brief } = buildImageBriefFromCampaign(campaign);
+    const { aiBrief } = buildCampaignContext(campaign);
     const allowOpenAI = campaign.plan === "plus";
 
-    const imageCandidates = await aiImage.generateImageCandidates(brief, { allowOpenAI });
+    // La IA ahora solo genera el FONDO (sin texto/logo) — el negocio lo
+    // personaliza después en el editor.
+    const candidates = await aiImage.generateImageCandidates(aiBrief, { allowOpenAI });
 
-    const finalImageData = imageCandidates[0]?.dataUri || null;
-    const newStatus = finalImageData ? STATUSES.LISTO_PARA_APROBACION : campaign.status;
-    const adminNote = imageCandidates.length
-      ? imageCandidates.length > 1
-        ? "Se generaron varias versiones con distintas IAs. Elige la que se vea mejor antes de aprobar/publicar."
-        : "Imagen generada automáticamente por IA. Revísala (y ajústala si hace falta) antes de aprobar/publicar."
-      : campaign.admin_notes;
+    const backgroundImageData = candidates[0]?.dataUri || null;
+    const newStatus = backgroundImageData ? STATUSES.EN_DISENO : campaign.status;
 
     await pool.query(
       `UPDATE campaigns SET
-        final_image_data = $1,
+        background_image_data = $1,
         image_candidates = $2,
         status = $3,
-        admin_notes = $4,
         updated_at = NOW()
-       WHERE id = $5`,
+       WHERE id = $4`,
       [
-        finalImageData,
-        imageCandidates.length ? JSON.stringify(imageCandidates) : null,
+        backgroundImageData,
+        candidates.length ? JSON.stringify(candidates) : null,
         newStatus,
-        adminNote,
         campaign.id,
       ]
     );
 
     res.redirect(`/campaigns/${campaign.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/campaigns/:id/choose-background", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { engine } = req.body;
+    const { rows } = await pool.query(
+      "SELECT image_candidates FROM campaigns WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).send("Campaña no encontrada.");
+
+    let candidates = [];
+    try {
+      candidates = JSON.parse(campaign.image_candidates || "[]");
+    } catch (err) {
+      candidates = [];
+    }
+
+    const chosen = candidates.find((c) => c.engine === engine);
+    if (chosen) {
+      await pool.query(
+        "UPDATE campaigns SET background_image_data = $1, updated_at = NOW() WHERE id = $2 AND business_id = $3",
+        [chosen.dataUri, req.params.id, req.session.businessId]
+      );
+    }
+
+    res.redirect(`/campaigns/${req.params.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/campaigns/:id/editor", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(CAMPAIGN_WITH_BUSINESS_SELECT, [
+      req.params.id,
+      req.session.businessId,
+    ]);
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).send("Campaña no encontrada.");
+
+    if (!campaign.background_image_data) {
+      return res.redirect(`/campaigns/${campaign.id}`);
+    }
+
+    const { editorData } = buildCampaignContext(campaign);
+
+    res.render("editor", {
+      campaign,
+      backgroundImageData: campaign.background_image_data,
+      editorData,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/campaigns/:id/save-edited-image", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { image } = req.body;
+    if (!image || typeof image !== "string" || !image.startsWith("data:image/")) {
+      return res.status(400).json({ error: "Imagen inválida." });
+    }
+
+    const { rows } = await pool.query(
+      "SELECT id FROM campaigns WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    if (!rows[0]) return res.status(404).json({ error: "Campaña no encontrada." });
+
+    await pool.query(
+      `UPDATE campaigns SET
+        final_image_data = $1,
+        status = $2,
+        admin_notes = $3,
+        updated_at = NOW()
+       WHERE id = $4`,
+      [
+        image,
+        STATUSES.LISTO_PARA_APROBACION,
+        "El negocio personalizó su imagen con el editor. Revísala antes de aprobar/publicar.",
+        req.params.id,
+      ]
+    );
+
+    res.json({ ok: true, redirect: `/campaigns/${req.params.id}` });
   } catch (err) {
     next(err);
   }
@@ -939,35 +1043,11 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
   }
 });
 
-app.post("/admin/campaigns/:id/choose-image", requireAdminAuth, async (req, res, next) => {
-  try {
-    const { engine } = req.body;
-    const { rows } = await pool.query("SELECT image_candidates FROM campaigns WHERE id = $1", [
-      req.params.id,
-    ]);
-    const campaign = rows[0];
-    if (!campaign) return res.status(404).send("Campaña no encontrada.");
-
-    let imageCandidates = [];
-    try {
-      imageCandidates = JSON.parse(campaign.image_candidates || "[]");
-    } catch (err) {
-      imageCandidates = [];
-    }
-
-    const chosen = imageCandidates.find((c) => c.engine === engine);
-    if (chosen) {
-      await pool.query(
-        "UPDATE campaigns SET final_image_data = $1, updated_at = NOW() WHERE id = $2",
-        [chosen.dataUri, req.params.id]
-      );
-    }
-
-    res.redirect(`/admin/campaigns/${req.params.id}`);
-  } catch (err) {
-    next(err);
-  }
-});
+// Nota: ya no existe /admin/campaigns/:id/choose-image. Con el nuevo flujo,
+// image_candidates son solo FONDOS (sin texto/logo) y quien elige entre ellos
+// es el propio negocio (ver POST /campaigns/:id/choose-background). Si el
+// admin sobreescribiera final_image_data con un candidato crudo, borraría el
+// trabajo de edición que el negocio ya hizo en el editor.
 
 app.post("/admin/campaigns/:id/publish-to-facebook", requireAdminAuth, async (req, res, next) => {
   try {

@@ -134,11 +134,13 @@ Si defines ambas claves, la app usa Gemini primero y solo recurre a OpenAI si Ge
 
 ### Cómo se comporta con cualquiera de las dos
 
-Desde que agregues la clave, cada publicación nueva llega al panel admin ya con: copy redactado, hashtags, y una imagen generada por IA lista para revisar — el estado pasa directo a "Listo para aprobación" en vez de "En diseño".
+El flujo actual tiene 3 pasos, pensado para que el negocio tenga control total y rápido sobre el resultado final, sin depender de que la IA acierte con texto o logos (algo que los modelos de imagen todavía no hacen de forma confiable):
 
-Importante: el cliente **no ve** la imagen ni el copy hasta que tu equipo cambie el estado a "Aprobado" o "Publicado" desde el panel admin — así siempre hay una revisión humana antes de que el cliente vea el resultado (la IA ayuda con el trabajo pesado, tu equipo se queda con el control de calidad).
+1. **Copy**: al enviar el brief, la IA redacta de inmediato el título, el post/caption y los hashtags (esto ya lo ve el negocio en su panel).
+2. **Fondo**: desde la página de la campaña, el negocio revisa qué se le va a mandar a la IA y da clic en "Generar imagen ahora". La IA entrega **solo el fondo** — una fotografía/escena limpia, profesional, **sin ningún texto, logo, botón ni letrero** — porque escribir texto legible dentro de la imagen es justo lo que más falla (letras cortadas, botones duplicados, datos inventados). Si hay más de un motor configurado (Gemini + OpenAI en plan Plus), se generan ambas versiones y el negocio elige con cuál quedarse.
+3. **Editor**: con el fondo elegido, el negocio pasa a un mini-editor en el navegador (`/campaigns/:id/editor`, basado en Fabric.js) donde agrega su propio texto (precargado con el título/mensaje/CTA/contacto que la IA ya redactó, listo para mover o editar), su logo real, y autoformas (rectángulos, círculos, líneas, flechas, estrellas/insignias) con los colores que quiera. Al dar "Guardar y continuar" se exporta un PNG final que queda como la imagen de la campaña.
 
-Ten en cuenta: los modelos de generación de imagen todavía no escriben texto de forma confiable, así que la imagen se genera **sin texto superpuesto** (solo el elemento visual); el copy/CTA se maneja aparte como el texto del post. Si necesitas texto dentro de la imagen (como un banner con precio), tu equipo puede editarla en Canva/Photoshop antes de aprobarla.
+El negocio ve cada uno de estos pasos de inmediato (no espera aprobación para verlos) — pero la imagen final solo se publica en Facebook después de que tu equipo la revise y la apruebe desde el panel admin.
 
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Editor — <%= campaign.product_service %> — MarketingHub</title>
+  <%- include('partials/head') %>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <a href="/campaigns/<%= campaign.id %>" class="back-link">&larr; Volver a la campaña</a>
+
+    <div class="page-header">
+      <h1>Personaliza tu imagen</h1>
+    </div>
+    <p class="muted">
+      La IA ya generó el fondo. Agrega o ajusta tu texto, formas y logo, y guarda cuando quede como
+      quieres — es tuyo, muévelo y edítalo libremente.
+    </p>
+
+    <div class="editor-layout">
+      <aside class="editor-toolbar">
+        <div class="tool-group">
+          <h4>Texto</h4>
+          <button type="button" class="tool-btn" id="btn-add-text">+ Agregar texto</button>
+          <label class="muted small">Color de texto</label>
+          <input type="color" id="text-color" value="#FFFFFF" />
+          <label class="muted small" style="display:block; margin-top:8px;">Tamaño</label>
+          <input type="range" id="text-size" min="14" max="120" value="36" style="width:100%;" />
+        </div>
+
+        <div class="tool-group">
+          <h4>Autoformas</h4>
+          <div class="shape-grid">
+            <button type="button" class="tool-btn" data-shape="rect" title="Rectángulo">▭</button>
+            <button type="button" class="tool-btn" data-shape="rrect" title="Rectángulo redondeado">▢</button>
+            <button type="button" class="tool-btn" data-shape="circle" title="Círculo / óvalo">◯</button>
+            <button type="button" class="tool-btn" data-shape="line" title="Línea">╱</button>
+            <button type="button" class="tool-btn" data-shape="arrow" title="Flecha">➜</button>
+            <button type="button" class="tool-btn" data-shape="star" title="Estrella / insignia">★</button>
+          </div>
+          <label class="muted small" style="display:block; margin-top:10px;">Color de forma</label>
+          <input type="color" id="shape-color" value="<%= editorData.brandColorPrimary %>" />
+        </div>
+
+        <div class="tool-group">
+          <h4>Logo</h4>
+          <% if (editorData.logoDataUri) { %>
+            <button type="button" class="tool-btn" id="btn-add-logo">+ Agregar logo</button>
+          <% } else { %>
+            <p class="muted small">No tienes un logo cargado. Súbelo desde "Mi negocio".</p>
+          <% } %>
+        </div>
+
+        <div class="tool-group">
+          <h4>Capas</h4>
+          <button type="button" class="tool-btn" id="btn-front">Traer al frente</button>
+          <button type="button" class="tool-btn" id="btn-back">Enviar atrás</button>
+          <button type="button" class="tool-btn" id="btn-delete">Eliminar seleccionado</button>
+        </div>
+      </aside>
+
+      <div>
+        <div class="editor-canvas-wrap">
+          <canvas id="editor-canvas" width="540" height="540"></canvas>
+        </div>
+        <div class="editor-actions">
+          <button type="button" class="btn-secondary" id="btn-reset">Empezar de nuevo</button>
+          <button type="button" class="btn-primary" id="btn-save">Guardar y continuar</button>
+        </div>
+        <p class="muted small" id="save-status" style="margin-top:8px;"></p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const backgroundImageData = <%- JSON.stringify(backgroundImageData) %>;
+    const editorData = <%- JSON.stringify(editorData) %>;
+    const saveUrl = "/campaigns/<%= campaign.id %>/save-edited-image";
+
+    const DISPLAY_SIZE = 540;
+    const EXPORT_SIZE = 1080;
+
+    const canvas = new fabric.Canvas("editor-canvas", {
+      width: DISPLAY_SIZE,
+      height: DISPLAY_SIZE,
+      preserveObjectStacking: true,
+    });
+
+    function loadBackground() {
+      fabric.Image.fromURL(backgroundImageData, function (img) {
+        img.scaleToWidth(DISPLAY_SIZE);
+        img.scaleToHeight(DISPLAY_SIZE);
+        canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+          originX: "left",
+          originY: "top",
+        });
+      });
+    }
+
+    function addText(text, opts) {
+      opts = opts || {};
+      const t = new fabric.Textbox(text, Object.assign({
+        left: 40,
+        top: 40,
+        width: DISPLAY_SIZE - 80,
+        fontSize: 36,
+        fill: "#FFFFFF",
+        fontFamily: "Helvetica, Arial, sans-serif",
+        fontWeight: "600",
+        textAlign: "center",
+        shadow: "rgba(0,0,0,0.45) 0px 2px 6px",
+      }, opts));
+      canvas.add(t);
+      canvas.setActiveObject(t);
+      return t;
+    }
+
+    // Precarga de texto con el post ya generado (recomendado) — el negocio
+    // puede mover, editar o borrar cualquiera de estos bloques.
+    function preloadContent() {
+      let y = 36;
+      if (editorData.headline) {
+        addText(editorData.headline, { top: y, fontSize: 44, fontWeight: "800" });
+        y += 90;
+      }
+      if (editorData.keyMessage) {
+        addText(editorData.keyMessage, { top: y, fontSize: 26, fontWeight: "500" });
+        y += 70;
+      }
+      if (editorData.cta) {
+        addText(editorData.cta, {
+          top: DISPLAY_SIZE - 130,
+          fontSize: 28,
+          fontWeight: "700",
+          fill: "#FFFFFF",
+        });
+      }
+      if (editorData.contactLine) {
+        addText(editorData.contactLine, {
+          top: DISPLAY_SIZE - 70,
+          fontSize: 18,
+          fontWeight: "400",
+        });
+      }
+      canvas.discardActiveObject();
+      canvas.renderAll();
+
+      if (editorData.logoDataUri) {
+        addLogo();
+      }
+    }
+
+    function addLogo() {
+      fabric.Image.fromURL(editorData.logoDataUri, function (img) {
+        img.scaleToWidth(110);
+        img.set({ left: DISPLAY_SIZE - 130, top: 20 });
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        canvas.renderAll();
+      });
+    }
+
+    function addShape(type) {
+      const color = document.getElementById("shape-color").value;
+      let shape;
+      switch (type) {
+        case "rect":
+          shape = new fabric.Rect({ left: 150, top: 150, width: 200, height: 120, fill: color });
+          break;
+        case "rrect":
+          shape = new fabric.Rect({ left: 150, top: 150, width: 200, height: 120, rx: 24, ry: 24, fill: color });
+          break;
+        case "circle":
+          shape = new fabric.Ellipse({ left: 150, top: 150, rx: 100, ry: 70, fill: color });
+          break;
+        case "line":
+          shape = new fabric.Line([50, 50, 250, 50], { stroke: color, strokeWidth: 6 });
+          break;
+        case "arrow":
+          shape = buildArrow(color);
+          break;
+        case "star":
+          shape = buildStar(color);
+          break;
+        default:
+          return;
+      }
+      canvas.add(shape);
+      canvas.setActiveObject(shape);
+      canvas.renderAll();
+    }
+
+    function buildArrow(color) {
+      const points = [
+        { x: 0, y: 20 }, { x: 120, y: 20 }, { x: 120, y: 0 }, { x: 170, y: 35 },
+        { x: 120, y: 70 }, { x: 120, y: 50 }, { x: 0, y: 50 },
+      ];
+      return new fabric.Polygon(points, { left: 150, top: 200, fill: color });
+    }
+
+    function buildStar(color) {
+      const spikes = 5;
+      const outerRadius = 60;
+      const innerRadius = 26;
+      const points = [];
+      for (let i = 0; i < spikes * 2; i++) {
+        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+        const angle = (Math.PI / spikes) * i - Math.PI / 2;
+        points.push({ x: outerRadius + radius * Math.cos(angle), y: outerRadius + radius * Math.sin(angle) });
+      }
+      return new fabric.Polygon(points, { left: 200, top: 200, fill: color });
+    }
+
+    document.getElementById("btn-add-text").addEventListener("click", function () {
+      const color = document.getElementById("text-color").value;
+      const size = parseInt(document.getElementById("text-size").value, 10);
+      addText("Escribe aquí", { fill: color, fontSize: size, top: 200 });
+    });
+
+    document.querySelectorAll("[data-shape]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        addShape(btn.getAttribute("data-shape"));
+      });
+    });
+
+    document.getElementById("text-color").addEventListener("input", function (e) {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "textbox") {
+        obj.set("fill", e.target.value);
+        canvas.renderAll();
+      }
+    });
+
+    document.getElementById("text-size").addEventListener("input", function (e) {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "textbox") {
+        obj.set("fontSize", parseInt(e.target.value, 10));
+        canvas.renderAll();
+      }
+    });
+
+    document.getElementById("shape-color").addEventListener("input", function (e) {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type !== "textbox" && obj.type !== "image") {
+        obj.set("fill", e.target.value);
+        canvas.renderAll();
+      }
+    });
+
+    document.getElementById("btn-add-logo").addEventListener("click", addLogo);
+
+    document.getElementById("btn-front").addEventListener("click", function () {
+      const obj = canvas.getActiveObject();
+      if (obj) canvas.bringToFront(obj);
+    });
+    document.getElementById("btn-back").addEventListener("click", function () {
+      const obj = canvas.getActiveObject();
+      if (obj) canvas.sendToBack(obj);
+    });
+    document.getElementById("btn-delete").addEventListener("click", function () {
+      const obj = canvas.getActiveObject();
+      if (obj) canvas.remove(obj);
+    });
+
+    document.getElementById("btn-reset").addEventListener("click", function () {
+      if (!confirm("¿Borrar todo tu texto/formas y empezar de nuevo con el fondo original?")) return;
+      canvas.getObjects().slice().forEach(function (o) { canvas.remove(o); });
+      preloadContent();
+    });
+
+    document.getElementById("btn-save").addEventListener("click", function () {
+      canvas.discardActiveObject();
+      canvas.renderAll();
+      const dataUrl = canvas.toDataURL({
+        format: "png",
+        multiplier: EXPORT_SIZE / DISPLAY_SIZE,
+      });
+
+      const statusEl = document.getElementById("save-status");
+      statusEl.textContent = "Guardando...";
+
+      fetch(saveUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: dataUrl }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.ok) {
+            statusEl.textContent = "¡Guardado!";
+            window.location.href = data.redirect;
+          } else {
+            statusEl.textContent = data.error || "Ocurrió un error al guardar.";
+          }
+        })
+        .catch(function () {
+          statusEl.textContent = "Ocurrió un error al guardar. Intenta de nuevo.";
+        });
+    });
+
+    loadBackground();
+    preloadContent();
+  </script>
+</body>
+</html>

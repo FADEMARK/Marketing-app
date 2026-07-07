@@ -39,6 +39,35 @@
           <% } %>
         <% } else if (campaign.canva_design_url) { %>
           <p><a href="<%= campaign.canva_design_url %>" target="_blank" rel="noopener">Ver borrador en Canva →</a></p>
+        <% } else if (campaign.background_image_data) { %>
+          <div style="background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 16px;">
+            <h4 style="margin-top:0;">Fondo generado por IA</h4>
+            <p class="muted small">
+              Este es solo el fondo — todavía falta agregarle tu texto, logo y formas. Usa el editor
+              para terminarlo.
+            </p>
+            <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Fondo generado" />
+
+            <% if (typeof imageCandidates !== 'undefined' && imageCandidates && imageCandidates.length > 1) { %>
+              <p class="muted small" style="margin-top:12px;"><strong>Otras versiones generadas:</strong></p>
+              <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                <% imageCandidates.forEach(function(c) { %>
+                  <div style="text-align:center;">
+                    <img src="<%= c.dataUri %>" alt="<%= c.label %>" style="width:120px; height:120px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />
+                    <p class="muted small" style="margin:4px 0;"><%= c.label %></p>
+                    <form method="POST" action="/campaigns/<%= campaign.id %>/choose-background">
+                      <input type="hidden" name="engine" value="<%= c.engine %>" />
+                      <button type="submit" class="btn-secondary">Usar este fondo</button>
+                    </form>
+                  </div>
+                <% }); %>
+              </div>
+            <% } %>
+
+            <a href="/campaigns/<%= campaign.id %>/editor" class="btn-primary full-width" style="display:block; text-align:center; margin-top:16px;">
+              Continuar en el editor →
+            </a>
+          </div>
         <% } else if (typeof imagePreview !== 'undefined' && imagePreview) { %>
           <div style="background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; padding: 16px;">
             <h4 style="margin-top:0;">Esto es lo que se va a mandar para crear tu imagen</h4>
