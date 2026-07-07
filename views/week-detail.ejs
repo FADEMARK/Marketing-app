@@ -18,6 +18,10 @@
       porque no pasa por revisión de nuestro equipo.
     </p>
 
+    <% if (typeof upload_error !== 'undefined' && upload_error) { %>
+      <div class="alert alert-error"><%= upload_error %></div>
+    <% } %>
+
     <div class="week-grid">
       <% posts.forEach(function(p, i) { %>
         <div class="week-day-card">

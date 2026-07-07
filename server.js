@@ -7,6 +7,7 @@ const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
 const bcrypt = require("bcryptjs");
 const multer = require("multer");
+const sharp = require("sharp");
 
 const { pool, init } = require("./db/db");
 const { STATUSES, STATUS_LABELS } = require("./services/status");
@@ -70,14 +71,38 @@ app.use((req, res, next) => {
 // Guardamos los archivos subidos en memoria y los convertimos a data URI para
 // meterlos directo en Postgres (columna TEXT). Así no dependemos de un disco
 // local, que en hostings gratuitos (como Render free) se borra en cada reinicio.
+//
+// 25MB: los logos/fotos de referencia pesan poco, pero los diseños que suben
+// los diseñadores en FadeMarkSuite (exportados de Photoshop/Illustrator a
+// resolución completa, sin comprimir) pueden pesar bastante más que eso — con
+// 4MB rebotaban seguido (MulterError: File too large). Este es solo el techo
+// del archivo CRUDO que aceptamos recibir; luego se comprime antes de
+// guardarse (ver normalizeDesignUpload) para no llenar la base de datos.
+const MULTER_MAX_MB = 25;
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 4 * 1024 * 1024 }, // 4MB: suficiente para logos/posts, cuida el tamaño de la fila en la BD
+  limits: { fileSize: MULTER_MAX_MB * 1024 * 1024 },
 });
 
 function fileToDataUri(file) {
   if (!file) return null;
   return `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+}
+
+// Comprime/redimensiona el diseño que sube el diseñador ANTES de guardarlo en
+// Postgres. Un post de Facebook no necesita más resolución que esto, y
+// guardar el archivo crudo (a veces 15-20MB+ de un export sin optimizar)
+// llenaría rápido el espacio del Postgres gratis de Render. A diferencia del
+// fondo generado por IA (que se recorta a un cuadrado exacto), aquí NO se
+// recorta — es el diseño terminado del diseñador, se respeta su encuadre tal
+// cual, solo se limita el tamaño máximo.
+async function normalizeDesignUpload(file) {
+  if (!file) return null;
+  const optimized = await sharp(file.buffer)
+    .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+  return `data:image/png;base64,${optimized.toString("base64")}`;
 }
 
 // ---------- Páginas públicas ----------
@@ -409,6 +434,7 @@ app.get("/week/:batchId", requireBusinessAuth, async (req, res, next) => {
       posts: rows,
       topic: rows[0].week_topic || "Varios temas (elegidos automáticamente)",
       batchId: req.params.batchId,
+      upload_error: req.query.upload_error || null,
     });
   } catch (err) {
     next(err);
@@ -433,7 +459,17 @@ app.post(
         return res.redirect(`/week/${campaign.week_batch_id}`);
       }
 
-      const imageData = fileToDataUri(req.file);
+      let imageData;
+      try {
+        imageData = await normalizeDesignUpload(req.file);
+      } catch (err) {
+        console.error("[upload-design] No se pudo procesar la imagen:", err.message);
+        return res.redirect(
+          `/week/${campaign.week_batch_id}?upload_error=` +
+            encodeURIComponent("Ese archivo no parece ser una imagen válida (PNG/JPG). Inténtalo de nuevo.")
+        );
+      }
+
       await pool.query(
         "UPDATE campaigns SET final_image_data = $1, status = $2, updated_at = NOW() WHERE id = $3",
         [imageData, STATUSES.FADEMARKSUITE_LISTO, req.params.id]
@@ -1439,8 +1475,26 @@ app.post(
 );
 
 // Manejador de errores genérico (evita que un error tumbe el proceso).
+// Antes cualquier archivo subido de más de 4MB (ej. un diseño exportado a
+// resolución completa) tronaba con una página en blanco genérica — ahora se
+// muestra un mensaje claro de qué pasó y qué hacer.
 app.use((err, req, res, next) => {
   console.error(err);
+
+  if (err && err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).send(
+      `<p>El archivo que subiste es demasiado grande (máximo ${MULTER_MAX_MB}MB). ` +
+        `Comprímelo o expórtalo en menor resolución e intenta de nuevo.</p>` +
+        `<p><a href="javascript:history.back()">&larr; Volver</a></p>`
+    );
+  }
+  if (err && err.name === "MulterError") {
+    return res.status(400).send(
+      `<p>No se pudo procesar el archivo (${err.message}). Intenta de nuevo.</p>` +
+        `<p><a href="javascript:history.back()">&larr; Volver</a></p>`
+    );
+  }
+
   res.status(500).send("Ocurrió un error inesperado. Revisa los logs del servidor.");
 });
 
