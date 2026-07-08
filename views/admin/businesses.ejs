@@ -12,6 +12,23 @@
     <h1>Negocios registrados</h1>
     <p class="subtitle">Aquí puedes borrar negocios de prueba o que ya no necesites (también borra sus campañas).</p>
 
+    <% if (typeof fb_error !== 'undefined' && fb_error) { %>
+      <div class="alert alert-error">Facebook: <%= fb_error %></div>
+    <% } %>
+    <% if (typeof fb_connected !== 'undefined' && fb_connected) { %>
+      <div class="alert alert-warning">Página de Facebook conectada correctamente.</div>
+    <% } %>
+    <% if (typeof facebookConfigured !== 'undefined' && !facebookConfigured) { %>
+      <div class="alert alert-warning">
+        Falta configurar META_APP_ID/META_APP_SECRET en el servidor para poder conectar páginas de Facebook.
+      </div>
+    <% } %>
+    <p class="muted small">
+      Mientras la app de Facebook siga en modo Desarrollo (antes de pasar App Review de Meta), solo tu
+      cuenta de administrador puede conectar páginas — por eso lo haces desde aquí, a nombre de cada
+      negocio, en vez de que cada quien conecte la suya.
+    </p>
+
     <% if (businesses.length === 0) { %>
       <div class="empty-state"><p>No hay negocios registrados todavía.</p></div>
     <% } else { %>
@@ -23,6 +40,7 @@
             <th>Correo</th>
             <th>Estado</th>
             <th>Plan</th>
+            <th>Facebook</th>
             <th>Campañas</th>
             <th>Registrado</th>
             <th></th>
@@ -47,6 +65,16 @@
                     <option value="fademarksuite" <%= b.plan === 'fademarksuite' ? 'selected' : '' %>>FadeMarkSuite (diseñador, sube su diseño, auto-publica)</option>
                   </select>
                 </form>
+              </td>
+              <td>
+                <% if (b.fb_page_id) { %>
+                  <p class="muted small" style="margin:0 0 4px;">📘 <%= b.fb_page_name %></p>
+                  <form method="POST" action="/admin/businesses/<%= b.id %>/facebook/disconnect" class="inline-form">
+                    <button type="submit" class="link-button" style="color:#B3261E; font-size:0.8rem;">Desconectar</button>
+                  </form>
+                <% } else { %>
+                  <a href="/admin/businesses/<%= b.id %>/facebook/connect" class="btn-secondary">Conectar Facebook</a>
+                <% } %>
               </td>
               <td><%= b.campaign_count %></td>
               <td class="muted small"><%= b.created_at %></td>

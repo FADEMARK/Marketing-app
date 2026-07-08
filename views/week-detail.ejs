@@ -67,6 +67,19 @@
               <a href="<%= p.published_post_url %>" target="_blank" rel="noopener">ver en Facebook</a>
             </p>
           <% } %>
+
+          <% if (p.status !== 'publicado') { %>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <form method="POST" action="/campaigns/<%= p.id %>/regenerate-copy" style="flex:1;"
+                    onsubmit="return confirm('¿Pedirle a la IA un tema y copy nuevo para este día? Se mantiene el diseño y la fecha, pero si ya lo habías autorizado, tendrás que volver a autorizarlo.');">
+                <button type="submit" class="btn-secondary full-width">🔄 Regenerar copy</button>
+              </form>
+              <form method="POST" action="/campaigns/<%= p.id %>/delete" style="flex:1;"
+                    onsubmit="return confirm('¿Eliminar esta publicación de la semana? No se puede deshacer.');">
+                <button type="submit" class="btn-secondary full-width" style="color:#B3261E;">🗑 Eliminar</button>
+              </form>
+            </div>
+          <% } %>
         </div>
       <% }); %>
     </div>

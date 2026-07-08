@@ -100,17 +100,20 @@ Si prefieres no depender de Render:
    ```
 5. Pon un **Nginx** (o similar) delante como proxy inverso hacia el puerto definido en `PORT`, con HTTPS (Let's Encrypt).
 
-## Conectar Facebook (Meta Graph API) — pendiente, guía paso a paso
+## Conectar Facebook (Meta Graph API)
 
-Publicar automáticamente en la página de Facebook de **cada cliente** requiere permisos que Meta solo otorga después de un proceso de revisión (App Review). Pasos:
+Publicar automáticamente en la página de Facebook de **cada cliente** requiere permisos que Meta solo otorga sin restricciones después de un proceso de revisión (App Review). Pasos:
 
 1. Crea una cuenta de desarrollador en [developers.facebook.com](https://developers.facebook.com) y crea una **App** de tipo "Business".
-2. Agrega el producto **Facebook Login** y el permiso **`pages_manage_posts`** (y `pages_read_engagement` si quieres leer métricas después).
-3. Cada negocio deberá autorizar tu App para gestionar su página (flujo de Facebook Login / OAuth). Con eso obtienes un **Page Access Token** por cada página de cliente — es el que necesita `services/facebook.js`.
-4. Envía la App a **App Review** de Meta, explicando el caso de uso (agencia que publica en nombre de negocios que la autorizan). Sin esta aprobación, los permisos solo funcionan con páginas de prueba tuyas.
-5. Una vez aprobado, guarda el token de cada negocio (hoy el `.env` tiene un solo `META_PAGE_ACCESS_TOKEN` de ejemplo; en producción cada negocio necesita su propio token guardado en la base de datos).
+2. Agrega el producto **Facebook Login** y el permiso **`pages_manage_posts`** (y `pages_read_engagement`/`pages_show_list`).
+3. En **Configuración → Básica**, agrega tu dominio en "Dominios de la app". En **Facebook Login → Configuración**, agrega en "URI de redireccionamiento de OAuth válidos" AMBAS URLs (una por cada flujo de conexión que tiene la app):
+   - `https://tu-dominio/facebook/callback` (cuando el propio negocio conecta su página)
+   - `https://tu-dominio/admin/facebook/callback` (cuando el admin la conecta a nombre del negocio)
+4. **Mientras la app siga en modo Desarrollo** (antes de terminar App Review), el login de Facebook solo funciona con cuentas agregadas como Admin/Desarrollador/Tester de la app (Funciones de la app → Roles). Por eso, hasta que la app esté aprobada, es el **admin** quien conecta la página de cada negocio desde `/admin/businesses` (botón "Conectar Facebook" en cada fila) — no cada negocio por su cuenta.
+5. Para que cualquier negocio pueda conectar su propia página sin depender del admin, hay que completar **Verificación de negocio** y enviar la app a **App Review** pidiendo acceso avanzado a los permisos de arriba (Meta pide al menos una llamada real ya hecha con cada permiso — lo que ya haces al conectar páginas desde el admin — y usualmente un video del flujo). Calcula unas semanas: verificación de negocio 1-2 semanas, y la revisión de los permisos de páginas para un caso tipo agencia 2-6 semanas, con posibilidad de un primer rechazo.
+6. Una vez aprobado, cambia la app de "Desarrollo" a "Activo" en Configuración → Básica, y el flujo de negocio (`/facebook/connect`, botón en "Mi negocio") empieza a funcionar para cualquier cuenta sin que esté en la lista de testers.
 
-Mientras tanto, el flujo manual ya funciona: tu equipo descarga la imagen final aprobada, publica a mano en la página del cliente, y pega el link del post en el panel interno para cerrar el ciclo (el cliente lo ve reflejado en su panel).
+Mientras tanto, el flujo manual también sigue disponible: tu equipo descarga la imagen final aprobada, publica a mano en la página del cliente, y pega el link del post en el panel interno para cerrar el ciclo (el cliente lo ve reflejado en su panel).
 
 ## FadeMarkSuite: semana de contenido con publicación automática programada
 

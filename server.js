@@ -434,7 +434,7 @@ app.get("/week/:batchId", requireBusinessAuth, async (req, res, next) => {
       posts: rows,
       topic: rows[0].week_topic || "Varios temas (elegidos automáticamente)",
       batchId: req.params.batchId,
-      upload_error: req.query.upload_error || null,
+      upload_error: req.query.upload_error || req.query.delete_error || null,
     });
   } catch (err) {
     next(err);
@@ -510,6 +510,107 @@ app.post("/campaigns/:id/authorize", requireBusinessAuth, async (req, res, next)
     }
 
     res.redirect(`/week/${campaign.week_batch_id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Le pide a la IA un tema/copy nuevo para ESTE día (mantiene la fecha/hora
+// programada y el diseño ya subido, si lo hay). Como el contenido cambia,
+// resetea la autorización — el negocio debe volver a revisar y autorizar
+// antes de que se publique, para que un cambio de texto no se publique solo
+// con la autorización vieja.
+app.post("/campaigns/:id/regenerate-copy", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT campaigns.*, businesses.name AS business_name, businesses.industry,
+              businesses.phone, businesses.address, businesses.doctor_name
+       FROM campaigns
+       JOIN businesses ON businesses.id = campaigns.business_id
+       WHERE campaigns.id = $1 AND campaigns.business_id = $2`,
+      [req.params.id, req.session.businessId]
+    );
+    const campaign = rows[0];
+    if (!campaign || !campaign.is_designer_upload) {
+      return res.status(404).send("Publicación no encontrada.");
+    }
+    if (campaign.status === STATUSES.PUBLICADO) {
+      return res.redirect(`/week/${campaign.week_batch_id}`);
+    }
+
+    const [newPost] = await generateWeekCopy({
+      topic: campaign.week_topic || "",
+      businessName: campaign.business_name,
+      businessIndustry: campaign.industry,
+      tone: campaign.tone || "Cercano/Amigable",
+      days: 1,
+    });
+
+    const contactLine = [
+      campaign.doctor_name || null,
+      campaign.phone ? `Tel: ${campaign.phone}` : null,
+      campaign.address ? `Dirección: ${campaign.address}` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+    const theme = newPost.theme || campaign.product_service;
+    const fullCaption = contactLine ? `${newPost.caption}\n\n${contactLine}` : newPost.caption;
+    const nextStatus = campaign.final_image_data ? STATUSES.FADEMARKSUITE_LISTO : STATUSES.FADEMARKSUITE_BORRADOR;
+
+    await pool.query(
+      `UPDATE campaigns SET
+        objective = $1, product_service = $2, ai_headline = $3, ai_caption = $4, ai_hashtags = $5,
+        status = $6, auto_publish_authorized = FALSE, authorized_at = NULL, updated_at = NOW()
+       WHERE id = $7`,
+      [
+        `Semana de contenido — ${theme}`,
+        theme,
+        newPost.headline,
+        fullCaption,
+        newPost.hashtags,
+        nextStatus,
+        req.params.id,
+      ]
+    );
+
+    res.redirect(`/week/${campaign.week_batch_id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Elimina una publicación individual. No se puede borrar una ya publicada
+// (el registro es solo nuestro seguimiento — borrarlo no quita el post real
+// de Facebook, así que lo bloqueamos para no dar una falsa sensación de que
+// se deshizo la publicación).
+app.post("/campaigns/:id/delete", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM campaigns WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const campaign = rows[0];
+    if (!campaign) return res.status(404).send("Publicación no encontrada.");
+
+    if (campaign.status === STATUSES.PUBLICADO) {
+      const redirectTo = campaign.week_batch_id ? `/week/${campaign.week_batch_id}` : `/campaigns/${campaign.id}`;
+      return res.redirect(
+        `${redirectTo}?delete_error=` +
+          encodeURIComponent("Esta publicación ya está publicada en Facebook — no se puede borrar desde aquí.")
+      );
+    }
+
+    await pool.query("DELETE FROM campaigns WHERE id = $1", [req.params.id]);
+
+    if (campaign.week_batch_id) {
+      const { rows: remaining } = await pool.query(
+        "SELECT id FROM campaigns WHERE week_batch_id = $1 LIMIT 1",
+        [campaign.week_batch_id]
+      );
+      return res.redirect(remaining.length > 0 ? `/week/${campaign.week_batch_id}` : "/dashboard");
+    }
+
+    res.redirect("/dashboard");
   } catch (err) {
     next(err);
   }
@@ -703,6 +804,125 @@ app.post("/facebook/disconnect", requireBusinessAuth, async (req, res, next) => 
       [req.session.businessId]
     );
     res.redirect("/profile");
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Conectar Facebook a nombre de un negocio, desde el admin ----------
+//
+// Mientras la App de Meta esté en modo Desarrollo (antes de pasar App
+// Review), el login de Facebook OAuth solo funciona con cuentas agregadas
+// como Admin/Desarrollador/Tester en el dashboard de la app — por eso cada
+// negocio NO puede conectar su propia página todavía. Como alternativa, el
+// admin (que sí es tester de la app) puede conectar la página de Facebook de
+// cualquier negocio en su nombre, usando su propia cuenta de Facebook (debe
+// ser admin de esa página de Facebook en la vida real, como suele pasar en
+// una agencia). El flujo de negocio (/facebook/connect) se deja intacto para
+// cuando la app ya esté aprobada y cada negocio pueda hacerlo solo.
+function getAdminFacebookRedirectUri(req) {
+  return `${req.protocol}://${req.get("host")}/admin/facebook/callback`;
+}
+
+app.get("/admin/businesses/:id/facebook/connect", requireAdminAuth, (req, res) => {
+  if (!facebook.isConfigured()) {
+    return res.status(503).send(
+      "La conexión con Facebook todavía no está configurada (faltan META_APP_ID/META_APP_SECRET en el servidor)."
+    );
+  }
+
+  const state = crypto.randomBytes(16).toString("hex");
+  req.session.fbOAuthState = state;
+  req.session.fbConnectBusinessId = req.params.id;
+
+  const redirectUri = getAdminFacebookRedirectUri(req);
+  res.redirect(facebook.buildLoginUrl(redirectUri, state));
+});
+
+app.get("/admin/facebook/callback", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { code, state, error: fbError } = req.query;
+    const businessId = req.session.fbConnectBusinessId;
+
+    if (!businessId) {
+      return res.redirect(
+        "/admin/businesses?fb_error=" + encodeURIComponent("No se encontró a qué negocio conectar. Intenta de nuevo.")
+      );
+    }
+    if (fbError) {
+      return res.redirect(`/admin/businesses?fb_error=` + encodeURIComponent(String(fbError)));
+    }
+    if (!state || state !== req.session.fbOAuthState) {
+      return res.redirect("/admin/businesses?fb_error=" + encodeURIComponent("Sesión inválida, intenta de nuevo."));
+    }
+    delete req.session.fbOAuthState;
+
+    const redirectUri = getAdminFacebookRedirectUri(req);
+    const pages = await facebook.getPagesFromOAuthCode(code, redirectUri);
+
+    if (pages.length === 0) {
+      delete req.session.fbConnectBusinessId;
+      return res.redirect(
+        "/admin/businesses?fb_error=" +
+          encodeURIComponent("No encontramos páginas que administres con esa cuenta de Facebook.")
+      );
+    }
+
+    if (pages.length === 1) {
+      const page = pages[0];
+      await pool.query(
+        "UPDATE businesses SET fb_page_id = $1, fb_page_name = $2, fb_page_access_token = $3 WHERE id = $4",
+        [page.id, page.name, page.access_token, businessId]
+      );
+      delete req.session.fbConnectBusinessId;
+      return res.redirect("/admin/businesses?fb_connected=1");
+    }
+
+    // Si administras varias páginas con esa cuenta, elige cuál va con este negocio.
+    req.session.fbPendingPages = pages;
+    res.render("admin/select-facebook-page", { pages, error: null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/admin/facebook/select-page", requireAdminAuth, async (req, res, next) => {
+  try {
+    const pages = req.session.fbPendingPages || [];
+    const page = pages.find((p) => p.id === req.body.page_id);
+    const businessId = req.session.fbConnectBusinessId;
+
+    if (!businessId) {
+      return res.redirect(
+        "/admin/businesses?fb_error=" + encodeURIComponent("No se encontró a qué negocio conectar. Intenta de nuevo.")
+      );
+    }
+    if (!page) {
+      return res.render("admin/select-facebook-page", {
+        pages,
+        error: "Selecciona una página de la lista.",
+      });
+    }
+
+    await pool.query(
+      "UPDATE businesses SET fb_page_id = $1, fb_page_name = $2, fb_page_access_token = $3 WHERE id = $4",
+      [page.id, page.name, page.access_token, businessId]
+    );
+    delete req.session.fbPendingPages;
+    delete req.session.fbConnectBusinessId;
+    res.redirect("/admin/businesses?fb_connected=1");
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/admin/businesses/:id/facebook/disconnect", requireAdminAuth, async (req, res, next) => {
+  try {
+    await pool.query(
+      "UPDATE businesses SET fb_page_id = NULL, fb_page_name = NULL, fb_page_access_token = NULL WHERE id = $1",
+      [req.params.id]
+    );
+    res.redirect("/admin/businesses");
   } catch (err) {
     next(err);
   }
@@ -924,7 +1144,12 @@ app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
       };
     }
 
-    res.render("campaign-detail", { campaign, imagePreview, imageCandidates, fb_publish_error: req.query.fb_publish_error || null });
+    res.render("campaign-detail", {
+      campaign,
+      imagePreview,
+      imageCandidates,
+      fb_publish_error: req.query.fb_publish_error || req.query.delete_error || null,
+    });
   } catch (err) {
     next(err);
   }
@@ -1289,7 +1514,12 @@ app.get("/admin/businesses", requireAdminAuth, async (req, res, next) => {
        GROUP BY businesses.id
        ORDER BY businesses.created_at DESC`
     );
-    res.render("admin/businesses", { businesses });
+    res.render("admin/businesses", {
+      businesses,
+      fb_error: req.query.fb_error || null,
+      fb_connected: req.query.fb_connected || null,
+      facebookConfigured: facebook.isConfigured(),
+    });
   } catch (err) {
     next(err);
   }

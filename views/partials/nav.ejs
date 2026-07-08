@@ -10,6 +10,7 @@
       <form action="/logout" method="POST" class="inline-form">
         <button type="submit" class="link-button">Cerrar sesión</button>
       </form>
+      <a href="/admin/login" class="muted small" style="text-decoration:none;" title="Panel interno (equipo)">🔧 Panel interno</a>
     <% } else if (isAdminLoggedIn) { %>
       <a href="/admin">Panel interno</a>
       <a href="/admin/businesses">Negocios</a>
@@ -17,9 +18,11 @@
       <form action="/admin/logout" method="POST" class="inline-form">
         <button type="submit" class="link-button">Cerrar sesión</button>
       </form>
+      <a href="/login" class="muted small" style="text-decoration:none;" title="Iniciar sesión como negocio">👤 Entrar como negocio</a>
     <% } else { %>
       <a href="/login">Iniciar sesión</a>
       <a href="/register" class="cta-link">Registrar mi negocio</a>
+      <a href="/admin/login" class="muted small" style="text-decoration:none;" title="Panel interno (equipo)">🔧</a>
     <% } %>
   </nav>
 </header>

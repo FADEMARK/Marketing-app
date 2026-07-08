@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Elige la página de Facebook — Panel interno</title>
+  <%- include('../partials/head') %>
+</head>
+<body>
+  <%- include('../partials/nav') %>
+
+  <main class="form-page narrow">
+    <a href="/admin/businesses" class="back-link">&larr; Volver a negocios</a>
+    <h1>¿Cuál página conectamos a este negocio?</h1>
+    <p class="subtitle">Tu cuenta de Facebook administra varias páginas. Elige la que corresponde a este negocio.</p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/admin/facebook/select-page" class="card-form">
+      <% pages.forEach(function(p) { %>
+        <label style="flex-direction: row; align-items: center; gap: 10px;">
+          <input type="radio" name="page_id" value="<%= p.id %>" required style="width:auto;" />
+          <%= p.name %>
+        </label>
+      <% }); %>
+      <button type="submit" class="btn-primary full-width">Conectar esta página</button>
+    </form>
+  </main>
+</body>
+</html>

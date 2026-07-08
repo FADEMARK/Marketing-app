@@ -150,6 +150,13 @@
         <% if (campaign.status === 'publicado' && campaign.published_post_url) { %>
           <p><a href="<%= campaign.published_post_url %>" target="_blank" rel="noopener" class="btn-primary">Ver publicación en Facebook →</a></p>
         <% } %>
+
+        <% if (campaign.status !== 'publicado') { %>
+          <form method="POST" action="/campaigns/<%= campaign.id %>/delete" style="margin-top: 16px;"
+                onsubmit="return confirm('¿Eliminar esta publicación? No se puede deshacer.');">
+            <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar esta publicación</button>
+          </form>
+        <% } %>
       </div>
     </div>
   </main>
