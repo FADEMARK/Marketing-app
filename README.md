@@ -180,6 +180,21 @@ El flujo actual tiene 3 pasos, pensado para que el negocio tenga control total y
 
 El negocio ve cada uno de estos pasos de inmediato (no espera aprobación para verlos) — pero la imagen final solo se publica en Facebook después de que tu equipo la revise y la apruebe desde el panel admin.
 
+## Claude (Anthropic): afinar el prompt + revisar la foto generada (opcional)
+
+Anthropic no ofrece un modelo que genere imágenes — Claude sigue siendo Gemini/OpenAI para eso. Pero se puede usar Claude alrededor del paso 2 de arriba para dos cosas, ambas opcionales:
+
+1. **Afinar el prompt**: justo antes de mandarle el prompt a Gemini/OpenAI, Claude lo reescribe agregando detalle visual concreto (encuadre, luz, ángulo de cámara) sin tocar las reglas técnicas fijas (no texto, no logo) que ya trae `services/aiImage.js`.
+2. **Revisar la foto**: apenas Gemini/OpenAI entregan el fondo, Claude lo revisa con visión y avisa si detecta texto/logo/marca de agua que se colaron por error, caras o manos deformadas, o una escena que no calza con el giro del negocio. El negocio ve el veredicto junto a cada versión generada, y decide si regenera o sigue al editor de todas formas.
+
+Para activarlo:
+
+1. Crea tu API key en [console.anthropic.com](https://console.anthropic.com).
+2. Agrega `ANTHROPIC_API_KEY` a las variables de entorno de tu servicio.
+3. Redeploy.
+
+Si no defines esta clave, la app sigue funcionando exactamente igual que hoy, solo sin estas dos ayudas. Usa por defecto el modelo más económico (`claude-haiku-4-5-20251001`) — el costo por publicación es una fracción de centavo (precios actuales: ~$1 por millón de tokens de entrada, ~$5 por millón de salida; revisa [claude.com/pricing](https://claude.com/pricing) para precios vigentes). Puedes forzar otro modelo con `ANTHROPIC_TEXT_MODEL` / `ANTHROPIC_VISION_MODEL` si prefieres más calidad a cambio de más costo.
+
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 
 `services/canva.js` ya tiene la llamada real a la API de autofill de Canva. Para activarla:

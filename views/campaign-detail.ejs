@@ -75,6 +75,23 @@
             </p>
             <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Fondo generado" />
 
+            <% if (typeof currentReview !== 'undefined' && currentReview && currentReview.reviewed) { %>
+              <% if (currentReview.ok) { %>
+                <p class="muted small" style="margin-top:8px;">✅ Revisado con IA (Claude) — sin problemas detectados<% if (currentReview.summary) { %>: <%= currentReview.summary %><% } %>.</p>
+              <% } else { %>
+                <div class="alert alert-error" style="margin-top:8px;">
+                  <strong>⚠️ Claude detectó posibles problemas en esta foto:</strong>
+                  <% if (currentReview.summary) { %><p style="margin:4px 0;"><%= currentReview.summary %></p><% } %>
+                  <% if (currentReview.issues && currentReview.issues.length) { %>
+                    <ul style="margin:4px 0 0 18px; padding:0;">
+                      <% currentReview.issues.forEach(function(issue) { %><li><%= issue %></li><% }); %>
+                    </ul>
+                  <% } %>
+                  <p class="muted small" style="margin-top:6px;">Puedes generar de nuevo o seguir de todas formas y corregirlo en el editor.</p>
+                </div>
+              <% } %>
+            <% } %>
+
             <% if (typeof imageCandidates !== 'undefined' && imageCandidates && imageCandidates.length > 1) { %>
               <p class="muted small" style="margin-top:12px;"><strong>Otras versiones generadas:</strong></p>
               <div style="display:flex; gap:12px; flex-wrap:wrap;">
@@ -82,6 +99,11 @@
                   <div style="text-align:center;">
                     <img src="<%= c.dataUri %>" alt="<%= c.label %>" style="width:120px; height:120px; object-fit:cover; border-radius:6px; border:1px solid var(--border);" />
                     <p class="muted small" style="margin:4px 0;"><%= c.label %></p>
+                    <% if (c.review && c.review.reviewed) { %>
+                      <p class="small" style="margin:0 0 4px; color: <%= c.review.ok ? 'var(--muted)' : '#B3261E' %>;">
+                        <%= c.review.ok ? '✅ Sin problemas' : '⚠️ ' + (c.review.issues && c.review.issues[0] ? c.review.issues[0] : 'Revisar') %>
+                      </p>
+                    <% } %>
                     <form method="POST" action="/campaigns/<%= campaign.id %>/choose-background">
                       <input type="hidden" name="engine" value="<%= c.engine %>" />
                       <button type="submit" class="btn-secondary">Usar esta versión</button>
@@ -125,6 +147,13 @@
             <p class="muted small">
               Motor(es) de IA: Google Gemini<%= imagePreview.allowOpenAI ? ' + OpenAI (gpt-image-1) — plan Plus' : ' — plan Estándar' %>.
             </p>
+            <% if (imagePreview.claudeEnabled) { %>
+              <p class="muted small">
+                ✨ Antes de generar, Claude (Anthropic) afinará automáticamente este prompt con más detalle
+                visual, y después revisará la foto resultante en busca de texto, logos o marcas de agua que
+                se hayan colado por error.
+              </p>
+            <% } %>
 
             <details style="margin: 12px 0;">
               <summary class="link-strong" style="cursor:pointer;">Ver el prompt completo que se le mandará a la IA</summary>

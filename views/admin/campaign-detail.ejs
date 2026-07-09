@@ -54,6 +54,21 @@
           (texto, logo, formas). Cuando lo guarde, aparecerá aquí como "Imagen final".
         </p>
         <img class="preview-image" src="<%= campaign.background_image_data %>" alt="Fondo generado" />
+        <% if (typeof currentReview !== 'undefined' && currentReview && currentReview.reviewed) { %>
+          <% if (currentReview.ok) { %>
+            <p class="muted small" style="margin-top:6px;">✅ Revisado con IA (Claude) — sin problemas detectados.</p>
+          <% } else { %>
+            <div class="alert alert-error" style="margin-top:6px;">
+              <strong>⚠️ Claude detectó posibles problemas:</strong>
+              <% if (currentReview.summary) { %><p style="margin:4px 0;"><%= currentReview.summary %></p><% } %>
+              <% if (currentReview.issues && currentReview.issues.length) { %>
+                <ul style="margin:4px 0 0 18px; padding:0;">
+                  <% currentReview.issues.forEach(function(issue) { %><li><%= issue %></li><% }); %>
+                </ul>
+              <% } %>
+            </div>
+          <% } %>
+        <% } %>
         <% if (typeof imageCandidates !== 'undefined' && imageCandidates.length > 1) { %>
           <p class="muted small" style="margin-top:10px;"><strong>Otras versiones de fondo generadas:</strong></p>
           <div style="display:flex; gap:12px; flex-wrap:wrap;">

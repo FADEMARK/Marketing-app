@@ -41,6 +41,7 @@
 const sharp = require("sharp");
 const fetch = require("node-fetch");
 const { getPromptTemplate, renderTemplate } = require("./promptSettings");
+const aiReview = require("./aiReview");
 
 function isConfigured() {
   return Boolean(process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY);
@@ -118,9 +119,18 @@ function templateVars(brief, { hasReferencePhoto = false } = {}) {
   };
 }
 
-async function buildPrompt(brief, { hasReferencePhoto = false } = {}) {
+// enrich=true le pide a Claude que afine la parte creativa del prompt antes
+// de mandarlo a Gemini/OpenAI (más detalle de encuadre, luz, ambientación).
+// Solo se activa en la generación real (ver generateWithGemini/OpenAI) — la
+// vista previa que se le muestra al negocio antes de generar (server.js,
+// GET /campaigns/:id) usa enrich=false para no gastar una llamada a Claude
+// en cada carga de página, solo cuando de verdad se va a generar la imagen.
+async function buildPrompt(brief, { hasReferencePhoto = false, enrich = false } = {}) {
   const template = await getPromptTemplate();
-  const creativePart = renderTemplate(template, templateVars(brief, { hasReferencePhoto }));
+  let creativePart = renderTemplate(template, templateVars(brief, { hasReferencePhoto }));
+  if (enrich) {
+    creativePart = await aiReview.enrichPrompt(creativePart);
+  }
   const fixedRules = buildFixedRules(brief, { hasReferencePhoto });
   return `${creativePart}\n\n${fixedRules}`;
 }
@@ -136,6 +146,7 @@ async function generateWithGemini(brief) {
 
   const promptText = await buildPrompt(brief, {
     hasReferencePhoto: Boolean(referencePhotoParts),
+    enrich: true,
   });
   const requestParts = [{ text: promptText }];
   if (referencePhotoParts) {
@@ -175,7 +186,7 @@ async function generateWithGemini(brief) {
 }
 
 async function generateWithOpenAI(brief) {
-  const promptText = await buildPrompt(brief);
+  const promptText = await buildPrompt(brief, { enrich: true });
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
   const quality = process.env.OPENAI_IMAGE_QUALITY || "high";
 
@@ -264,12 +275,19 @@ async function generateImageCandidates(brief, { allowOpenAI = true } = {}) {
 
   const results = (await Promise.all(jobs)).filter(Boolean);
 
+  // Después de generar y normalizar cada candidato, le pedimos a Claude
+  // (si está configurado) que lo revise con visión: texto/logo/marca de agua
+  // "horneados" por error, caras o manos deformadas, o una escena que no
+  // calza con el giro del negocio. Es solo informativo — nunca descarta ni
+  // bloquea un candidato, el negocio decide con qué se queda.
   return Promise.all(
-    results.map(async ({ engine, raw }) => ({
-      engine,
-      label: ENGINE_LABELS[engine] || engine,
-      dataUri: await finalizeImage(raw),
-    }))
+    results.map(async ({ engine, raw }) => {
+      const dataUri = await finalizeImage(raw);
+      const review = await aiReview.reviewGeneratedImage(dataUri, {
+        businessIndustry: brief.businessIndustry,
+      });
+      return { engine, label: ENGINE_LABELS[engine] || engine, dataUri, review };
+    })
   );
 }
 

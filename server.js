@@ -13,6 +13,7 @@ const { pool, init } = require("./db/db");
 const { STATUSES, STATUS_LABELS } = require("./services/status");
 const { generateCopy, generateWeekCopy } = require("./services/aiCopy");
 const aiImage = require("./services/aiImage");
+const aiReview = require("./services/aiReview");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const promptSettings = require("./services/promptSettings");
@@ -1141,13 +1142,21 @@ app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
         promptPreview: await aiImage.buildPrompt(aiBrief, {
           hasReferencePhoto: Boolean(campaign.reference_image_data),
         }),
+        claudeEnabled: aiReview.isConfigured(),
       };
     }
+
+    // Si ya hay un fondo elegido, buscamos su ficha de revisión (Claude
+    // visión) entre los candidatos guardados, para mostrarle al negocio si
+    // detectó algún problema (texto/logo horneado, marca de agua, etc.).
+    const currentReview =
+      imageCandidates.find((c) => c.dataUri === campaign.background_image_data)?.review || null;
 
     res.render("campaign-detail", {
       campaign,
       imagePreview,
       imageCandidates,
+      currentReview,
       fb_publish_error: req.query.fb_publish_error || req.query.delete_error || null,
     });
   } catch (err) {
@@ -1585,9 +1594,13 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
       }
     }
 
+    const currentReview =
+      imageCandidates.find((c) => c.dataUri === campaign.background_image_data)?.review || null;
+
     res.render("admin/campaign-detail", {
       campaign,
       imageCandidates,
+      currentReview,
       canvaConfigured: canva.isConfigured(),
       facebookConfigured: facebook.isConfigured(),
       fb_publish_error: req.query.fb_publish_error || null,
