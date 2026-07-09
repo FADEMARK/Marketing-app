@@ -228,6 +228,7 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
 }
 .alert-error { background: #FDECEA; color: #B3261E; border: 1px solid #F5C6C2; }
 .alert-warning { background: #FFF6E5; color: #8A5A00; border: 1px solid #FFE1A6; margin-bottom: 16px; }
+.alert-success { background: #E9F7EF; color: #1E7E34; border: 1px solid #B7E4C7; margin-bottom: 16px; }
 
 .switch-link { text-align: center; color: var(--muted); margin-top: 16px; }
 

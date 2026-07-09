@@ -91,6 +91,23 @@ async function init() {
       value TEXT,
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
+
+    -- Documentos rápidos (propuestas, cotizaciones, reportes, cartas...): el
+    -- negocio escribe en texto libre qué necesita, Claude redacta el
+    -- contenido (título + secciones), y se arma un PDF con el logo y los
+    -- colores de marca del negocio (ver services/aiDocument.js y
+    -- services/pdfBuilder.js). "body" guarda las secciones como JSON:
+    -- [{"heading": "...", "body": "..."}, ...]
+    CREATE TABLE IF NOT EXISTS documents (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      prompt TEXT NOT NULL,
+      title TEXT,
+      body TEXT,
+      tone TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
   `);
 
   // Migraciones ligeras: si la tabla ya existía de antes (como en un

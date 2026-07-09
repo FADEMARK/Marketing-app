@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nuevo documento — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page">
+    <a href="/documents" class="back-link">&larr; Volver a Documentos</a>
+    <h1>Nuevo documento</h1>
+    <p class="subtitle">
+      Cuéntanos en tus palabras qué necesitas — no hace falta redactarlo bien, la IA lo pasa en limpio.
+      No inventa precios, fechas ni cantidades que no le des: si hacen falta, los deja marcados para que
+      los completes tú antes de mandarlo.
+    </p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/documents" class="card-form">
+      <label>¿Qué documento necesitas?
+        <textarea name="prompt" rows="6" required placeholder="Ej. Necesito una cotización para el negocio 'Café Luna' por el diseño de 4 publicaciones de redes sociales, entrega en 5 días hábiles, forma de pago 50% anticipo y 50% contra entrega."><%= form.prompt || '' %></textarea>
+      </label>
+
+      <label>Tono
+        <select name="tone">
+          <option value="Profesional" selected>Profesional</option>
+          <option value="Cercano/Amigable">Cercano/Amigable</option>
+          <option value="Formal/Corporativo">Formal/Corporativo</option>
+          <option value="Directo/Breve">Directo/Breve</option>
+        </select>
+      </label>
+
+      <button type="submit" class="btn-primary full-width">Generar documento con IA</button>
+    </form>
+  </main>
+</body>
+</html>

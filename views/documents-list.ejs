@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Documentos — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <div class="page-header">
+      <h1>Documentos</h1>
+      <a href="/documents/new" class="btn-primary">+ Nuevo documento</a>
+    </div>
+    <p class="subtitle">
+      Describe en unas líneas qué necesitas (una propuesta, una cotización, un reporte, una carta) y la
+      IA te lo redacta y arma en PDF con tu logo y tus colores de marca.
+    </p>
+
+    <% if (documents.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no has generado ningún documento.</p>
+        <a href="/documents/new" class="btn-primary">Crear mi primer documento</a>
+      </div>
+    <% } else { %>
+      <div class="campaign-grid">
+        <% documents.forEach(function(d) { %>
+          <a href="/documents/<%= d.id %>" class="campaign-card">
+            <h3><%= d.title || 'Documento sin título' %></h3>
+            <p class="muted"><%= (d.prompt || '').slice(0, 120) %><%= (d.prompt || '').length > 120 ? '…' : '' %></p>
+            <p class="muted small">Creado el <%= d.created_at %></p>
+          </a>
+        <% }); %>
+      </div>
+    <% } %>
+  </main>
+</body>
+</html>

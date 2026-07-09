@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= document.title || 'Documento' %> — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page narrow">
+    <a href="/documents" class="back-link">&larr; Volver a Documentos</a>
+
+    <div class="page-header">
+      <h1><%= document.title || 'Documento' %></h1>
+      <a href="/documents/<%= document.id %>/download" class="btn-primary">⬇ Descargar PDF</a>
+    </div>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+
+    <p class="muted small">
+      Petición original: "<%= document.prompt %>"
+    </p>
+
+    <div class="detail-box">
+      <p class="muted small">
+        Revisa y edita el texto abajo antes de descargar — el PDF ya sale con tu logo y tus colores de
+        marca automáticamente, aquí solo ajustas el contenido.
+      </p>
+
+      <form method="POST" action="/documents/<%= document.id %>/update" class="card-form">
+        <label>Título
+          <input type="text" name="title" value="<%= document.title || '' %>" required />
+        </label>
+
+        <% sections.forEach(function(section, i) { %>
+          <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;">
+            <label>Encabezado de sección <%= i + 1 %> (opcional)
+              <input type="text" name="headings[]" value="<%= section.heading || '' %>" />
+            </label>
+            <label>Texto
+              <textarea name="bodies[]" rows="4"><%= section.body || '' %></textarea>
+            </label>
+          </div>
+        <% }); %>
+
+        <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;">
+          <label>Agregar otra sección (opcional, déjala vacía si no hace falta)
+            <input type="text" name="headings[]" placeholder="Encabezado (opcional)" />
+          </label>
+          <label>
+            <textarea name="bodies[]" rows="4" placeholder="Texto de la sección nueva"></textarea>
+          </label>
+        </div>
+
+        <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+      </form>
+
+      <form method="POST" action="/documents/<%= document.id %>/regenerate" style="margin-top: 12px;"
+            onsubmit="return confirm('¿Pedirle a la IA que redacte de nuevo este documento desde la misma petición original? Perderás los cambios que hayas hecho a mano.');">
+        <button type="submit" class="btn-secondary full-width">🔄 Regenerar con IA</button>
+      </form>
+
+      <form method="POST" action="/documents/<%= document.id %>/delete" style="margin-top: 12px;"
+            onsubmit="return confirm('¿Eliminar este documento? No se puede deshacer.');">
+        <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar documento</button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

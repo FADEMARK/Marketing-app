@@ -14,6 +14,8 @@ const { STATUSES, STATUS_LABELS } = require("./services/status");
 const { generateCopy, generateWeekCopy } = require("./services/aiCopy");
 const aiImage = require("./services/aiImage");
 const aiReview = require("./services/aiReview");
+const aiDocument = require("./services/aiDocument");
+const pdfBuilder = require("./services/pdfBuilder");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const promptSettings = require("./services/promptSettings");
@@ -437,6 +439,234 @@ app.get("/week/:batchId", requireBusinessAuth, async (req, res, next) => {
       batchId: req.params.batchId,
       upload_error: req.query.upload_error || req.query.delete_error || null,
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------- Documentos rápidos (propuestas, cotizaciones, reportes...) ----------
+// El negocio escribe en texto libre qué necesita, Claude redacta el título +
+// secciones (services/aiDocument.js), y se arma un PDF con el logo y los
+// colores de marca del negocio (services/pdfBuilder.js). A diferencia de la
+// generación de imagen (Gemini/OpenAI, con Claude como ayuda opcional
+// alrededor), aquí Claude SÍ es indispensable — sin ANTHROPIC_API_KEY, todo
+// el módulo se muestra deshabilitado con documents-upsell.ejs.
+
+app.get("/documents", requireBusinessAuth, async (req, res, next) => {
+  try {
+    if (!aiDocument.isConfigured()) {
+      return res.render("documents-upsell");
+    }
+    const { rows } = await pool.query(
+      "SELECT * FROM documents WHERE business_id = $1 ORDER BY created_at DESC",
+      [req.session.businessId]
+    );
+    res.render("documents-list", { documents: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/documents/new", requireBusinessAuth, async (req, res, next) => {
+  try {
+    if (!aiDocument.isConfigured()) {
+      return res.render("documents-upsell");
+    }
+    res.render("document-new", { error: null, form: {} });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/documents", requireBusinessAuth, async (req, res, next) => {
+  try {
+    if (!aiDocument.isConfigured()) {
+      return res.render("documents-upsell");
+    }
+
+    const { prompt, tone } = req.body;
+    if (!prompt || !prompt.trim()) {
+      return res.render("document-new", {
+        error: "Cuéntanos qué documento necesitas (unas líneas bastan).",
+        form: req.body,
+      });
+    }
+
+    const { rows: bizRows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+      req.session.businessId,
+    ]);
+    const business = bizRows[0];
+
+    let draft;
+    try {
+      draft = await aiDocument.draftDocument({
+        businessName: business.name,
+        businessIndustry: business.industry,
+        prompt: prompt.trim(),
+        tone: tone || "Profesional",
+      });
+    } catch (err) {
+      return res.render("document-new", {
+        error: "No se pudo generar el documento con IA: " + err.message,
+        form: req.body,
+      });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO documents (business_id, prompt, title, body, tone)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      [
+        req.session.businessId,
+        prompt.trim(),
+        draft.title,
+        JSON.stringify(draft.sections),
+        tone || "Profesional",
+      ]
+    );
+
+    res.redirect(`/documents/${rows[0].id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/documents/:id", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM documents WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const document = rows[0];
+    if (!document) return res.status(404).send("Documento no encontrado.");
+
+    let sections = [];
+    try {
+      sections = JSON.parse(document.body || "[]");
+    } catch (err) {
+      sections = [];
+    }
+
+    res.render("document-detail", { document, sections, saved: req.query.saved === "1" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/documents/:id/update", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { title } = req.body;
+    const headings = Array.isArray(req.body.headings) ? req.body.headings : [req.body.headings];
+    const bodies = Array.isArray(req.body.bodies) ? req.body.bodies : [req.body.bodies];
+
+    const sections = bodies
+      .map((body, i) => ({ heading: (headings[i] || "").trim(), body: (body || "").trim() }))
+      .filter((s) => s.body);
+
+    const { rowCount } = await pool.query(
+      "UPDATE documents SET title = $1, body = $2, updated_at = NOW() WHERE id = $3 AND business_id = $4",
+      [title || "Documento", JSON.stringify(sections), req.params.id, req.session.businessId]
+    );
+    if (rowCount === 0) return res.status(404).send("Documento no encontrado.");
+
+    res.redirect(`/documents/${req.params.id}?saved=1`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/documents/:id/regenerate", requireBusinessAuth, async (req, res, next) => {
+  try {
+    if (!aiDocument.isConfigured()) {
+      return res.render("documents-upsell");
+    }
+
+    const { rows } = await pool.query(
+      "SELECT * FROM documents WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const document = rows[0];
+    if (!document) return res.status(404).send("Documento no encontrado.");
+
+    const { rows: bizRows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+      req.session.businessId,
+    ]);
+    const business = bizRows[0];
+
+    const draft = await aiDocument.draftDocument({
+      businessName: business.name,
+      businessIndustry: business.industry,
+      prompt: document.prompt,
+      tone: document.tone,
+    });
+
+    await pool.query(
+      "UPDATE documents SET title = $1, body = $2, updated_at = NOW() WHERE id = $3",
+      [draft.title, JSON.stringify(draft.sections), req.params.id]
+    );
+
+    res.redirect(`/documents/${req.params.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/documents/:id/download", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT documents.*, businesses.name AS business_name, businesses.logo_data,
+              businesses.brand_color_primary, businesses.brand_color_secondary, businesses.phone,
+              businesses.address, businesses.doctor_name
+       FROM documents
+       JOIN businesses ON businesses.id = documents.business_id
+       WHERE documents.id = $1 AND documents.business_id = $2`,
+      [req.params.id, req.session.businessId]
+    );
+    const document = rows[0];
+    if (!document) return res.status(404).send("Documento no encontrado.");
+
+    let sections = [];
+    try {
+      sections = JSON.parse(document.body || "[]");
+    } catch (err) {
+      sections = [];
+    }
+
+    const pdfBuffer = await pdfBuilder.buildDocumentPdf({
+      business: {
+        name: document.business_name,
+        logo_data: document.logo_data,
+        brand_color_primary: document.brand_color_primary,
+        brand_color_secondary: document.brand_color_secondary,
+        phone: document.phone,
+        address: document.address,
+        doctor_name: document.doctor_name,
+      },
+      title: document.title,
+      sections,
+    });
+
+    const safeFileName = (document.title || "documento")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "") || "documento";
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/documents/:id/delete", requireBusinessAuth, async (req, res, next) => {
+  try {
+    await pool.query("DELETE FROM documents WHERE id = $1 AND business_id = $2", [
+      req.params.id,
+      req.session.businessId,
+    ]);
+    res.redirect("/documents");
   } catch (err) {
     next(err);
   }

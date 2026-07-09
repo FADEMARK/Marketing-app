@@ -189,11 +189,24 @@ Anthropic no ofrece un modelo que genere imágenes — Claude sigue siendo Gemin
 
 Para activarlo:
 
-1. Crea tu API key en [console.anthropic.com](https://console.anthropic.com).
+1. Crea tu API key en [platform.claude.com/settings/keys](https://platform.claude.com/settings/keys).
 2. Agrega `ANTHROPIC_API_KEY` a las variables de entorno de tu servicio.
 3. Redeploy.
 
 Si no defines esta clave, la app sigue funcionando exactamente igual que hoy, solo sin estas dos ayudas (y sin reintentos automáticos). Usa por defecto el modelo más económico (`claude-haiku-4-5-20251001`) — el costo por publicación es una fracción de centavo (precios actuales: ~$1 por millón de tokens de entrada, ~$5 por millón de salida; revisa [claude.com/pricing](https://claude.com/pricing) para precios vigentes). Puedes forzar otro modelo con `ANTHROPIC_TEXT_MODEL` / `ANTHROPIC_VISION_MODEL` si prefieres más calidad a cambio de más costo.
+
+## Documentos rápidos (propuestas, cotizaciones, reportes...) con Claude
+
+Módulo aparte, en `/documents` — a diferencia de las dos ayudas de arriba, aquí Claude **sí es obligatorio** (no hay Gemini/OpenAI de respaldo, porque esto es puro texto, no imagen). El flujo:
+
+1. El negocio entra a **Documentos** desde el menú y escribe en sus palabras qué necesita (ej. "una cotización para el negocio X por 4 publicaciones, entrega en 5 días, 50% anticipo").
+2. Claude redacta el documento completo (título + secciones) — instrucción explícita de no inventar precios, fechas ni cantidades que el negocio no haya dado; si hacen falta, los deja marcados entre corchetes (ej. `[monto a confirmar]`) para que el negocio los complete.
+3. El negocio revisa y edita el texto libremente (agregar/quitar secciones, corregir redacción) antes de descargarlo.
+4. Al descargar, `services/pdfBuilder.js` arma el PDF (con [pdfkit](https://pdfkit.org/), sin necesitar un navegador headless) usando automáticamente el **logo y los colores de marca** que el negocio ya tiene cargados en su perfil — así cada documento sale con la misma identidad visual sin que el negocio tenga que diseñar nada.
+
+Sin `ANTHROPIC_API_KEY` configurada, la sección `/documents` se muestra deshabilitada con un mensaje explicativo, en vez de fallar a medias.
+
+Costo: igual de bajo que las otras ayudas de Claude — un documento típico (~2,000 tokens de entrada, ~1,200 de salida) cuesta entre $0.005 y $0.01 con Haiku 4.5. El PDF en sí no tiene costo de IA, es generación normal en el servidor.
 
 Ojo con el costo cuando el reintento automático entra en acción: cada intento repite la generación con Gemini/OpenAI (que tiene su propio costo aparte) más una llamada de enriquecer + revisar con Claude, así que en el peor caso (3 intentos seguidos fallidos) el gasto de esa publicación se multiplica hasta por 3. En la práctica es poco frecuente que agote los 3 intentos. Puedes bajar `AI_IMAGE_MAX_ATTEMPTS` a 1 o 2 si prefieres priorizar costo sobre insistencia.
 
