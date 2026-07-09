@@ -77,10 +77,13 @@
 
             <% if (typeof currentReview !== 'undefined' && currentReview && currentReview.reviewed) { %>
               <% if (currentReview.ok) { %>
-                <p class="muted small" style="margin-top:8px;">✅ Revisado con IA (Claude) — sin problemas detectados<% if (currentReview.summary) { %>: <%= currentReview.summary %><% } %>.</p>
+                <p class="muted small" style="margin-top:8px;">
+                  ✅ Revisado con IA (Claude) — sin problemas detectados<% if (currentReview.summary) { %>: <%= currentReview.summary %><% } %>.
+                  <% if (typeof currentAttempts !== 'undefined' && currentAttempts > 1) { %>(se regeneró automáticamente <%= currentAttempts - 1 %> <%= currentAttempts - 1 === 1 ? 'vez' : 'veces' %> hasta salir limpia)<% } %>
+                </p>
               <% } else { %>
                 <div class="alert alert-error" style="margin-top:8px;">
-                  <strong>⚠️ Claude detectó posibles problemas en esta foto:</strong>
+                  <strong>⚠️ Claude detectó posibles problemas en esta foto<% if (typeof currentAttempts !== 'undefined' && currentAttempts > 1) { %> (después de <%= currentAttempts %> intentos automáticos)<% } %>:</strong>
                   <% if (currentReview.summary) { %><p style="margin:4px 0;"><%= currentReview.summary %></p><% } %>
                   <% if (currentReview.issues && currentReview.issues.length) { %>
                     <ul style="margin:4px 0 0 18px; padding:0;">
@@ -151,7 +154,8 @@
               <p class="muted small">
                 ✨ Antes de generar, Claude (Anthropic) afinará automáticamente este prompt con más detalle
                 visual, y después revisará la foto resultante en busca de texto, logos o marcas de agua que
-                se hayan colado por error.
+                se hayan colado por error — si encuentra algo, la vuelve a generar sola hasta 2 veces más
+                antes de mostrártela.
               </p>
             <% } %>
 

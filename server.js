@@ -1148,15 +1148,18 @@ app.get("/campaigns/:id", requireBusinessAuth, async (req, res, next) => {
 
     // Si ya hay un fondo elegido, buscamos su ficha de revisión (Claude
     // visión) entre los candidatos guardados, para mostrarle al negocio si
-    // detectó algún problema (texto/logo horneado, marca de agua, etc.).
-    const currentReview =
-      imageCandidates.find((c) => c.dataUri === campaign.background_image_data)?.review || null;
+    // detectó algún problema (texto/logo horneado, marca de agua, etc.) y
+    // cuántas veces se intentó regenerar automáticamente antes de rendirse.
+    const currentCandidate = imageCandidates.find((c) => c.dataUri === campaign.background_image_data);
+    const currentReview = currentCandidate?.review || null;
+    const currentAttempts = currentCandidate?.attempts || null;
 
     res.render("campaign-detail", {
       campaign,
       imagePreview,
       imageCandidates,
       currentReview,
+      currentAttempts,
       fb_publish_error: req.query.fb_publish_error || req.query.delete_error || null,
     });
   } catch (err) {
@@ -1594,13 +1597,15 @@ app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
       }
     }
 
-    const currentReview =
-      imageCandidates.find((c) => c.dataUri === campaign.background_image_data)?.review || null;
+    const currentCandidateAdmin = imageCandidates.find((c) => c.dataUri === campaign.background_image_data);
+    const currentReview = currentCandidateAdmin?.review || null;
+    const currentAttempts = currentCandidateAdmin?.attempts || null;
 
     res.render("admin/campaign-detail", {
       campaign,
       imageCandidates,
       currentReview,
+      currentAttempts,
       canvaConfigured: canva.isConfigured(),
       facebookConfigured: facebook.isConfigured(),
       fb_publish_error: req.query.fb_publish_error || null,

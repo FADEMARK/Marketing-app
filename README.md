@@ -185,7 +185,7 @@ El negocio ve cada uno de estos pasos de inmediato (no espera aprobación para v
 Anthropic no ofrece un modelo que genere imágenes — Claude sigue siendo Gemini/OpenAI para eso. Pero se puede usar Claude alrededor del paso 2 de arriba para dos cosas, ambas opcionales:
 
 1. **Afinar el prompt**: justo antes de mandarle el prompt a Gemini/OpenAI, Claude lo reescribe agregando detalle visual concreto (encuadre, luz, ángulo de cámara) sin tocar las reglas técnicas fijas (no texto, no logo) que ya trae `services/aiImage.js`.
-2. **Revisar la foto**: apenas Gemini/OpenAI entregan el fondo, Claude lo revisa con visión y avisa si detecta texto/logo/marca de agua que se colaron por error, caras o manos deformadas, o una escena que no calza con el giro del negocio. El negocio ve el veredicto junto a cada versión generada, y decide si regenera o sigue al editor de todas formas.
+2. **Revisar la foto y regenerar sola si hace falta**: apenas Gemini/OpenAI entregan el fondo, Claude lo revisa con visión. Si detecta texto/logo/marca de agua que se colaron por error, caras o manos deformadas, o una escena que no calza con el giro del negocio, la app **regenera automáticamente** (hasta `AI_IMAGE_MAX_ATTEMPTS`, 3 por defecto) y se queda con la primera versión que salga limpia. Si se agotan los intentos sin lograrlo, muestra el último intento junto con el aviso de Claude, para que el negocio decida si regenera a mano o sigue al editor de todas formas — nunca es 100% garantizado (ningún generador de imágenes lo es), pero baja bastante la chance de que llegue algo con texto o logo mal puesto.
 
 Para activarlo:
 
@@ -193,7 +193,9 @@ Para activarlo:
 2. Agrega `ANTHROPIC_API_KEY` a las variables de entorno de tu servicio.
 3. Redeploy.
 
-Si no defines esta clave, la app sigue funcionando exactamente igual que hoy, solo sin estas dos ayudas. Usa por defecto el modelo más económico (`claude-haiku-4-5-20251001`) — el costo por publicación es una fracción de centavo (precios actuales: ~$1 por millón de tokens de entrada, ~$5 por millón de salida; revisa [claude.com/pricing](https://claude.com/pricing) para precios vigentes). Puedes forzar otro modelo con `ANTHROPIC_TEXT_MODEL` / `ANTHROPIC_VISION_MODEL` si prefieres más calidad a cambio de más costo.
+Si no defines esta clave, la app sigue funcionando exactamente igual que hoy, solo sin estas dos ayudas (y sin reintentos automáticos). Usa por defecto el modelo más económico (`claude-haiku-4-5-20251001`) — el costo por publicación es una fracción de centavo (precios actuales: ~$1 por millón de tokens de entrada, ~$5 por millón de salida; revisa [claude.com/pricing](https://claude.com/pricing) para precios vigentes). Puedes forzar otro modelo con `ANTHROPIC_TEXT_MODEL` / `ANTHROPIC_VISION_MODEL` si prefieres más calidad a cambio de más costo.
+
+Ojo con el costo cuando el reintento automático entra en acción: cada intento repite la generación con Gemini/OpenAI (que tiene su propio costo aparte) más una llamada de enriquecer + revisar con Claude, así que en el peor caso (3 intentos seguidos fallidos) el gasto de esa publicación se multiplica hasta por 3. En la práctica es poco frecuente que agote los 3 intentos. Puedes bajar `AI_IMAGE_MAX_ATTEMPTS` a 1 o 2 si prefieres priorizar costo sobre insistencia.
 
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 

@@ -238,57 +238,92 @@ const ENGINE_LABELS = {
   openai: "OpenAI (gpt-image-1)",
 };
 
+// Cuántas veces regenerar UN candidato si Claude detecta un problema (texto/
+// logo/marca de agua horneados, caras deformadas, etc.) antes de rendirse y
+// mostrar el último intento tal cual, con su aviso. Solo aplica si Claude
+// está configurado — sin ANTHROPIC_API_KEY no hay forma de saber si un
+// intento salió mal, así que se genera una sola vez, como antes.
+const MAX_IMAGE_ATTEMPTS = Math.max(1, parseInt(process.env.AI_IMAGE_MAX_ATTEMPTS, 10) || 3);
+
+async function callGenerator(engine, brief) {
+  if (engine === "gemini") {
+    const result = await generateWithGemini(brief);
+    return result?.dataUri || null;
+  }
+  if (engine === "openai") {
+    return await generateWithOpenAI(brief);
+  }
+  return null;
+}
+
+/**
+ * Genera UN candidato con el motor indicado y, si Claude está configurado,
+ * lo revisa y — mientras encuentre un problema y todavía queden intentos —
+ * lo regenera automáticamente, quedándose con la primera versión que salga
+ * limpia. Si se agotan los intentos sin lograr una versión limpia, devuelve
+ * el último intento con su aviso, para que el negocio decida.
+ */
+async function generateAndReviewCandidate(engine, brief) {
+  const maxAttempts = aiReview.isConfigured() ? MAX_IMAGE_ATTEMPTS : 1;
+  let lastCandidate = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    let raw = null;
+    try {
+      raw = await callGenerator(engine, brief);
+    } catch (err) {
+      console.error(`[aiImage] Fallo con ${engine} (intento ${attempt}/${maxAttempts}):`, err.message);
+    }
+
+    if (!raw) {
+      if (attempt === maxAttempts) return lastCandidate;
+      continue;
+    }
+
+    const dataUri = await finalizeImage(raw);
+    const review = await aiReview.reviewGeneratedImage(dataUri, {
+      businessIndustry: brief.businessIndustry,
+    });
+    lastCandidate = { engine, label: ENGINE_LABELS[engine] || engine, dataUri, review, attempts: attempt };
+
+    if (review.ok) return lastCandidate;
+
+    if (attempt < maxAttempts) {
+      console.log(
+        `[aiImage] Claude marcó un problema en el candidato de ${engine} (intento ${attempt}/${maxAttempts}` +
+          `${review.summary ? `: ${review.summary}` : ""}) — regenerando automáticamente...`
+      );
+    }
+  }
+
+  return lastCandidate;
+}
+
 /**
  * Genera un fondo candidato por CADA IA que esté configurada (en paralelo),
  * para que el negocio pueda comparar y elegir con cuál fondo quedarse antes
- * de personalizarlo en el editor.
+ * de personalizarlo en el editor. Con Claude configurado, cada candidato ya
+ * viene revisado y — si hizo falta — regenerado hasta MAX_IMAGE_ATTEMPTS
+ * veces para intentar llegar limpio (ver generateAndReviewCandidate).
  *
  * @param {object} brief - ver generateImage()
- * @returns {Promise<Array<{engine: string, label: string, dataUri: string}>>}
+ * @returns {Promise<Array<{engine: string, label: string, dataUri: string, review: object, attempts: number}>>}
  */
 async function generateImageCandidates(brief, { allowOpenAI = true } = {}) {
   const jobs = [];
 
   if (process.env.GEMINI_API_KEY) {
-    jobs.push(
-      generateWithGemini(brief)
-        .then((result) => (result?.dataUri ? { engine: "gemini", raw: result.dataUri } : null))
-        .catch((err) => {
-          console.error("[aiImage] Fallo con Gemini:", err.message);
-          return null;
-        })
-    );
+    jobs.push(generateAndReviewCandidate("gemini", brief));
   }
 
   // allowOpenAI = false para negocios en plan Estándar (solo Gemini). El
   // plan Plus habilita también OpenAI (gpt-image-1), de mejor calidad.
   if (allowOpenAI && process.env.OPENAI_API_KEY) {
-    jobs.push(
-      generateWithOpenAI(brief)
-        .then((raw) => (raw ? { engine: "openai", raw } : null))
-        .catch((err) => {
-          console.error("[aiImage] Fallo con OpenAI:", err.message);
-          return null;
-        })
-    );
+    jobs.push(generateAndReviewCandidate("openai", brief));
   }
 
-  const results = (await Promise.all(jobs)).filter(Boolean);
-
-  // Después de generar y normalizar cada candidato, le pedimos a Claude
-  // (si está configurado) que lo revise con visión: texto/logo/marca de agua
-  // "horneados" por error, caras o manos deformadas, o una escena que no
-  // calza con el giro del negocio. Es solo informativo — nunca descarta ni
-  // bloquea un candidato, el negocio decide con qué se queda.
-  return Promise.all(
-    results.map(async ({ engine, raw }) => {
-      const dataUri = await finalizeImage(raw);
-      const review = await aiReview.reviewGeneratedImage(dataUri, {
-        businessIndustry: brief.businessIndustry,
-      });
-      return { engine, label: ENGINE_LABELS[engine] || engine, dataUri, review };
-    })
-  );
+  const results = await Promise.all(jobs);
+  return results.filter(Boolean);
 }
 
 /**
