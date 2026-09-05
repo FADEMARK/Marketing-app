@@ -40,6 +40,7 @@
             <th>Correo</th>
             <th>Estado</th>
             <th>Plan</th>
+            <th>Módulos</th>
             <th>Facebook</th>
             <th>Campañas</th>
             <th>Registrado</th>
@@ -64,6 +65,20 @@
                     <option value="plus" <%= b.plan === 'plus' ? 'selected' : '' %>>Plus (Gemini + OpenAI, publica en FB)</option>
                     <option value="fademarksuite" <%= b.plan === 'fademarksuite' ? 'selected' : '' %>>FadeMarkSuite (diseñador, sube su diseño, auto-publica)</option>
                   </select>
+                </form>
+              </td>
+              <td>
+                <form method="POST" action="/admin/businesses/<%= b.id %>/toggle-module" class="inline-form" style="margin-bottom:4px;">
+                  <input type="hidden" name="module" value="crm" />
+                  <button type="submit" class="link-button" style="font-size:0.8rem;">
+                    <%= b.module_crm_enabled ? '☑' : '☐' %> CRM
+                  </button>
+                </form>
+                <form method="POST" action="/admin/businesses/<%= b.id %>/toggle-module" class="inline-form">
+                  <input type="hidden" name="module" value="erp" />
+                  <button type="submit" class="link-button" style="font-size:0.8rem;">
+                    <%= b.module_erp_enabled ? '☑' : '☐' %> ERP Yonkes
+                  </button>
                 </form>
               </td>
               <td>

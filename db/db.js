@@ -146,6 +146,71 @@ async function init() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       UNIQUE (business_id, field_key)
     );
+
+    -- ERP para yonkes/deshuesaderos de autos: se compra un vehículo siniestrado,
+    -- se desarma en piezas, y cada pieza se vende por separado. El "estado de
+    -- cuenta" de un vehículo (ver GET /erp/vehicles/:id) compara su precio de
+    -- compra contra la suma de lo que se ha ido vendiendo de él. Es un módulo
+    -- que se activa por negocio (businesses.module_erp_enabled) — pensado para
+    -- revenderse como producto aparte a yonkes, no todos los negocios lo usan.
+    CREATE TABLE IF NOT EXISTS erp_vehicles (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      brand TEXT NOT NULL,
+      model TEXT NOT NULL,
+      year INTEGER,
+      vin TEXT,
+      plate TEXT,
+      color TEXT,
+      purchase_price NUMERIC(12,2) NOT NULL DEFAULT 0,
+      purchase_date DATE,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'en_stock',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS erp_vehicle_photos (
+      id SERIAL PRIMARY KEY,
+      vehicle_id INTEGER NOT NULL REFERENCES erp_vehicles(id) ON DELETE CASCADE,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      photo_data TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS erp_parts (
+      id SERIAL PRIMARY KEY,
+      vehicle_id INTEGER NOT NULL REFERENCES erp_vehicles(id) ON DELETE CASCADE,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      name TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'otro',
+      asking_price NUMERIC(12,2),
+      status TEXT NOT NULL DEFAULT 'disponible',
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    -- Una venta siempre queda ligada a UN vehículo (así el estado de cuenta de
+    -- ese vehículo es un simple SUM de sus erp_sale_items). Si un cliente
+    -- compra piezas de dos vehículos distintos, son dos ventas separadas.
+    CREATE TABLE IF NOT EXISTS erp_sales (
+      id SERIAL PRIMARY KEY,
+      vehicle_id INTEGER NOT NULL REFERENCES erp_vehicles(id),
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      buyer_name TEXT,
+      sale_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS erp_sale_items (
+      id SERIAL PRIMARY KEY,
+      sale_id INTEGER NOT NULL REFERENCES erp_sales(id) ON DELETE CASCADE,
+      part_id INTEGER NOT NULL UNIQUE REFERENCES erp_parts(id),
+      price NUMERIC(12,2) NOT NULL
+    );
   `);
 
   // Migraciones ligeras: si la tabla ya existía de antes (como en un
@@ -194,6 +259,23 @@ async function init() {
   // equipo los verifique manualmente desde /admin/businesses (para no gastar
   // cuota de IA con registros falsos o de prueba).
   await pool.query(`ALTER TABLE businesses ALTER COLUMN is_active SET DEFAULT FALSE;`);
+
+  // --- Módulos por negocio: CRM y ERP-Yonkes son "apartados" que se activan
+  // o desactivan por negocio desde /admin/businesses (ver services/modules.js).
+  // Marketing (el producto base) no tiene flag — siempre está disponible.
+  await pool.query(
+    `ALTER TABLE businesses ADD COLUMN IF NOT EXISTS module_crm_enabled BOOLEAN NOT NULL DEFAULT FALSE;`
+  );
+  await pool.query(
+    `ALTER TABLE businesses ADD COLUMN IF NOT EXISTS module_erp_enabled BOOLEAN NOT NULL DEFAULT FALSE;`
+  );
+
+  // --- CRM: datos de dirección y fiscales por si el negocio quiere facturarle
+  // a ese contacto más adelante. A propósito NO se conecta a ningún PAC/SAT —
+  // solo se guardan para mostrarse en reportes/PDFs internos.
+  await pool.query(`ALTER TABLE crm_contacts ADD COLUMN IF NOT EXISTS address TEXT;`);
+  await pool.query(`ALTER TABLE crm_contacts ADD COLUMN IF NOT EXISTS tax_id TEXT;`);
+  await pool.query(`ALTER TABLE crm_contacts ADD COLUMN IF NOT EXISTS tax_legal_name TEXT;`);
 }
 
 module.exports = { pool, init };

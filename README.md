@@ -210,13 +210,52 @@ Costo: igual de bajo que las otras ayudas de Claude — un documento típico (~2
 
 Ojo con el costo cuando el reintento automático entra en acción: cada intento repite la generación con Gemini/OpenAI (que tiene su propio costo aparte) más una llamada de enriquecer + revisar con Claude, así que en el peor caso (3 intentos seguidos fallidos) el gasto de esa publicación se multiplica hasta por 3. En la práctica es poco frecuente que agote los 3 intentos. Puedes bajar `AI_IMAGE_MAX_ATTEMPTS` a 1 o 2 si prefieres priorizar costo sobre insistencia.
 
+## Módulos por negocio: cómo activar/desactivar CRM y ERP
+
+A partir de esta versión, MarketingHub deja de ser solo "marketing" — es una plataforma con **módulos opcionales** que se activan por negocio, pensada para revenderse por partes. Marketing (crear publicaciones, generar copy/imagen, publicar en Facebook) es el producto base y siempre está disponible. CRM y ERP-Yonkes son módulos aparte que tu equipo activa o desactiva desde `/admin/businesses` con un check por negocio — el negocio mismo no se puede autoactivar un módulo nuevo, así queda claro qué le vendiste a cada cliente.
+
+Si un negocio no tiene un módulo activo, al intentar entrar a `/crm` o `/erp` ve una pantalla explicando que ese módulo no está activo (y el link ni siquiera aparece en su menú). Apagar un módulo corta el acceso al instante, sin que el negocio tenga que cerrar sesión — útil si alguien deja de pagar ese módulo en particular.
+
+Técnicamente: `businesses.module_crm_enabled` y `businesses.module_erp_enabled` (booleanos), validados en cada request por `services/modules.js` → `requireModule()`, el mismo patrón que ya se usaba para revisar que el negocio esté activo (`is_active`). Agregar un módulo nuevo en el futuro (por ejemplo, la tienda en línea) es: una columna booleana más, un middleware `requireModule("nombre")` en sus rutas, y un check más en el panel admin.
+
 ## CRM: contactos y leads por negocio
 
-Módulo aparte, en `/crm` — cada negocio lleva su propia lista de clientes/leads, con notas de seguimiento. No depende de ninguna IA, así que no tiene costo variable. Es intencionalmente simple (v1): una lista con estado (Nuevo, Contactado, Interesado, Cliente, Perdido) y notas de texto libre por contacto — sin pipeline tipo kanban.
+Módulo opcional (`/crm`, requiere `module_crm_enabled`) — cada negocio lleva su propia lista de clientes/leads, con notas de seguimiento. No depende de ninguna IA, así que no tiene costo variable. Es intencionalmente simple (v1): una lista con estado (Nuevo, Contactado, Interesado, Cliente, Perdido) y notas de texto libre por contacto — sin pipeline tipo kanban.
+
+Cada contacto guarda, además de nombre/teléfono/correo: **dirección**, y **datos fiscales básicos** (RFC y razón social) por si el negocio más adelante quiere facturarle — a propósito esto NO se conecta a ningún PAC/SAT, solo se guarda para mostrarse en reportes o PDFs internos del negocio. La fecha de alta del contacto se muestra siempre en su detalle.
 
 **Campos personalizados por negocio**: cada cliente puede necesitar rastrear cosas distintas de sus leads (una aseguradora quiere "Tipo de póliza", un consultorio quiere "Fecha de próxima cita", etc.). Estos campos **los configura tu equipo, no el negocio**, desde el panel interno en `/admin/businesses/:id/crm-fields` — así se pueden ajustar a la medida de cada cliente al momento de venderle la herramienta, como haría una implementación de NetSuite. Tipos disponibles: texto, número, fecha y lista de opciones. Los valores que cada negocio llena para sus contactos se guardan automáticamente y aparecen tanto en el formulario de nuevo contacto como en el detalle.
 
 Si borras un campo personalizado desde el panel admin, los valores que ya se habían guardado en contactos existentes no se pierden, pero el campo deja de mostrarse (por si luego lo vuelves a crear con el mismo nombre).
+
+## ERP Yonkes: control de autos siniestrados y venta de piezas
+
+Módulo opcional (`/erp`, requiere `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. El flujo:
+
+1. **Alta del vehículo** (`/erp/vehicles/new`): marca, modelo, año, VIN, placa, color, precio de compra, fecha de compra, notas, y hasta 8 fotos (se comprimen automáticamente a JPEG al subirlas, no hace falta que el negocio las optimice antes).
+2. **Piezas**: desde el detalle del vehículo se van registrando las piezas que salen de él (motor, transmisión, suspensión y dirección, frenos, eléctrico, carrocería, interior, llantas y rines, u otro), cada una con un precio sugerido opcional.
+3. **Venta**: cuando se vende una o varias piezas, se registra la venta ahí mismo, en el detalle de ESE vehículo — seleccionas qué piezas se vendieron y confirmas el precio real de cada una (puede ser distinto al sugerido). Las piezas vendidas quedan marcadas como tal y ya no se pueden editar ni borrar (es un registro financiero).
+4. **Estado de cuenta por vehículo**: en todo momento el detalle del vehículo muestra precio de compra, cuánto se ha vendido de él hasta ahora, y la ganancia o pérdida resultante — sin necesitar que el vehículo esté completamente vendido para verlo.
+5. **Agotado**: cuando ya no queda nada que vender de un vehículo, se marca manualmente como "Agotado" (se puede reactivar si hace falta). Un vehículo con ventas registradas no se puede borrar —de nuevo, por ser un registro financiero—, solo marcarse como agotado.
+6. Las ventas se pueden **cancelar** si se registraron por error: las piezas regresan a "Disponible" y el estado de cuenta se recalcula solo.
+
+Todo queda aislado por negocio (un yonke jamás ve el inventario de otro) y todo el flujo de venta corre dentro de una transacción de base de datos, para que una venta a medio registrar nunca deje piezas en un estado inconsistente.
+
+### Consultoría: cómo empaquetar y revender el ERP Yonkes
+
+Dado que la idea es venderlo como producto aparte (estilo NetSuite, pero mucho más ligero y enfocado a un giro específico), esta es una propuesta de modelo de negocio de partida — ajústala según lo que veas en el mercado:
+
+- **Cuota mensual por yonke (SaaS)**, no por transacción — es lo más simple de vender y de explicarle al cliente. Sugerencia de escalones: un plan básico con 1-2 usuarios y un tope de vehículos activos (por ejemplo, hasta 30 vehículos "en stock" simultáneos), y un plan superior sin ese tope y con más usuarios. El límite de vehículos activos es fácil de implementar más adelante (un `COUNT` sobre `erp_vehicles WHERE status='en_stock'`) si quieres que el sistema mismo lo controle en vez de hacerlo por honestidad del cliente.
+- **Cuota de implementación inicial (setup fee), aparte de la mensualidad**: carga de su catálogo de vehículos/piezas existente si ya tenían algo en Excel, configuración de su marca (logo/colores, que ya se reutilizan en Documentos y en el futuro catálogo), y una sesión de capacitación al equipo del yonke. Esto es normal en software B2B y ayuda a que el precio mensual no cargue con todo el costo de arranque.
+- **Cobro por usuario adicional** más allá de los incluidos en el plan, si el yonke tiene varios empleados capturando piezas al mismo tiempo.
+- Tú (o tu equipo) actúan como el "admin" de la plataforma: dan de alta al negocio, activan el módulo ERP-Yonkes con el check correspondiente, y quedan como soporte de primer nivel — el mismo rol que ya cumples hoy con los negocios de Marketing.
+
+### Próximos pasos sugeridos para el ERP
+
+- **Tienda en línea**: el modelo de datos ya quedó listo para esto (las piezas ya tienen categoría, precio y el vehículo ya tiene fotos) — el siguiente paso natural sería una página pública de catálogo por yonke (sin necesitar login) mostrando las piezas "Disponibles", para que el público las vea y contacte o compre. Vale la pena definir aparte si el pago se procesa en línea (Stripe/Mercado Pago) o solo se usa como escaparate para generar el contacto.
+- **Fotos por pieza** (hoy las fotos son del vehículo completo) — importante si se construye la tienda en línea, ya que el comprador de una pieza específica quiere verla a ella, no solo el auto completo.
+- **Reportes**: un dashboard con ganancia acumulada por periodo, piezas más vendidas por categoría, etc. — con los datos ya estructurados como quedaron (erp_sales/erp_sale_items), son consultas SQL directas, no requiere cambiar el modelo de datos.
+- **Facturación electrónica real (CFDI)** si en algún momento se vuelve un requisito — se dejó la puerta abierta guardando los datos fiscales del cliente en el CRM, pero conectar un PAC (proveedor autorizado del SAT) es un desarrollo aparte, con costo recurrente propio del PAC.
 
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 

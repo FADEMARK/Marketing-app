@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>ERP Yonkes — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <div class="page-header">
+      <h1>ERP Yonkes</h1>
+      <a href="/erp/vehicles/new" class="btn-primary">+ Nuevo vehículo</a>
+    </div>
+    <p class="subtitle">Da de alta cada vehículo que compras, registra sus piezas y sus ventas.</p>
+
+    <div class="crm-filters">
+      <a href="/erp" class="<%= statusFilter === '' ? 'active' : '' %>">Todos</a>
+      <% Object.values(VEHICLE_STATUSES).forEach(function(s) { %>
+        <a href="/erp?status=<%= s %>" class="<%= statusFilter === s ? 'active' : '' %>"><%= VEHICLE_STATUS_LABELS[s] %></a>
+      <% }); %>
+    </div>
+
+    <% if (vehicles.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no tienes vehículos<%= statusFilter ? ' con este estado' : '' %>.</p>
+        <a href="/erp/vehicles/new" class="btn-primary">Dar de alta mi primer vehículo</a>
+      </div>
+    <% } else { %>
+      <div class="campaign-grid">
+        <% vehicles.forEach(function(v) { %>
+          <a href="/erp/vehicles/<%= v.id %>" class="campaign-card">
+            <% if (v.cover_photo) { %>
+              <img src="<%= v.cover_photo %>" alt="" style="width:100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 8px;" />
+            <% } else { %>
+              <div style="width:100%; aspect-ratio: 4/3; background:#EEF2F7; border-radius: 8px; display:flex; align-items:center; justify-content:center; color:#999; font-size:0.85rem;">Sin fotos</div>
+            <% } %>
+            <h3><%= v.brand %> <%= v.model %> <%= v.year || '' %></h3>
+            <p class="muted small"><%= v.plate ? 'Placa: ' + v.plate : (v.vin ? 'VIN: ' + v.vin : '—') %></p>
+            <p class="muted small">Compra: $<%= Number(v.purchase_price).toLocaleString('es-MX', {minimumFractionDigits:2}) %></p>
+            <p class="muted small"><%= v.parts_sold_count %>/<%= v.parts_count %> piezas vendidas</p>
+            <span class="status-badge status-<%= v.status %>"><%= VEHICLE_STATUS_LABELS[v.status] || v.status %></span>
+          </a>
+        <% }); %>
+      </div>
+    <% } %>
+  </main>
+</body>
+</html>

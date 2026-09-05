@@ -23,6 +23,8 @@ const {
   CUSTOM_FIELD_TYPE_LABELS,
   slugifyFieldKey,
 } = require("./services/crmStatus");
+const { MODULES, requireModule } = require("./services/modules");
+const erpStatus = require("./services/erpStatus");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const promptSettings = require("./services/promptSettings");
@@ -75,6 +77,10 @@ app.use((req, res, next) => {
   res.locals.STATUS_LABELS = STATUS_LABELS;
   res.locals.isBusinessLoggedIn = Boolean(req.session.businessId);
   res.locals.isAdminLoggedIn = Boolean(req.session.adminId);
+  // requireBusinessAuth lo sobreescribe con los valores reales cuando aplica;
+  // este default evita que nav.ejs truene en páginas sin esa validación
+  // (login, registro, home...).
+  res.locals.businessModules = { module_crm_enabled: false, module_erp_enabled: false };
   next();
 });
 
@@ -113,6 +119,19 @@ async function normalizeDesignUpload(file) {
     .png({ compressionLevel: 9 })
     .toBuffer();
   return `data:image/png;base64,${optimized.toString("base64")}`;
+}
+
+// Fotos de vehículos del ERP-Yonkes: se comprimen a JPEG (más liviano que PNG
+// para fotografías reales) y se limitan a 1280px de lado mayor — de sobra
+// para verlas en el panel o, más adelante, en una eventual tienda en línea.
+async function normalizeVehiclePhoto(file) {
+  if (!file) return null;
+  const optimized = await sharp(file.buffer)
+    .rotate() // respeta la orientación EXIF de fotos tomadas con el celular
+    .resize({ width: 1280, height: 1280, fit: "inside", withoutEnlargement: true })
+    .jpeg({ quality: 78 })
+    .toBuffer();
+  return `data:image/jpeg;base64,${optimized.toString("base64")}`;
 }
 
 // ---------- Páginas públicas ----------
@@ -723,7 +742,7 @@ function collectCustomFieldsFromBody(body, fieldDefs) {
   return values;
 }
 
-app.get("/crm", requireBusinessAuth, async (req, res, next) => {
+app.get("/crm", requireBusinessAuth, requireModule(MODULES.CRM), async (req, res, next) => {
   try {
     const statusFilter = req.query.status || "";
     const params = [req.session.businessId];
@@ -746,7 +765,7 @@ app.get("/crm", requireBusinessAuth, async (req, res, next) => {
   }
 });
 
-app.get("/crm/new", requireBusinessAuth, async (req, res, next) => {
+app.get("/crm/new", requireBusinessAuth, requireModule(MODULES.CRM), async (req, res, next) => {
   try {
     const fieldDefs = await loadCustomFieldDefs(req.session.businessId);
     res.render("crm-form", {
@@ -763,9 +782,9 @@ app.get("/crm/new", requireBusinessAuth, async (req, res, next) => {
   }
 });
 
-app.post("/crm", requireBusinessAuth, async (req, res, next) => {
+app.post("/crm", requireBusinessAuth, requireModule(MODULES.CRM), async (req, res, next) => {
   try {
-    const { name, phone, email, status } = req.body;
+    const { name, phone, email, status, address, tax_id, tax_legal_name } = req.body;
     const fieldDefs = await loadCustomFieldDefs(req.session.businessId);
 
     if (!name || !name.trim()) {
@@ -783,8 +802,8 @@ app.post("/crm", requireBusinessAuth, async (req, res, next) => {
     const customFields = collectCustomFieldsFromBody(req.body, fieldDefs);
 
     const { rows } = await pool.query(
-      `INSERT INTO crm_contacts (business_id, name, phone, email, status, custom_fields)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      `INSERT INTO crm_contacts (business_id, name, phone, email, status, custom_fields, address, tax_id, tax_legal_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         req.session.businessId,
         name.trim(),
@@ -792,6 +811,9 @@ app.post("/crm", requireBusinessAuth, async (req, res, next) => {
         (email || "").trim() || null,
         status && CRM_STATUS_LABELS[status] ? status : CRM_STATUSES.NUEVO,
         JSON.stringify(customFields),
+        (address || "").trim() || null,
+        (tax_id || "").trim() || null,
+        (tax_legal_name || "").trim() || null,
       ]
     );
 
@@ -801,7 +823,7 @@ app.post("/crm", requireBusinessAuth, async (req, res, next) => {
   }
 });
 
-app.get("/crm/:id", requireBusinessAuth, async (req, res, next) => {
+app.get("/crm/:id", requireBusinessAuth, requireModule(MODULES.CRM), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       "SELECT * FROM crm_contacts WHERE id = $1 AND business_id = $2",
@@ -832,9 +854,9 @@ app.get("/crm/:id", requireBusinessAuth, async (req, res, next) => {
   }
 });
 
-app.post("/crm/:id/update", requireBusinessAuth, async (req, res, next) => {
+app.post("/crm/:id/update", requireBusinessAuth, requireModule(MODULES.CRM), async (req, res, next) => {
   try {
-    const { name, phone, email, status } = req.body;
+    const { name, phone, email, status, address, tax_id, tax_legal_name } = req.body;
     if (!name || !name.trim()) return res.status(400).send("El nombre es obligatorio.");
 
     const fieldDefs = await loadCustomFieldDefs(req.session.businessId);
@@ -842,14 +864,18 @@ app.post("/crm/:id/update", requireBusinessAuth, async (req, res, next) => {
 
     const { rowCount } = await pool.query(
       `UPDATE crm_contacts
-       SET name = $1, phone = $2, email = $3, status = $4, custom_fields = $5, updated_at = NOW()
-       WHERE id = $6 AND business_id = $7`,
+       SET name = $1, phone = $2, email = $3, status = $4, custom_fields = $5, updated_at = NOW(),
+           address = $6, tax_id = $7, tax_legal_name = $8
+       WHERE id = $9 AND business_id = $10`,
       [
         name.trim(),
         (phone || "").trim() || null,
         (email || "").trim() || null,
         status && CRM_STATUS_LABELS[status] ? status : CRM_STATUSES.NUEVO,
         JSON.stringify(customFields),
+        (address || "").trim() || null,
+        (tax_id || "").trim() || null,
+        (tax_legal_name || "").trim() || null,
         req.params.id,
         req.session.businessId,
       ]
@@ -862,7 +888,7 @@ app.post("/crm/:id/update", requireBusinessAuth, async (req, res, next) => {
   }
 });
 
-app.post("/crm/:id/notes", requireBusinessAuth, async (req, res, next) => {
+app.post("/crm/:id/notes", requireBusinessAuth, requireModule(MODULES.CRM), async (req, res, next) => {
   try {
     const { note } = req.body;
     if (!note || !note.trim()) return res.redirect(`/crm/${req.params.id}`);
@@ -884,7 +910,7 @@ app.post("/crm/:id/notes", requireBusinessAuth, async (req, res, next) => {
   }
 });
 
-app.post("/crm/:id/delete", requireBusinessAuth, async (req, res, next) => {
+app.post("/crm/:id/delete", requireBusinessAuth, requireModule(MODULES.CRM), async (req, res, next) => {
   try {
     await pool.query("DELETE FROM crm_contacts WHERE id = $1 AND business_id = $2", [
       req.params.id,
@@ -893,6 +919,574 @@ app.post("/crm/:id/delete", requireBusinessAuth, async (req, res, next) => {
     res.redirect("/crm");
   } catch (err) {
     next(err);
+  }
+});
+
+// --- ERP-Yonkes: alta de vehículo -> piezas -> ventas -> estado de cuenta.
+// Módulo gateado por businesses.module_erp_enabled (ver services/modules.js).
+// Todas las rutas validan business_id en cada consulta para que un negocio
+// jamás pueda ver/tocar el inventario de otro.
+
+async function loadVehicleOr404(req, res) {
+  const { rows } = await pool.query(
+    "SELECT * FROM erp_vehicles WHERE id = $1 AND business_id = $2",
+    [req.params.id, req.session.businessId]
+  );
+  const vehicle = rows[0];
+  if (!vehicle) {
+    res.status(404).send("Vehículo no encontrado.");
+    return null;
+  }
+  return vehicle;
+}
+
+// Arma el "estado de cuenta" de un vehículo: cuánto costó, cuánto se ha
+// vendido de él (sumando todas sus ventas ya registradas) y la ganancia.
+async function buildVehicleStatement(vehicleId) {
+  const { rows: salesRows } = await pool.query(
+    `SELECT erp_sales.*, COALESCE(SUM(erp_sale_items.price), 0)::numeric AS sale_total
+     FROM erp_sales
+     LEFT JOIN erp_sale_items ON erp_sale_items.sale_id = erp_sales.id
+     WHERE erp_sales.vehicle_id = $1
+     GROUP BY erp_sales.id
+     ORDER BY erp_sales.sale_date DESC, erp_sales.id DESC`,
+    [vehicleId]
+  );
+
+  const sales = [];
+  for (const sale of salesRows) {
+    const { rows: items } = await pool.query(
+      `SELECT erp_sale_items.*, erp_parts.name AS part_name
+       FROM erp_sale_items
+       JOIN erp_parts ON erp_parts.id = erp_sale_items.part_id
+       WHERE erp_sale_items.sale_id = $1
+       ORDER BY erp_sale_items.id ASC`,
+      [sale.id]
+    );
+    sales.push({ ...sale, items });
+  }
+
+  const totalSold = sales.reduce((sum, s) => sum + Number(s.sale_total), 0);
+  return { sales, totalSold };
+}
+
+app.get("/erp", requireBusinessAuth, requireModule(MODULES.ERP), async (req, res, next) => {
+  try {
+    const statusFilter = req.query.status || "";
+    const params = [req.session.businessId];
+    let query = `
+      SELECT erp_vehicles.*,
+        (SELECT photo_data FROM erp_vehicle_photos WHERE vehicle_id = erp_vehicles.id ORDER BY display_order ASC, id ASC LIMIT 1) AS cover_photo,
+        (SELECT COUNT(*)::int FROM erp_parts WHERE vehicle_id = erp_vehicles.id) AS parts_count,
+        (SELECT COUNT(*)::int FROM erp_parts WHERE vehicle_id = erp_vehicles.id AND status = 'vendida') AS parts_sold_count
+      FROM erp_vehicles
+      WHERE business_id = $1`;
+    if (statusFilter) {
+      params.push(statusFilter);
+      query += ` AND status = $${params.length}`;
+    }
+    query += " ORDER BY created_at DESC";
+
+    const { rows: vehicles } = await pool.query(query, params);
+    res.render("erp-list", {
+      vehicles,
+      statusFilter,
+      VEHICLE_STATUSES: erpStatus.VEHICLE_STATUSES,
+      VEHICLE_STATUS_LABELS: erpStatus.VEHICLE_STATUS_LABELS,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/vehicles/new", requireBusinessAuth, requireModule(MODULES.ERP), (req, res) => {
+  res.render("erp-vehicle-new", { error: null, form: {} });
+});
+
+app.post(
+  "/erp/vehicles",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  upload.array("photos", erpStatus.MAX_VEHICLE_PHOTOS),
+  async (req, res, next) => {
+    try {
+      const { brand, model, year, vin, plate, color, purchase_price, purchase_date, notes } =
+        req.body;
+
+      if (!brand || !brand.trim() || !model || !model.trim()) {
+        return res.render("erp-vehicle-new", {
+          error: "Marca y modelo son obligatorios.",
+          form: req.body,
+        });
+      }
+
+      const price = parseFloat(purchase_price);
+      if (isNaN(price) || price < 0) {
+        return res.render("erp-vehicle-new", {
+          error: "El precio de compra debe ser un número válido.",
+          form: req.body,
+        });
+      }
+
+      const { rows } = await pool.query(
+        `INSERT INTO erp_vehicles (business_id, brand, model, year, vin, plate, color, purchase_price, purchase_date, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        [
+          req.session.businessId,
+          brand.trim(),
+          model.trim(),
+          year ? parseInt(year, 10) : null,
+          (vin || "").trim() || null,
+          (plate || "").trim() || null,
+          (color || "").trim() || null,
+          price,
+          purchase_date || null,
+          (notes || "").trim() || null,
+        ]
+      );
+      const vehicleId = rows[0].id;
+
+      const files = req.files || [];
+      for (let i = 0; i < files.length; i++) {
+        const dataUri = await normalizeVehiclePhoto(files[i]);
+        await pool.query(
+          `INSERT INTO erp_vehicle_photos (vehicle_id, business_id, photo_data, display_order)
+           VALUES ($1, $2, $3, $4)`,
+          [vehicleId, req.session.businessId, dataUri, i]
+        );
+      }
+
+      res.redirect(`/erp/vehicles/${vehicleId}`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get("/erp/vehicles/:id", requireBusinessAuth, requireModule(MODULES.ERP), async (req, res, next) => {
+  try {
+    const vehicle = await loadVehicleOr404(req, res);
+    if (!vehicle) return;
+
+    const { rows: photos } = await pool.query(
+      "SELECT * FROM erp_vehicle_photos WHERE vehicle_id = $1 ORDER BY display_order ASC, id ASC",
+      [vehicle.id]
+    );
+    const { rows: parts } = await pool.query(
+      "SELECT * FROM erp_parts WHERE vehicle_id = $1 ORDER BY created_at DESC",
+      [vehicle.id]
+    );
+    const { sales, totalSold } = await buildVehicleStatement(vehicle.id);
+
+    const availableParts = parts.filter((p) => p.status === erpStatus.PART_STATUSES.DISPONIBLE);
+
+    res.render("erp-vehicle-detail", {
+      vehicle,
+      photos,
+      parts,
+      sales,
+      totalSold,
+      profit: totalSold - Number(vehicle.purchase_price),
+      availableParts,
+      VEHICLE_STATUSES: erpStatus.VEHICLE_STATUSES,
+      VEHICLE_STATUS_LABELS: erpStatus.VEHICLE_STATUS_LABELS,
+      PART_STATUSES: erpStatus.PART_STATUSES,
+      PART_STATUS_LABELS: erpStatus.PART_STATUS_LABELS,
+      PART_CATEGORIES: erpStatus.PART_CATEGORIES,
+      PART_CATEGORY_LABELS: erpStatus.PART_CATEGORY_LABELS,
+      MAX_VEHICLE_PHOTOS: erpStatus.MAX_VEHICLE_PHOTOS,
+      saved: req.query.saved === "1",
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  "/erp/vehicles/:id/update",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  async (req, res, next) => {
+    try {
+      const vehicle = await loadVehicleOr404(req, res);
+      if (!vehicle) return;
+
+      const { brand, model, year, vin, plate, color, purchase_price, purchase_date, notes } =
+        req.body;
+      if (!brand || !brand.trim() || !model || !model.trim()) {
+        return res.redirect(
+          `/erp/vehicles/${vehicle.id}?error=` + encodeURIComponent("Marca y modelo son obligatorios.")
+        );
+      }
+      const price = parseFloat(purchase_price);
+      if (isNaN(price) || price < 0) {
+        return res.redirect(
+          `/erp/vehicles/${vehicle.id}?error=` +
+            encodeURIComponent("El precio de compra debe ser un número válido.")
+        );
+      }
+
+      await pool.query(
+        `UPDATE erp_vehicles
+         SET brand = $1, model = $2, year = $3, vin = $4, plate = $5, color = $6,
+             purchase_price = $7, purchase_date = $8, notes = $9, updated_at = NOW()
+         WHERE id = $10 AND business_id = $11`,
+        [
+          brand.trim(),
+          model.trim(),
+          year ? parseInt(year, 10) : null,
+          (vin || "").trim() || null,
+          (plate || "").trim() || null,
+          (color || "").trim() || null,
+          price,
+          purchase_date || null,
+          (notes || "").trim() || null,
+          vehicle.id,
+          req.session.businessId,
+        ]
+      );
+
+      res.redirect(`/erp/vehicles/${vehicle.id}?saved=1`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/vehicles/:id/photos",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  upload.array("photos", erpStatus.MAX_VEHICLE_PHOTOS),
+  async (req, res, next) => {
+    try {
+      const vehicle = await loadVehicleOr404(req, res);
+      if (!vehicle) return;
+
+      const { rows: countRows } = await pool.query(
+        "SELECT COUNT(*)::int AS n FROM erp_vehicle_photos WHERE vehicle_id = $1",
+        [vehicle.id]
+      );
+      let nextOrder = countRows[0].n;
+      const remainingSlots = erpStatus.MAX_VEHICLE_PHOTOS - nextOrder;
+      const files = (req.files || []).slice(0, Math.max(0, remainingSlots));
+
+      for (const file of files) {
+        const dataUri = await normalizeVehiclePhoto(file);
+        await pool.query(
+          `INSERT INTO erp_vehicle_photos (vehicle_id, business_id, photo_data, display_order)
+           VALUES ($1, $2, $3, $4)`,
+          [vehicle.id, req.session.businessId, dataUri, nextOrder]
+        );
+        nextOrder++;
+      }
+
+      res.redirect(`/erp/vehicles/${vehicle.id}`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/vehicles/:id/photos/:photoId/delete",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  async (req, res, next) => {
+    try {
+      const vehicle = await loadVehicleOr404(req, res);
+      if (!vehicle) return;
+
+      await pool.query(
+        "DELETE FROM erp_vehicle_photos WHERE id = $1 AND vehicle_id = $2 AND business_id = $3",
+        [req.params.photoId, vehicle.id, req.session.businessId]
+      );
+      res.redirect(`/erp/vehicles/${vehicle.id}`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/vehicles/:id/toggle-status",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  async (req, res, next) => {
+    try {
+      const vehicle = await loadVehicleOr404(req, res);
+      if (!vehicle) return;
+
+      const newStatus =
+        vehicle.status === erpStatus.VEHICLE_STATUSES.AGOTADO
+          ? erpStatus.VEHICLE_STATUSES.EN_STOCK
+          : erpStatus.VEHICLE_STATUSES.AGOTADO;
+
+      await pool.query("UPDATE erp_vehicles SET status = $1, updated_at = NOW() WHERE id = $2", [
+        newStatus,
+        vehicle.id,
+      ]);
+      res.redirect(`/erp/vehicles/${vehicle.id}`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/vehicles/:id/delete",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  async (req, res, next) => {
+    try {
+      const vehicle = await loadVehicleOr404(req, res);
+      if (!vehicle) return;
+
+      // No se borra un vehículo con ventas ya registradas — es un registro
+      // financiero. Si ya no queda nada que vender, se marca "Agotado" en vez
+      // de borrarlo.
+      const { rows: saleRows } = await pool.query(
+        "SELECT COUNT(*)::int AS n FROM erp_sales WHERE vehicle_id = $1",
+        [vehicle.id]
+      );
+      if (saleRows[0].n > 0) {
+        return res.redirect(
+          `/erp/vehicles/${vehicle.id}?error=` +
+            encodeURIComponent(
+              "Este vehículo ya tiene ventas registradas, no se puede borrar. Márcalo como Agotado en vez de eso."
+            )
+        );
+      }
+
+      await pool.query("DELETE FROM erp_vehicles WHERE id = $1 AND business_id = $2", [
+        vehicle.id,
+        req.session.businessId,
+      ]);
+      res.redirect("/erp");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/vehicles/:id/parts",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  async (req, res, next) => {
+    try {
+      const vehicle = await loadVehicleOr404(req, res);
+      if (!vehicle) return;
+
+      const { name, category, asking_price, notes } = req.body;
+      if (!name || !name.trim()) {
+        return res.redirect(
+          `/erp/vehicles/${vehicle.id}?error=` + encodeURIComponent("El nombre de la pieza es obligatorio.")
+        );
+      }
+
+      const cat = erpStatus.PART_CATEGORIES.includes(category) ? category : "otro";
+      const price = asking_price !== undefined && asking_price !== "" ? parseFloat(asking_price) : null;
+
+      await pool.query(
+        `INSERT INTO erp_parts (vehicle_id, business_id, name, category, asking_price, notes)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [vehicle.id, req.session.businessId, name.trim(), cat, price, (notes || "").trim() || null]
+      );
+
+      res.redirect(`/erp/vehicles/${vehicle.id}`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post("/erp/parts/:id/update", requireBusinessAuth, requireModule(MODULES.ERP), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM erp_parts WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const part = rows[0];
+    if (!part) return res.status(404).send("Pieza no encontrada.");
+
+    const { name, category, asking_price, notes, status } = req.body;
+    if (!name || !name.trim()) {
+      return res.redirect(
+        `/erp/vehicles/${part.vehicle_id}?error=` + encodeURIComponent("El nombre de la pieza es obligatorio.")
+      );
+    }
+
+    const cat = erpStatus.PART_CATEGORIES.includes(category) ? category : "otro";
+    const price = asking_price !== undefined && asking_price !== "" ? parseFloat(asking_price) : null;
+
+    // El estado "vendida" solo se puede llegar a él registrando una venta
+    // (ver POST /erp/vehicles/:id/sales) — así siempre queda un registro de
+    // a cuánto se vendió. Desde aquí solo se permite moverse entre los demás
+    // estados.
+    const allowedManualStatuses = [
+      erpStatus.PART_STATUSES.DISPONIBLE,
+      erpStatus.PART_STATUSES.RESERVADA,
+      erpStatus.PART_STATUSES.DESECHADA,
+    ];
+    const nextStatus =
+      part.status === erpStatus.PART_STATUSES.VENDIDA
+        ? part.status // ya vendida, no se toca desde este formulario
+        : allowedManualStatuses.includes(status)
+        ? status
+        : part.status;
+
+    await pool.query(
+      `UPDATE erp_parts SET name = $1, category = $2, asking_price = $3, notes = $4, status = $5, updated_at = NOW()
+       WHERE id = $6 AND business_id = $7`,
+      [name.trim(), cat, price, (notes || "").trim() || null, nextStatus, part.id, req.session.businessId]
+    );
+
+    res.redirect(`/erp/vehicles/${part.vehicle_id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/erp/parts/:id/delete", requireBusinessAuth, requireModule(MODULES.ERP), async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM erp_parts WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const part = rows[0];
+    if (!part) return res.status(404).send("Pieza no encontrada.");
+
+    if (part.status === erpStatus.PART_STATUSES.VENDIDA) {
+      return res.redirect(
+        `/erp/vehicles/${part.vehicle_id}?error=` +
+          encodeURIComponent("No se puede borrar una pieza ya vendida (es un registro de venta).")
+      );
+    }
+
+    await pool.query("DELETE FROM erp_parts WHERE id = $1 AND business_id = $2", [
+      part.id,
+      req.session.businessId,
+    ]);
+    res.redirect(`/erp/vehicles/${part.vehicle_id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  "/erp/vehicles/:id/sales",
+  requireBusinessAuth,
+  requireModule(MODULES.ERP),
+  async (req, res, next) => {
+    const vehicle = await loadVehicleOr404(req, res);
+    if (!vehicle) return;
+
+    const rawIds = req.body.part_ids;
+    const selectedIds = (Array.isArray(rawIds) ? rawIds : rawIds ? [rawIds] : []).map((v) =>
+      parseInt(v, 10)
+    );
+
+    if (selectedIds.length === 0) {
+      return res.redirect(
+        `/erp/vehicles/${vehicle.id}?error=` + encodeURIComponent("Selecciona al menos una pieza para la venta.")
+      );
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Vuelve a leer las piezas DENTRO de la transacción para asegurarnos de
+      // que sigan disponibles y sean de este mismo vehículo/negocio — evita
+      // vender dos veces la misma pieza si alguien manda la petición dos
+      // veces casi al mismo tiempo.
+      const { rows: partsToSell } = await client.query(
+        `SELECT * FROM erp_parts
+         WHERE id = ANY($1::int[]) AND vehicle_id = $2 AND business_id = $3 AND status = $4
+         FOR UPDATE`,
+        [selectedIds, vehicle.id, req.session.businessId, erpStatus.PART_STATUSES.DISPONIBLE]
+      );
+
+      if (partsToSell.length === 0) {
+        await client.query("ROLLBACK");
+        return res.redirect(
+          `/erp/vehicles/${vehicle.id}?error=` +
+            encodeURIComponent("Esas piezas ya no están disponibles (puede que ya se hayan vendido).")
+        );
+      }
+
+      const { rows: saleRows } = await client.query(
+        `INSERT INTO erp_sales (vehicle_id, business_id, buyer_name, sale_date, notes)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        [
+          vehicle.id,
+          req.session.businessId,
+          (req.body.buyer_name || "").trim() || null,
+          req.body.sale_date || new Date().toISOString().slice(0, 10),
+          (req.body.notes || "").trim() || null,
+        ]
+      );
+      const saleId = saleRows[0].id;
+
+      for (const part of partsToSell) {
+        // OJO: NO usar "prices[<id>]" con id numérico — qs (el parser de
+        // express.urlencoded) colapsa índices de array dispersos/no
+        // secuenciales y termina mezclando los precios entre piezas. Por
+        // eso el campo del formulario se llama "price_<id>" (plano).
+        const rawPrice = req.body["price_" + part.id];
+        const price =
+          rawPrice !== undefined && rawPrice !== "" ? parseFloat(rawPrice) : Number(part.asking_price) || 0;
+
+        await client.query(
+          "INSERT INTO erp_sale_items (sale_id, part_id, price) VALUES ($1, $2, $3)",
+          [saleId, part.id, price]
+        );
+        await client.query(
+          "UPDATE erp_parts SET status = $1, updated_at = NOW() WHERE id = $2",
+          [erpStatus.PART_STATUSES.VENDIDA, part.id]
+        );
+      }
+
+      await client.query("COMMIT");
+      res.redirect(`/erp/vehicles/${vehicle.id}?saved=1`);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      next(err);
+    } finally {
+      client.release();
+    }
+  }
+);
+
+app.post("/erp/sales/:id/delete", requireBusinessAuth, requireModule(MODULES.ERP), async (req, res, next) => {
+  const { rows } = await pool.query("SELECT * FROM erp_sales WHERE id = $1 AND business_id = $2", [
+    req.params.id,
+    req.session.businessId,
+  ]);
+  const sale = rows[0];
+  if (!sale) return res.status(404).send("Venta no encontrada.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Regresa las piezas de esa venta a "disponible" antes de borrar la
+    // venta — así una venta cancelada por error no deja piezas "atrapadas"
+    // como vendidas para siempre.
+    await client.query(
+      `UPDATE erp_parts SET status = $1, updated_at = NOW()
+       WHERE id IN (SELECT part_id FROM erp_sale_items WHERE sale_id = $2)`,
+      [erpStatus.PART_STATUSES.DISPONIBLE, sale.id]
+    );
+    await client.query("DELETE FROM erp_sales WHERE id = $1", [sale.id]);
+    await client.query("COMMIT");
+    res.redirect(`/erp/vehicles/${sale.vehicle_id}`);
+  } catch (err) {
+    await client.query("ROLLBACK");
+    next(err);
+  } finally {
+    client.release();
   }
 });
 
@@ -1996,6 +2590,30 @@ app.post("/admin/businesses/:id/toggle-active", requireAdminAuth, async (req, re
     await pool.query("UPDATE businesses SET is_active = NOT is_active WHERE id = $1", [
       req.params.id,
     ]);
+    res.redirect("/admin/businesses");
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Activar/desactivar módulos opcionales por negocio (CRM, ERP-Yonkes). Es
+// intencionalmente admin-only: el negocio no se autoactiva un módulo nuevo,
+// así queda claro qué se le vendió a cada cliente.
+app.post("/admin/businesses/:id/toggle-module", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { module: moduleKey } = req.body;
+    const column =
+      moduleKey === MODULES.CRM
+        ? "module_crm_enabled"
+        : moduleKey === MODULES.ERP
+        ? "module_erp_enabled"
+        : null;
+    if (!column) return res.status(400).send("Módulo inválido.");
+
+    await pool.query(
+      `UPDATE businesses SET ${column} = NOT ${column} WHERE id = $1`,
+      [req.params.id]
+    );
     res.redirect("/admin/businesses");
   } catch (err) {
     next(err);

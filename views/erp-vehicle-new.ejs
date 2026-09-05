@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nuevo vehículo — ERP Yonkes</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page">
+    <a href="/erp" class="back-link">&larr; Volver al ERP</a>
+    <h1>Nuevo vehículo</h1>
+    <p class="subtitle">Da de alta el vehículo con su precio de compra. Puedes agregar las piezas después, desde su detalle.</p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/erp/vehicles" enctype="multipart/form-data" class="card-form">
+      <div class="two-col">
+        <label>Marca
+          <input type="text" name="brand" required value="<%= form.brand || '' %>" placeholder="Ej. Nissan" />
+        </label>
+        <label>Modelo
+          <input type="text" name="model" required value="<%= form.model || '' %>" placeholder="Ej. Sentra" />
+        </label>
+      </div>
+
+      <div class="two-col">
+        <label>Año
+          <input type="number" name="year" min="1950" max="2100" value="<%= form.year || '' %>" />
+        </label>
+        <label>Color
+          <input type="text" name="color" value="<%= form.color || '' %>" />
+        </label>
+      </div>
+
+      <div class="two-col">
+        <label>VIN (número de serie)
+          <input type="text" name="vin" value="<%= form.vin || '' %>" />
+        </label>
+        <label>Placa
+          <input type="text" name="plate" value="<%= form.plate || '' %>" />
+        </label>
+      </div>
+
+      <div class="two-col">
+        <label>Precio de compra
+          <input type="number" name="purchase_price" step="0.01" min="0" required value="<%= form.purchase_price || '' %>" />
+        </label>
+        <label>Fecha de compra
+          <input type="date" name="purchase_date" value="<%= form.purchase_date || '' %>" />
+        </label>
+      </div>
+
+      <label>Notas (opcional)
+        <textarea name="notes" rows="3"><%= form.notes || '' %></textarea>
+      </label>
+
+      <label>Fotos del vehículo (hasta 8)
+        <input type="file" name="photos" accept="image/*" multiple />
+      </label>
+
+      <button type="submit" class="btn-primary full-width">Guardar vehículo</button>
+    </form>
+  </main>
+</body>
+</html>

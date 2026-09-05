@@ -37,6 +37,24 @@
         </select>
       </label>
 
+      <label>Dirección
+        <input type="text" name="address" value="<%= form.address || '' %>" />
+      </label>
+
+      <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px;">
+        <p class="muted small" style="margin-top:0;">
+          Datos fiscales (opcional, solo para tus reportes/PDFs — no se factura ante el SAT desde aquí):
+        </p>
+        <div class="two-col">
+          <label>RFC
+            <input type="text" name="tax_id" value="<%= form.tax_id || '' %>" />
+          </label>
+          <label>Razón social
+            <input type="text" name="tax_legal_name" value="<%= form.tax_legal_name || '' %>" />
+          </label>
+        </div>
+      </div>
+
       <% if (fieldDefs.length > 0) { %>
         <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px;">
           <p class="muted small" style="margin-top:0;">Campos adicionales de tu negocio:</p>

@@ -217,6 +217,16 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
   border-radius: 8px;
   font-weight: 400;
 }
+/* Los checkboxes (ej. selector de piezas al registrar una venta) deben verse
+   como checkboxes normales, no heredar el padding/borde de un input de texto. */
+.card-form input[type="checkbox"], .card-form input[type="radio"] {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
 
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 
@@ -312,6 +322,64 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
   padding: 10px 0;
 }
 .note-item:last-child { border-bottom: none; }
+
+/* ERP Yonkes: estados de vehículo/pieza. */
+.status-en_stock { background: #E6F4EA; color: #1E7E34; }
+.status-agotado { background: #F1F1F1; color: #666; }
+.status-disponible { background: #E6F4EA; color: #1E7E34; }
+.status-reservada { background: #FFF6E5; color: #8A5A00; }
+.status-vendida { background: #E8F0FE; color: #1967D2; }
+.status-desechada { background: #FDECEA; color: #B3261E; }
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.photo-grid figure {
+  margin: 0;
+  position: relative;
+}
+.photo-grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.photo-grid form {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+.photo-grid button {
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  border: none;
+  border-radius: 100px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.stat-box {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-top: 16px;
+}
+.stat-box div { display: flex; flex-direction: column; gap: 2px; }
+.stat-box .stat-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; }
+.stat-box .stat-value { font-size: 1.4rem; font-weight: 700; }
+.stat-value.positive { color: #1E7E34; }
+.stat-value.negative { color: #B3261E; }
 
 /* --- Semana de contenido (FadeMarkSuite) --- */
 .week-grid {
