@@ -210,6 +210,14 @@ Costo: igual de bajo que las otras ayudas de Claude — un documento típico (~2
 
 Ojo con el costo cuando el reintento automático entra en acción: cada intento repite la generación con Gemini/OpenAI (que tiene su propio costo aparte) más una llamada de enriquecer + revisar con Claude, así que en el peor caso (3 intentos seguidos fallidos) el gasto de esa publicación se multiplica hasta por 3. En la práctica es poco frecuente que agote los 3 intentos. Puedes bajar `AI_IMAGE_MAX_ATTEMPTS` a 1 o 2 si prefieres priorizar costo sobre insistencia.
 
+## CRM: contactos y leads por negocio
+
+Módulo aparte, en `/crm` — cada negocio lleva su propia lista de clientes/leads, con notas de seguimiento. No depende de ninguna IA, así que no tiene costo variable. Es intencionalmente simple (v1): una lista con estado (Nuevo, Contactado, Interesado, Cliente, Perdido) y notas de texto libre por contacto — sin pipeline tipo kanban.
+
+**Campos personalizados por negocio**: cada cliente puede necesitar rastrear cosas distintas de sus leads (una aseguradora quiere "Tipo de póliza", un consultorio quiere "Fecha de próxima cita", etc.). Estos campos **los configura tu equipo, no el negocio**, desde el panel interno en `/admin/businesses/:id/crm-fields` — así se pueden ajustar a la medida de cada cliente al momento de venderle la herramienta, como haría una implementación de NetSuite. Tipos disponibles: texto, número, fecha y lista de opciones. Los valores que cada negocio llena para sus contactos se guardan automáticamente y aparecen tanto en el formulario de nuevo contacto como en el detalle.
+
+Si borras un campo personalizado desde el panel admin, los valores que ya se habían guardado en contactos existentes no se pierden, pero el campo deja de mostrarse (por si luego lo vuelves a crear con el mismo nombre).
+
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 
 `services/canva.js` ya tiene la llamada real a la API de autofill de Canva. Para activarla:

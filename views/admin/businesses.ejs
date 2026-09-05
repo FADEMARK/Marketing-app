@@ -79,6 +79,7 @@
               <td><%= b.campaign_count %></td>
               <td class="muted small"><%= b.created_at %></td>
               <td class="admin-actions">
+                <a href="/admin/businesses/<%= b.id %>/crm-fields" class="link-strong">Campos CRM</a>
                 <form method="POST" action="/admin/businesses/<%= b.id %>/toggle-active">
                   <button type="submit" class="link-strong" style="background:none;border:none;cursor:pointer;font:inherit;">
                     <%= b.is_active ? 'Desactivar' : 'Activar' %>

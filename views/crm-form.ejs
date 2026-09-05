@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nuevo contacto — CRM</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page">
+    <a href="/crm" class="back-link">&larr; Volver al CRM</a>
+    <h1>Nuevo contacto</h1>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/crm" class="card-form">
+      <label>Nombre
+        <input type="text" name="name" required value="<%= form.name || '' %>" />
+      </label>
+
+      <div class="two-col">
+        <label>Teléfono
+          <input type="text" name="phone" value="<%= form.phone || '' %>" />
+        </label>
+        <label>Correo
+          <input type="email" name="email" value="<%= form.email || '' %>" />
+        </label>
+      </div>
+
+      <label>Estado
+        <select name="status">
+          <% Object.values(CRM_STATUSES).forEach(function(s) { %>
+            <option value="<%= s %>" <%= (form.status || 'nuevo') === s ? 'selected' : '' %>><%= CRM_STATUS_LABELS[s] %></option>
+          <% }); %>
+        </select>
+      </label>
+
+      <% if (fieldDefs.length > 0) { %>
+        <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px;">
+          <p class="muted small" style="margin-top:0;">Campos adicionales de tu negocio:</p>
+          <% fieldDefs.forEach(function(f) { %>
+            <label>
+              <%= f.field_label %>
+              <% if (f.field_type === 'select') { %>
+                <select name="custom[<%= f.field_key %>]">
+                  <option value="">— Selecciona —</option>
+                  <% f.field_options.forEach(function(opt) { %>
+                    <option value="<%= opt %>" <%= (customValues[f.field_key] === opt) ? 'selected' : '' %>><%= opt %></option>
+                  <% }); %>
+                </select>
+              <% } else if (f.field_type === 'date') { %>
+                <input type="date" name="custom[<%= f.field_key %>]" value="<%= customValues[f.field_key] || '' %>" />
+              <% } else if (f.field_type === 'number') { %>
+                <input type="number" name="custom[<%= f.field_key %>]" value="<%= customValues[f.field_key] || '' %>" />
+              <% } else { %>
+                <input type="text" name="custom[<%= f.field_key %>]" value="<%= customValues[f.field_key] || '' %>" />
+              <% } %>
+            </label>
+          <% }); %>
+        </div>
+      <% } %>
+
+      <button type="submit" class="btn-primary full-width">Guardar contacto</button>
+    </form>
+  </main>
+</body>
+</html>

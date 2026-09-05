@@ -288,6 +288,31 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
 .status-fademarksuite_programado { background: #E6F4EA; color: #1E7E34; }
 .status-fademarksuite_error { background: #FDECEA; color: #B3261E; }
 
+/* CRM: estados de contacto (lista simple, sin pipeline). */
+.status-nuevo { background: #E8F0FE; color: #1967D2; }
+.status-contactado { background: #FFF6E5; color: #8A5A00; }
+.status-interesado { background: #F3E8FD; color: #7B2FF2; }
+.status-cliente { background: #E6F4EA; color: #1E7E34; }
+.status-perdido { background: #F1F1F1; color: #666; }
+
+.crm-filters { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.crm-filters a {
+  padding: 6px 12px;
+  border-radius: 100px;
+  background: #EEF2F7;
+  color: #444;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.crm-filters a.active { background: var(--primary); color: #fff; }
+
+.note-item {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 0;
+}
+.note-item:last-child { border-bottom: none; }
+
 /* --- Semana de contenido (FadeMarkSuite) --- */
 .week-grid {
   display: grid;

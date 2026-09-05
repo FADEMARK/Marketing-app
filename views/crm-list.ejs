@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>CRM — MarketingHub</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <div class="page-header">
+      <h1>CRM</h1>
+      <a href="/crm/new" class="btn-primary">+ Nuevo contacto</a>
+    </div>
+    <p class="subtitle">Tu lista de clientes y leads. Agrega notas de seguimiento en cada contacto.</p>
+
+    <div class="crm-filters">
+      <a href="/crm" class="<%= statusFilter === '' ? 'active' : '' %>">Todos</a>
+      <% Object.values(CRM_STATUSES).forEach(function(s) { %>
+        <a href="/crm?status=<%= s %>" class="<%= statusFilter === s ? 'active' : '' %>"><%= CRM_STATUS_LABELS[s] %></a>
+      <% }); %>
+    </div>
+
+    <% if (contacts.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no tienes contactos<%= statusFilter ? ' con este estado' : '' %>.</p>
+        <a href="/crm/new" class="btn-primary">Agregar mi primer contacto</a>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Correo</th>
+            <th>Estado</th>
+            <th>Registrado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% contacts.forEach(function(c) { %>
+            <tr onclick="window.location='/crm/<%= c.id %>'" style="cursor:pointer;">
+              <td><strong><%= c.name %></strong></td>
+              <td class="muted"><%= c.phone || '—' %></td>
+              <td class="muted"><%= c.email || '—' %></td>
+              <td><span class="status-badge status-<%= c.status %>"><%= CRM_STATUS_LABELS[c.status] || c.status %></span></td>
+              <td class="muted small"><%= c.created_at %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

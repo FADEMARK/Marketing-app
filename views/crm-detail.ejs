@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= contact.name %> — CRM</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page narrow">
+    <a href="/crm" class="back-link">&larr; Volver al CRM</a>
+
+    <div class="page-header">
+      <h1><%= contact.name %></h1>
+      <span class="status-badge status-<%= contact.status %>"><%= CRM_STATUS_LABELS[contact.status] || contact.status %></span>
+    </div>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Datos del contacto</h3>
+      <form method="POST" action="/crm/<%= contact.id %>/update" class="card-form">
+        <label>Nombre
+          <input type="text" name="name" required value="<%= contact.name %>" />
+        </label>
+
+        <div class="two-col">
+          <label>Teléfono
+            <input type="text" name="phone" value="<%= contact.phone || '' %>" />
+          </label>
+          <label>Correo
+            <input type="email" name="email" value="<%= contact.email || '' %>" />
+          </label>
+        </div>
+
+        <label>Estado
+          <select name="status">
+            <% Object.values(CRM_STATUSES).forEach(function(s) { %>
+              <option value="<%= s %>" <%= contact.status === s ? 'selected' : '' %>><%= CRM_STATUS_LABELS[s] %></option>
+            <% }); %>
+          </select>
+        </label>
+
+        <% if (fieldDefs.length > 0) { %>
+          <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+            <% fieldDefs.forEach(function(f) { %>
+              <label>
+                <%= f.field_label %>
+                <% if (f.field_type === 'select') { %>
+                  <select name="custom[<%= f.field_key %>]">
+                    <option value="">— Selecciona —</option>
+                    <% f.field_options.forEach(function(opt) { %>
+                      <option value="<%= opt %>" <%= (customValues[f.field_key] === opt) ? 'selected' : '' %>><%= opt %></option>
+                    <% }); %>
+                  </select>
+                <% } else if (f.field_type === 'date') { %>
+                  <input type="date" name="custom[<%= f.field_key %>]" value="<%= customValues[f.field_key] || '' %>" />
+                <% } else if (f.field_type === 'number') { %>
+                  <input type="number" name="custom[<%= f.field_key %>]" value="<%= customValues[f.field_key] || '' %>" />
+                <% } else { %>
+                  <input type="text" name="custom[<%= f.field_key %>]" value="<%= customValues[f.field_key] || '' %>" />
+                <% } %>
+              </label>
+            <% }); %>
+          </div>
+        <% } %>
+
+        <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+      </form>
+
+      <form method="POST" action="/crm/<%= contact.id %>/delete" style="margin-top: 12px;"
+            onsubmit="return confirm('¿Eliminar este contacto y sus notas? No se puede deshacer.');">
+        <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar contacto</button>
+      </form>
+    </div>
+
+    <div class="detail-box" style="margin-top: 20px;">
+      <h3>Notas de seguimiento</h3>
+      <form method="POST" action="/crm/<%= contact.id %>/notes" class="card-form" style="margin-top: 0;">
+        <label>Agregar nota
+          <textarea name="note" rows="3" placeholder="Ej. Llamé el martes, interesado en el plan Plus, seguimiento el viernes." required></textarea>
+        </label>
+        <button type="submit" class="btn-secondary full-width">Agregar nota</button>
+      </form>
+
+      <% if (notes.length === 0) { %>
+        <p class="muted small" style="margin-top: 16px;">Todavía no hay notas para este contacto.</p>
+      <% } else { %>
+        <div style="margin-top: 16px;">
+          <% notes.forEach(function(n) { %>
+            <div class="note-item">
+              <p style="margin: 0 0 4px;"><%= n.note %></p>
+              <p class="muted small" style="margin:0;"><%= n.created_at %></p>
+            </div>
+          <% }); %>
+        </div>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

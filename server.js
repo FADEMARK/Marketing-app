@@ -16,6 +16,13 @@ const aiImage = require("./services/aiImage");
 const aiReview = require("./services/aiReview");
 const aiDocument = require("./services/aiDocument");
 const pdfBuilder = require("./services/pdfBuilder");
+const {
+  CRM_STATUSES,
+  CRM_STATUS_LABELS,
+  CUSTOM_FIELD_TYPES,
+  CUSTOM_FIELD_TYPE_LABELS,
+  slugifyFieldKey,
+} = require("./services/crmStatus");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const promptSettings = require("./services/promptSettings");
@@ -667,6 +674,223 @@ app.post("/documents/:id/delete", requireBusinessAuth, async (req, res, next) =>
       req.session.businessId,
     ]);
     res.redirect("/documents");
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- CRM: cada negocio lleva su propia lista de clientes/leads. Los campos
+// personalizados (crm_custom_fields) los define el equipo interno por
+// negocio desde /admin/businesses/:id/crm-fields — el negocio solo los
+// llena al capturar/editar un contacto. v1 es intencionalmente simple:
+// lista + notas, sin pipeline tipo kanban.
+async function loadCustomFieldDefs(businessId) {
+  const { rows } = await pool.query(
+    "SELECT * FROM crm_custom_fields WHERE business_id = $1 ORDER BY display_order ASC, id ASC",
+    [businessId]
+  );
+  return rows.map((f) => ({
+    ...f,
+    field_options: (() => {
+      try {
+        return JSON.parse(f.field_options || "[]");
+      } catch (err) {
+        return [];
+      }
+    })(),
+  }));
+}
+
+function parseCustomFieldValues(rawCustomFields) {
+  if (!rawCustomFields) return {};
+  try {
+    const parsed = JSON.parse(rawCustomFields);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function collectCustomFieldsFromBody(body, fieldDefs) {
+  const custom = body && body.custom && typeof body.custom === "object" ? body.custom : {};
+  const values = {};
+  fieldDefs.forEach((def) => {
+    const value = custom[def.field_key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      values[def.field_key] = String(value).trim();
+    }
+  });
+  return values;
+}
+
+app.get("/crm", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const statusFilter = req.query.status || "";
+    const params = [req.session.businessId];
+    let query = "SELECT * FROM crm_contacts WHERE business_id = $1";
+    if (statusFilter) {
+      params.push(statusFilter);
+      query += ` AND status = $${params.length}`;
+    }
+    query += " ORDER BY created_at DESC";
+
+    const { rows: contacts } = await pool.query(query, params);
+    res.render("crm-list", {
+      contacts,
+      statusFilter,
+      CRM_STATUSES,
+      CRM_STATUS_LABELS,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/crm/new", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const fieldDefs = await loadCustomFieldDefs(req.session.businessId);
+    res.render("crm-form", {
+      contact: null,
+      customValues: {},
+      fieldDefs,
+      CRM_STATUSES,
+      CRM_STATUS_LABELS,
+      error: null,
+      form: {},
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/crm", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { name, phone, email, status } = req.body;
+    const fieldDefs = await loadCustomFieldDefs(req.session.businessId);
+
+    if (!name || !name.trim()) {
+      return res.render("crm-form", {
+        contact: null,
+        customValues: req.body.custom || {},
+        fieldDefs,
+        CRM_STATUSES,
+        CRM_STATUS_LABELS,
+        error: "El nombre del contacto es obligatorio.",
+        form: req.body,
+      });
+    }
+
+    const customFields = collectCustomFieldsFromBody(req.body, fieldDefs);
+
+    const { rows } = await pool.query(
+      `INSERT INTO crm_contacts (business_id, name, phone, email, status, custom_fields)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [
+        req.session.businessId,
+        name.trim(),
+        (phone || "").trim() || null,
+        (email || "").trim() || null,
+        status && CRM_STATUS_LABELS[status] ? status : CRM_STATUSES.NUEVO,
+        JSON.stringify(customFields),
+      ]
+    );
+
+    res.redirect(`/crm/${rows[0].id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/crm/:id", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM crm_contacts WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    const contact = rows[0];
+    if (!contact) return res.status(404).send("Contacto no encontrado.");
+
+    const fieldDefs = await loadCustomFieldDefs(req.session.businessId);
+    const customValues = parseCustomFieldValues(contact.custom_fields);
+
+    const { rows: notes } = await pool.query(
+      "SELECT * FROM crm_contact_notes WHERE contact_id = $1 ORDER BY created_at DESC",
+      [contact.id]
+    );
+
+    res.render("crm-detail", {
+      contact,
+      customValues,
+      fieldDefs,
+      notes,
+      CRM_STATUSES,
+      CRM_STATUS_LABELS,
+      saved: req.query.saved === "1",
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/crm/:id/update", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { name, phone, email, status } = req.body;
+    if (!name || !name.trim()) return res.status(400).send("El nombre es obligatorio.");
+
+    const fieldDefs = await loadCustomFieldDefs(req.session.businessId);
+    const customFields = collectCustomFieldsFromBody(req.body, fieldDefs);
+
+    const { rowCount } = await pool.query(
+      `UPDATE crm_contacts
+       SET name = $1, phone = $2, email = $3, status = $4, custom_fields = $5, updated_at = NOW()
+       WHERE id = $6 AND business_id = $7`,
+      [
+        name.trim(),
+        (phone || "").trim() || null,
+        (email || "").trim() || null,
+        status && CRM_STATUS_LABELS[status] ? status : CRM_STATUSES.NUEVO,
+        JSON.stringify(customFields),
+        req.params.id,
+        req.session.businessId,
+      ]
+    );
+    if (rowCount === 0) return res.status(404).send("Contacto no encontrado.");
+
+    res.redirect(`/crm/${req.params.id}?saved=1`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/crm/:id/notes", requireBusinessAuth, async (req, res, next) => {
+  try {
+    const { note } = req.body;
+    if (!note || !note.trim()) return res.redirect(`/crm/${req.params.id}`);
+
+    const { rows } = await pool.query(
+      "SELECT id FROM crm_contacts WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.session.businessId]
+    );
+    if (!rows[0]) return res.status(404).send("Contacto no encontrado.");
+
+    await pool.query(
+      "INSERT INTO crm_contact_notes (contact_id, business_id, note) VALUES ($1, $2, $3)",
+      [req.params.id, req.session.businessId, note.trim()]
+    );
+
+    res.redirect(`/crm/${req.params.id}`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/crm/:id/delete", requireBusinessAuth, async (req, res, next) => {
+  try {
+    await pool.query("DELETE FROM crm_contacts WHERE id = $1 AND business_id = $2", [
+      req.params.id,
+      req.session.businessId,
+    ]);
+    res.redirect("/crm");
   } catch (err) {
     next(err);
   }
@@ -1802,6 +2026,111 @@ app.post("/admin/businesses/:id/delete", requireAdminAuth, async (req, res, next
     next(err);
   }
 });
+
+// --- CRM: campos personalizados por negocio (los define el equipo interno,
+// no el negocio — así podemos ajustar la captura de leads a la medida de
+// cada cliente, como una implementación tipo NetSuite, al momento de
+// vendérsela). Los valores capturados con estos campos viven en
+// crm_contacts.custom_fields como JSON.
+app.get("/admin/businesses/:id/crm-fields", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { rows: bizRows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [
+      req.params.id,
+    ]);
+    const business = bizRows[0];
+    if (!business) return res.status(404).send("Negocio no encontrado.");
+
+    const fields = await loadCustomFieldDefs(req.params.id);
+
+    res.render("admin/crm-fields", {
+      business,
+      fields,
+      CUSTOM_FIELD_TYPES,
+      CUSTOM_FIELD_TYPE_LABELS,
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/admin/businesses/:id/crm-fields", requireAdminAuth, async (req, res, next) => {
+  try {
+    const { field_label, field_type, field_options } = req.body;
+    if (!field_label || !field_label.trim()) {
+      return res.redirect(
+        `/admin/businesses/${req.params.id}/crm-fields?error=` +
+          encodeURIComponent("El nombre del campo es obligatorio.")
+      );
+    }
+
+    const fieldKey = slugifyFieldKey(field_label);
+    if (!fieldKey) {
+      return res.redirect(
+        `/admin/businesses/${req.params.id}/crm-fields?error=` +
+          encodeURIComponent("Ese nombre de campo no es válido, prueba con otro.")
+      );
+    }
+
+    const type = Object.values(CUSTOM_FIELD_TYPES).includes(field_type)
+      ? field_type
+      : CUSTOM_FIELD_TYPES.TEXT;
+
+    const options =
+      type === CUSTOM_FIELD_TYPES.SELECT
+        ? (field_options || "")
+            .split(",")
+            .map((o) => o.trim())
+            .filter(Boolean)
+        : [];
+
+    const { rows: countRows } = await pool.query(
+      "SELECT COUNT(*)::int AS n FROM crm_custom_fields WHERE business_id = $1",
+      [req.params.id]
+    );
+
+    try {
+      await pool.query(
+        `INSERT INTO crm_custom_fields (business_id, field_key, field_label, field_type, field_options, display_order)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          req.params.id,
+          fieldKey,
+          field_label.trim(),
+          type,
+          JSON.stringify(options),
+          countRows[0].n,
+        ]
+      );
+    } catch (err) {
+      // Llave duplicada (unique business_id+field_key) u otro error de datos.
+      return res.redirect(
+        `/admin/businesses/${req.params.id}/crm-fields?error=` +
+          encodeURIComponent("Ya existe un campo con ese nombre para este negocio.")
+      );
+    }
+
+    res.redirect(`/admin/businesses/${req.params.id}/crm-fields`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  "/admin/businesses/:id/crm-fields/:fieldId/delete",
+  requireAdminAuth,
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "DELETE FROM crm_custom_fields WHERE id = $1 AND business_id = $2",
+        [req.params.fieldId, req.params.id]
+      );
+      res.redirect(`/admin/businesses/${req.params.id}/crm-fields`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 app.get("/admin/campaigns/:id", requireAdminAuth, async (req, res, next) => {
   try {

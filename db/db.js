@@ -108,6 +108,44 @@ async function init() {
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
+
+    -- CRM: cada negocio lleva su propio catálogo de clientes/leads. Los
+    -- campos personalizados (crm_custom_fields) los define el EQUIPO ADMIN
+    -- por negocio (no el negocio mismo) — como una implementación tipo
+    -- NetSuite a la medida de cada cliente, según su giro. Los valores de
+    -- esos campos se guardan en crm_contacts.custom_fields como JSON
+    -- ({"field_key": "valor", ...}).
+    CREATE TABLE IF NOT EXISTS crm_contacts (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      status TEXT NOT NULL DEFAULT 'nuevo',
+      custom_fields TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS crm_contact_notes (
+      id SERIAL PRIMARY KEY,
+      contact_id INTEGER NOT NULL REFERENCES crm_contacts(id) ON DELETE CASCADE,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      note TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS crm_custom_fields (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      field_key TEXT NOT NULL,
+      field_label TEXT NOT NULL,
+      field_type TEXT NOT NULL DEFAULT 'text',
+      field_options TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, field_key)
+    );
   `);
 
   // Migraciones ligeras: si la tabla ya existía de antes (como en un

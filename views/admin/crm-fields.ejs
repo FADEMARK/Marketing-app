@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Campos CRM de <%= business.name %> — Panel interno</title>
+  <%- include('../partials/head') %>
+</head>
+<body>
+  <%- include('../partials/nav') %>
+
+  <main class="page narrow">
+    <a href="/admin/businesses" class="back-link">&larr; Volver a Negocios</a>
+    <h1>Campos personalizados: <%= business.name %></h1>
+    <p class="subtitle">
+      Estos campos aparecen al capturar/editar un contacto en el CRM de este negocio. Configúralos según
+      lo que este cliente necesite rastrear de sus leads (ej. "Aseguradora", "Fecha de próxima cita",
+      "Presupuesto estimado"...).
+    </p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Agregar campo</h3>
+      <form method="POST" action="/admin/businesses/<%= business.id %>/crm-fields" class="card-form">
+        <label>Nombre del campo
+          <input type="text" name="field_label" required placeholder="Ej. Presupuesto estimado" />
+        </label>
+        <label>Tipo
+          <select name="field_type" onchange="document.getElementById('opts-wrap').style.display = this.value === 'select' ? 'flex' : 'none';">
+            <% Object.values(CUSTOM_FIELD_TYPES).forEach(function(t) { %>
+              <option value="<%= t %>"><%= CUSTOM_FIELD_TYPE_LABELS[t] %></option>
+            <% }); %>
+          </select>
+        </label>
+        <label id="opts-wrap" style="display:none;">
+          Opciones (separadas por coma)
+          <input type="text" name="field_options" placeholder="Ej. Bajo, Medio, Alto" />
+        </label>
+        <button type="submit" class="btn-primary full-width">Agregar campo</button>
+      </form>
+    </div>
+
+    <div class="detail-box" style="margin-top: 20px;">
+      <h3>Campos actuales</h3>
+      <% if (fields.length === 0) { %>
+        <p class="muted small">Este negocio todavía no tiene campos personalizados — su CRM solo pide
+          nombre, teléfono, correo y estado.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Nombre</th><th>Tipo</th><th>Opciones</th><th></th></tr>
+          </thead>
+          <tbody>
+            <% fields.forEach(function(f) { %>
+              <tr>
+                <td><%= f.field_label %></td>
+                <td class="muted"><%= CUSTOM_FIELD_TYPE_LABELS[f.field_type] || f.field_type %></td>
+                <td class="muted small"><%= f.field_type === 'select' ? f.field_options.join(', ') : '—' %></td>
+                <td class="admin-actions">
+                  <form method="POST" action="/admin/businesses/<%= business.id %>/crm-fields/<%= f.id %>/delete"
+                        onsubmit="return confirm('¿Borrar este campo? Los valores ya guardados en contactos existentes se quedarán, pero dejará de mostrarse el campo.');">
+                    <button type="submit" class="link-button" style="color:#B3261E;">Borrar</button>
+                  </form>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>
