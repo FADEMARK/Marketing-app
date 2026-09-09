@@ -29,6 +29,8 @@ Si el público objetivo incluye niños o familias, es válido mostrarlos genuina
 
 Dirección creativa de esta toma en particular (varía en cada generación a propósito, para que las publicaciones no se sientan repetitivas entre sí): {{angulo_creativo}}
 
+{{tema_estacional}}
+
 {{colores_marca}}
 {{notas_adicionales}}`;
 

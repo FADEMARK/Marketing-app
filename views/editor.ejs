@@ -27,17 +27,36 @@
       </p>
     <% } else { %>
       <p class="muted">
-        La IA generó la fotografía de fondo. Ya te dejamos armado encima un punto de partida — logo,
-        título, una insignia circular, una barra de WhatsApp y un recuadro aparte para tu dirección —
-        pero cada pieza es un objeto de verdad:
-        muévela, cambia su color o tamaño, edita el texto o bórrala. Mantén Shift y haz clic para
-        seleccionar varias piezas a la vez (por ejemplo el círculo + su texto) y moverlas o duplicarlas
-        juntas.
+        La IA ya arma automáticamente el diseño completo sobre la fotografía de fondo — título, la
+        oferta, la barra de WhatsApp y tu dirección. Normalmente solo necesitas revisar/mover el logo
+        y darle "Guardar y continuar". Si quieres personalizar algo más a fondo (mover el título,
+        cambiar colores, agregar texto o formas), activa "Mostrar herramientas avanzadas" — cada pieza
+        del diseño es un objeto real que se puede mover, recolorear, editar o borrar libremente (haz
+        clic para seleccionarlo y usa la tecla Supr/Backspace para borrarlo).
       </p>
     <% } %>
 
     <div class="editor-layout">
       <aside class="editor-toolbar">
+        <div class="tool-group" style="background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px;">
+          <button type="button" class="tool-btn" id="btn-toggle-advanced">🔧 Mostrar herramientas avanzadas</button>
+          <p class="muted small" style="margin-top:6px;">
+            Ya dejamos todo armado automáticamente (título, oferta, WhatsApp, contacto). Normalmente
+            solo necesitas confirmar o mover el logo y guardar. Activa esto si quieres personalizar
+            texto, formas, íconos o colores a mano.
+          </p>
+        </div>
+
+        <div class="tool-group">
+          <h4>Logo</h4>
+          <% if (editorData.logoDataUri) { %>
+            <button type="button" class="tool-btn" id="btn-add-logo">+ Agregar logo</button>
+          <% } else { %>
+            <p class="muted small">No tienes un logo cargado. Súbelo desde "Mi negocio".</p>
+          <% } %>
+        </div>
+
+        <div id="advanced-tools" style="display:none;">
         <div class="tool-group" style="background: var(--bg); border: 1px solid var(--primary); border-radius: 8px; padding: 10px;">
           <h4 style="color: var(--primary);">Parche de color</h4>
           <button type="button" class="tool-btn" id="btn-color-patch">🩹 Tapar una zona</button>
@@ -197,15 +216,6 @@
         </div>
 
         <div class="tool-group">
-          <h4>Logo</h4>
-          <% if (editorData.logoDataUri) { %>
-            <button type="button" class="tool-btn" id="btn-add-logo">+ Agregar logo</button>
-          <% } else { %>
-            <p class="muted small">No tienes un logo cargado. Súbelo desde "Mi negocio".</p>
-          <% } %>
-        </div>
-
-        <div class="tool-group">
           <h4>Capas</h4>
           <button type="button" class="tool-btn" id="btn-duplicate">⧉ Duplicar seleccionado</button>
           <button type="button" class="tool-btn" id="btn-front">Traer al frente</button>
@@ -215,6 +225,7 @@
             Tip: con Shift, haz clic en varias piezas (ej. un círculo + su texto) para moverlas o
             duplicarlas juntas.
           </p>
+        </div>
         </div>
       </aside>
 
@@ -987,6 +998,32 @@
     }
     canvas.on("selection:created", syncControlsToSelection);
     canvas.on("selection:updated", syncControlsToSelection);
+
+    // Por defecto el editor arranca en "modo simple": el diseño ya sale
+    // completo (armado por buildDefaultLayout), así que solo se muestra el
+    // control de logo. El resto de las herramientas (texto, formas, íconos,
+    // parche de color, capas) quedan un clic de distancia detrás de este
+    // botón, para quien sí quiera personalizar más a fondo.
+    document.getElementById("btn-toggle-advanced").addEventListener("click", function () {
+      const panel = document.getElementById("advanced-tools");
+      const showing = panel.style.display !== "none";
+      panel.style.display = showing ? "none" : "block";
+      this.textContent = showing ? "🔧 Mostrar herramientas avanzadas" : "🔧 Ocultar herramientas avanzadas";
+    });
+
+    // Con las herramientas avanzadas ocultas por defecto, el botón "Eliminar
+    // seleccionado" no siempre está a la vista — Supr/Backspace deja borrar
+    // cualquier objeto seleccionado sin tener que activar el modo avanzado.
+    // Si el objeto es un texto que se está editando, se ignora (para no
+    // borrar el objeto completo mientras el negocio solo quiere borrar una
+    // letra del texto).
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const obj = canvas.getActiveObject();
+      if (!obj || obj.isEditing) return;
+      e.preventDefault();
+      canvas.remove(obj);
+    });
 
     document.getElementById("btn-add-logo").addEventListener("click", addLogo);
 

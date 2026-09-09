@@ -85,13 +85,71 @@ function pickCreativeAngle() {
   return CREATIVE_ANGLES[Math.floor(Math.random() * CREATIVE_ANGLES.length)];
 }
 
+// El "mensaje clave"/caption solo se le pasa a la IA como CONTEXTO — nunca se
+// le pide que refleje visualmente el tema de temporada (mes patrio, navidad,
+// día de muertos, etc.), así que la foto sale genérica aunque el copy sí
+// hable de eso (ej. "celebremos a México" con una foto de consultorio sin
+// ningún elemento del mes patrio). Esto detecta ocasiones comunes del
+// calendario comercial mexicano en los campos que el negocio ya llenó, y
+// arma una instrucción visual concreta para que la escena SÍ se sienta del
+// tema, sin que la IA escriba texto ni sature la foto.
+const SEASONAL_THEMES = [
+  {
+    keywords: ["mes patrio", "16 de septiembre", "dia de la independencia", "fiestas patrias", "viva mexico", "grito de independencia"],
+    visual:
+      "Motivos sutiles del mes patrio mexicano: acentos de verde, blanco y rojo en algún elemento del entorno (ej. un papel picado desenfocado de fondo, una pequeña bandera mexicana bien proporcionada como utilería, flores o listones en esos tonos) — sin que se sienta como una fiesta genérica ni sature la escena, debe seguir leyéndose 100% como el giro del negocio.",
+  },
+  {
+    keywords: ["navidad", "navideñ", "fin de año", "año nuevo"],
+    visual:
+      "Ambiente navideño discreto: luces cálidas, algún detalle en rojo/verde/dorado o una decoración de temporada desenfocada de fondo — sutil, sin saturar la escena.",
+  },
+  {
+    keywords: ["dia de muertos", "día de muertos", "1 de noviembre", "2 de noviembre", "catrina"],
+    visual:
+      "Motivos de Día de Muertos tratados de forma respetuosa y elegante (cempasúchil, papel picado, colores cálidos) — sin caer en clichés de disfraz ni saturar la escena.",
+  },
+  {
+    keywords: ["san valentin", "día del amor", "14 de febrero", "amor y amistad"],
+    visual: "Ambiente cálido y romántico apropiado, con tonos rosas/rojos sutiles — sin corazones genéricos de banco de imágenes.",
+  },
+  {
+    keywords: ["dia de las madres", "día de las madres", "10 de mayo"],
+    visual: "Ambiente cálido y familiar, con flores o tonos suaves apropiados para un homenaje a las mamás.",
+  },
+  {
+    keywords: ["halloween", "31 de octubre"],
+    visual: "Ambiente de temporada elegante y profesional (tonos naranja/morado discretos) — sin sobrecargar con clichés de disfraces.",
+  },
+  {
+    keywords: ["buen fin", "black friday", "cyber monday"],
+    visual: "Ambientación con sensación de evento especial/urgencia (buena iluminación, energía de gran ocasión) — sin escribir ningún texto de descuento.",
+  },
+];
+
+function normalizeForMatch(text) {
+  return (text || "")
+    .toString()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+function detectSeasonalTheme(brief) {
+  const haystack = normalizeForMatch(
+    [brief.postCaption, brief.key_message, brief.product_service, brief.extraNotes].filter(Boolean).join(" ")
+  );
+  const match = SEASONAL_THEMES.find((theme) => theme.keywords.some((k) => haystack.includes(k)));
+  return match ? match.visual : "";
+}
+
 // Reglas técnicas fijas (no editables desde el prompt studio): garantizan
 // que la IA se quede solo en la fotografía y no intente escribir texto ni
 // dibujar logos/círculos/barras — esos los agrega el editor como objetos
 // reales, movibles y editables. También fuerza variedad creativa (ver
 // CREATIVE_ANGLES) SIEMPRE, incluso si el equipo personalizó la parte
 // editable del prompt desde el prompt studio y no incluyó {{angulo_creativo}}.
-function buildFixedRules(brief, { hasReferencePhoto = false, creativeAngle = "" } = {}) {
+function buildFixedRules(brief, { hasReferencePhoto = false, creativeAngle = "", seasonalTheme = "" } = {}) {
   const referencePhotoInstruction = hasReferencePhoto
     ? "IMPORTANTE SOBRE LA FOTO BASE: te adjunto una fotografía REAL del negocio, el producto o el " +
       "lugar (tal cual son en la vida real). Usa ESA foto como base y mejórala profesionalmente: ajusta " +
@@ -108,6 +166,9 @@ function buildFixedRules(brief, { hasReferencePhoto = false, creativeAngle = "" 
       "y centradas. Debe sentirse como una fotografía editorial real, no como una plantilla genérica.",
     creativeAngle
       ? `DIRECCIÓN CREATIVA OBLIGATORIA PARA ESTA TOMA: ${creativeAngle}`
+      : "",
+    seasonalTheme
+      ? `TEMA DE TEMPORADA A REFLEJAR VISUALMENTE (detectado en el mensaje de la campaña): ${seasonalTheme}`
       : "",
     "IMPORTANTE SOBRE TEXTO, LOGO Y ELEMENTOS GRÁFICOS: NO escribas ningún texto dentro de la imagen — " +
       "ni títulos, subtítulos, porcentajes, teléfonos, direcciones, nombres de negocio, botones ni " +
@@ -128,13 +189,15 @@ function buildFixedRules(brief, { hasReferencePhoto = false, creativeAngle = "" 
     .join(" ");
 }
 
-function templateVars(brief, { hasReferencePhoto = false, creativeAngle = "" } = {}) {
+function templateVars(brief, { hasReferencePhoto = false, creativeAngle = "", seasonalTheme = "" } = {}) {
   return {
-    // También queda disponible como {{angulo_creativo}} por si el equipo
-    // quiere referenciarlo explícitamente al editar la parte creativa del
-    // prompt desde el prompt studio — pero ver buildFixedRules: se aplica
-    // SIEMPRE de todas formas, se use o no este placeholder.
+    // También quedan disponibles como {{angulo_creativo}}/{{tema_estacional}}
+    // por si el equipo quiere referenciarlos explícitamente al editar la
+    // parte creativa del prompt desde el prompt studio — pero ver
+    // buildFixedRules: ambos se aplican SIEMPRE de todas formas, se usen o
+    // no estos placeholders.
     angulo_creativo: creativeAngle,
+    tema_estacional: seasonalTheme,
     modo_intro: hasReferencePhoto
       ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto (ver instrucciones abajo), no generar una escena nueva desde cero."
       : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
@@ -166,12 +229,16 @@ function templateVars(brief, { hasReferencePhoto = false, creativeAngle = "" } =
 // en cada carga de página, solo cuando de verdad se va a generar la imagen.
 async function buildPrompt(brief, { hasReferencePhoto = false, enrich = false } = {}) {
   const creativeAngle = pickCreativeAngle();
+  const seasonalTheme = detectSeasonalTheme(brief);
   const template = await getPromptTemplate();
-  let creativePart = renderTemplate(template, templateVars(brief, { hasReferencePhoto, creativeAngle }));
+  let creativePart = renderTemplate(
+    template,
+    templateVars(brief, { hasReferencePhoto, creativeAngle, seasonalTheme })
+  );
   if (enrich) {
     creativePart = await aiReview.enrichPrompt(creativePart);
   }
-  const fixedRules = buildFixedRules(brief, { hasReferencePhoto, creativeAngle });
+  const fixedRules = buildFixedRules(brief, { hasReferencePhoto, creativeAngle, seasonalTheme });
   return `${creativePart}\n\n${fixedRules}`;
 }
 
