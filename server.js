@@ -2093,6 +2093,28 @@ app.post(
 
 // Arma, a partir de una fila de campaña + negocio (ya con JOIN), tanto el
 // "brief" que se le manda a la IA para el FONDO (aiBrief — solo la foto; ya
+// Busca una oferta corta y concreta (un %, un "Nx1" o "gratis") en los
+// campos que el negocio ya llenó, para que la insignia circular del editor
+// arranque con ALGO real en vez de un texto de ejemplo genérico que el
+// negocio pueda olvidar reemplazar (ver buildDefaultLayout en editor.ejs).
+// Si no se detecta nada claro, regresa null y el editor usa un placeholder
+// visualmente marcado como "edítame".
+function extractOfferBadge(campaign) {
+  const haystack = [campaign.key_message, campaign.product_service, campaign.extra_notes, campaign.keywords]
+    .filter(Boolean)
+    .join(" ");
+
+  const percentMatch = haystack.match(/(\d{1,3})\s?%/);
+  if (percentMatch) return `-${percentMatch[1]}%`;
+
+  const comboMatch = haystack.match(/\b(\d)\s?[x×]\s?(\d)\b/i);
+  if (comboMatch) return `${comboMatch[1]}x${comboMatch[2]}`;
+
+  if (/\bgratis\b/i.test(haystack)) return "¡GRATIS!";
+
+  return null;
+}
+
 // no incluye texto/CTA/contacto/logo, eso lo arma el editor como objetos
 // reales y movibles) como los datos que el mini-editor usa para construir el
 // layout inicial (editorData: logo, título, mensaje, CTA, contacto).
@@ -2135,6 +2157,11 @@ function buildCampaignContext(campaign) {
     logoDataUri: campaign.logo_data,
     brandColorPrimary: campaign.brand_color_primary || "#1877F2",
     brandColorSecondary: campaign.brand_color_secondary || "#0B0B0B",
+    // Si se detecta un descuento/oferta concreta en el brief, la insignia del
+    // editor arranca ya con eso escrito (ver extractOfferBadge arriba). Si no,
+    // el editor muestra un placeholder marcado para que sea obvio que hay que
+    // editarlo antes de guardar/publicar.
+    offerBadge: extractOfferBadge(campaign),
   };
 
   return { aiBrief, editorData, contactLine };

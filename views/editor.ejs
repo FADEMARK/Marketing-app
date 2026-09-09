@@ -240,6 +240,12 @@
     const DISPLAY_SIZE = 540;
     const EXPORT_SIZE = 1080;
 
+    // Prefijo que marca un texto de ejemplo sin personalizar (ej. la
+    // insignia de oferta cuando no se detectó un descuento concreto en el
+    // brief). btn-save revisa esto antes de guardar/exportar, para no dejar
+    // pasar un texto de relleno como "✏️ Tu oferta aquí" a la imagen final.
+    const PLACEHOLDER_MARK = "✏️";
+
     const canvas = new fabric.Canvas("editor-canvas", {
       width: DISPLAY_SIZE,
       height: DISPLAY_SIZE,
@@ -528,18 +534,30 @@
         });
       }
 
-      // Insignia circular editable con un texto de oferta de ejemplo — el
-      // negocio la mueve, la recolorea y reemplaza el texto por su oferta
-      // real. Usa "Duplicar seleccionado" (con Shift+clic para tomar el
-      // círculo y su texto juntos) para armar una segunda insignia.
+      // Insignia circular con la oferta. Si se pudo detectar un descuento
+      // concreto en el brief (ej. "-50%", "2x1", "¡GRATIS!"), arranca ya
+      // escrito y listo — el negocio solo la mueve/recolorea si quiere. Si no
+      // se detectó nada, arranca con un placeholder marcado con ✏️ y un
+      // borde punteado, a propósito bien visible, para que sea obvio que hay
+      // que reemplazarlo antes de guardar (btn-save valida esto, ver abajo).
       const badgeColor = editorData.brandColorPrimary || "#1877F2";
-      const badge = new fabric.Circle({ left: 50, top: 230, radius: 70, fill: badgeColor });
+      const hasRealOffer = Boolean(editorData.offerBadge);
+      const badgeText = hasRealOffer ? editorData.offerBadge : PLACEHOLDER_MARK + " Tu oferta aquí";
+      const badge = new fabric.Circle({
+        left: 50,
+        top: 230,
+        radius: 70,
+        fill: badgeColor,
+        stroke: hasRealOffer ? null : "#FFFFFF",
+        strokeWidth: hasRealOffer ? 0 : 3,
+        strokeDashArray: hasRealOffer ? null : [8, 6],
+      });
       canvas.add(badge);
-      addText("Tu oferta aquí", {
+      addText(badgeText, {
         left: 60,
-        top: 278,
+        top: hasRealOffer ? 288 : 268,
         width: 120,
-        fontSize: 20,
+        fontSize: hasRealOffer ? 28 : 16,
         fontFamily: "Montserrat, sans-serif",
         fontWeight: "800",
         fill: "#FFFFFF",
@@ -1017,7 +1035,32 @@
       buildDefaultLayout();
     });
 
+    // Revisa si queda algún texto de ejemplo sin editar (marcado con ✏️,
+    // como la insignia de oferta cuando no se detectó un descuento en el
+    // brief) antes de guardar — así no se publica sin querer una imagen con
+    // "✏️ Tu oferta aquí" tal cual.
+    function findUneditedPlaceholder() {
+      return canvas.getObjects().find(function (obj) {
+        return (
+          obj.type === "textbox" &&
+          typeof obj.text === "string" &&
+          obj.text.indexOf(PLACEHOLDER_MARK) === 0
+        );
+      });
+    }
+
     document.getElementById("btn-save").addEventListener("click", function () {
+      const placeholder = findUneditedPlaceholder();
+      if (placeholder) {
+        canvas.setActiveObject(placeholder);
+        canvas.renderAll();
+        const proceed = confirm(
+          'Dejaste un texto de ejemplo sin personalizar: "' + placeholder.text.replace("✏️ ", "") +
+            '". Lo seleccionamos para que lo edites — ¿o prefieres guardar así de todas formas?'
+        );
+        if (!proceed) return;
+      }
+
       canvas.discardActiveObject();
       canvas.renderAll();
       const dataUrl = canvas.toDataURL({
