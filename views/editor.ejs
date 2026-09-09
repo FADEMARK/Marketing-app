@@ -6,7 +6,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:wght@500;700;800&family=Poppins:wght@400;500;600;700&family=Oswald:wght@500;700&family=Playfair+Display:wght@700;900&family=Raleway:wght@400;700&family=Lato:wght@400;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Montserrat:ital,wght@0,500;0,700;0,800;1,700&family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,600&family=Oswald:wght@500;700&family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Raleway:ital,wght@0,400;0,700;1,700&family=Lato:ital,wght@0,400;0,700;1,400&family=Pacifico&family=Dancing+Script:wght@700&family=Archivo+Black&family=Passion+One:wght@700;900&family=Baloo+2:wght@600;700&family=Fredoka:wght@500;600&family=Cormorant+Garamond:wght@600;700&family=Space+Grotesk:wght@500;700&family=Merriweather:wght@700;900&family=Bungee&family=Space+Mono:wght@700&display=swap"
     rel="stylesheet"
   />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
@@ -73,19 +73,52 @@
           <button type="button" class="tool-btn" id="btn-add-post-texts">+ Agregar textos del post (título, mensaje, CTA, contacto)</button>
           <label class="muted small" style="display:block; margin-top:8px;">Tipo de letra</label>
           <select id="text-font">
-            <option value="Montserrat, sans-serif">Montserrat</option>
-            <option value="Poppins, sans-serif">Poppins</option>
-            <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
-            <option value="Anton, sans-serif">Anton</option>
-            <option value="Oswald, sans-serif">Oswald</option>
-            <option value="'Playfair Display', serif">Playfair Display</option>
-            <option value="Raleway, sans-serif">Raleway</option>
-            <option value="Lato, sans-serif">Lato</option>
+            <optgroup label="Impacto / títulos">
+              <option value="Anton, sans-serif">Anton</option>
+              <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
+              <option value="Oswald, sans-serif">Oswald</option>
+              <option value="'Archivo Black', sans-serif">Archivo Black</option>
+              <option value="'Passion One', sans-serif">Passion One</option>
+              <option value="Bungee, sans-serif">Bungee</option>
+            </optgroup>
+            <optgroup label="Texto / cuerpo">
+              <option value="Montserrat, sans-serif" selected>Montserrat</option>
+              <option value="Poppins, sans-serif">Poppins</option>
+              <option value="Raleway, sans-serif">Raleway</option>
+              <option value="Lato, sans-serif">Lato</option>
+              <option value="'Space Grotesk', sans-serif">Space Grotesk</option>
+            </optgroup>
+            <optgroup label="Elegante / serif">
+              <option value="'Playfair Display', serif">Playfair Display</option>
+              <option value="'Cormorant Garamond', serif">Cormorant Garamond</option>
+              <option value="Merriweather, serif">Merriweather</option>
+            </optgroup>
+            <optgroup label="Manuscrita">
+              <option value="Pacifico, cursive">Pacifico</option>
+              <option value="'Dancing Script', cursive">Dancing Script</option>
+            </optgroup>
+            <optgroup label="Amigable / redondeada">
+              <option value="'Baloo 2', cursive">Baloo 2</option>
+              <option value="Fredoka, sans-serif">Fredoka</option>
+            </optgroup>
+            <optgroup label="Especial">
+              <option value="'Space Mono', monospace">Space Mono (ticket)</option>
+            </optgroup>
           </select>
+          <label class="muted small" style="display:block; margin-top:8px;">Estilo</label>
+          <div class="shape-grid" style="grid-template-columns: repeat(5, 1fr);">
+            <button type="button" class="tool-btn" id="btn-text-bold" title="Negrita" style="font-weight:800;">N</button>
+            <button type="button" class="tool-btn" id="btn-text-italic" title="Cursiva" style="font-style:italic;">K</button>
+            <button type="button" class="tool-btn" id="btn-text-align-left" title="Alinear a la izquierda">⟸</button>
+            <button type="button" class="tool-btn" id="btn-text-align-center" title="Centrar">≡</button>
+            <button type="button" class="tool-btn" id="btn-text-align-right" title="Alinear a la derecha">⟹</button>
+          </div>
           <label class="muted small" style="display:block; margin-top:8px;">Color de texto</label>
           <input type="color" id="text-color" value="#FFFFFF" />
           <label class="muted small" style="display:block; margin-top:8px;">Tamaño</label>
           <input type="range" id="text-size" min="14" max="120" value="36" style="width:100%;" />
+          <label class="muted small" style="display:block; margin-top:8px;">Espaciado entre letras</label>
+          <input type="range" id="text-spacing" min="-50" max="400" value="0" style="width:100%;" />
         </div>
 
         <div class="tool-group">
@@ -103,6 +136,24 @@
           <p class="muted small" style="margin-top:6px;">
             Funciona con lo que tengas seleccionado: círculos, rectángulos, líneas, íconos e incluso
             insignias de redes sociales (recolorea el fondo de la insignia).
+          </p>
+        </div>
+
+        <div class="tool-group">
+          <h4>Imágenes</h4>
+          <button type="button" class="tool-btn" id="btn-upload-image">📁 Subir imagen</button>
+          <input type="file" id="image-file-input" accept="image/*" style="display:none;" />
+          <p class="muted small" style="margin-top:6px;">
+            También puedes copiar una imagen (de tu computadora, o de Google/Word/etc.) y pegarla
+            directamente aquí con Ctrl+V (o Cmd+V en Mac).
+          </p>
+          <button type="button" class="tool-btn" id="btn-remove-bg" style="margin-top:8px;" disabled>
+            ✂️ Quitar fondo de la imagen seleccionada
+          </button>
+          <p class="muted small" id="remove-bg-status" style="margin-top:6px;">
+            Selecciona una imagen en el lienzo para poder quitarle el fondo (deja solo el objeto/
+            persona, sin el resto de la foto). Tarda unos segundos — se procesa aquí mismo, sin
+            mandar tu imagen a ningún servicio externo.
           </p>
         </div>
 
@@ -176,6 +227,30 @@
           <p class="muted small" style="margin-top:8px;">
             Insignias tipo Canva, listas para pegar — puedes editar el texto y recolorear el fondo
             igual que con cualquier otra insignia.
+          </p>
+        </div>
+
+        <div class="tool-group">
+          <h4>Recursos 3D</h4>
+          <div class="shape-grid">
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="bolsa" title="Bolsa de compras" style="font-size:20px;">🛍️</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="regalo" title="Regalo" style="font-size:20px;">🎁</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="fuego" title="Oferta caliente" style="font-size:20px;">🔥</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="cohete" title="Lanzamiento / novedad" style="font-size:20px;">🚀</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="moneda" title="Ahorro / cashback" style="font-size:20px;">🪙</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="megafono" title="Anuncio" style="font-size:20px;">📣</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="reloj" title="Tiempo limitado" style="font-size:20px;">⏰</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="like" title="Me gusta" style="font-size:20px;">👍</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="corazon" title="Favorito" style="font-size:20px;">❤️</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="estrella" title="Calificación" style="font-size:20px;">⭐</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="calendario" title="Fecha / evento" style="font-size:20px;">📅</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="ubicacion" title="Visítanos" style="font-size:20px;">📍</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="carrito" title="Carrito de compras" style="font-size:20px;">🛒</button>
+            <button type="button" class="tool-btn icon-btn" data-sticker3d="celebracion" title="Celebración" style="font-size:20px;">🎉</button>
+          </div>
+          <p class="muted small" style="margin-top:8px;">
+            Stickers grandes y a color, listos para poner sobre tu foto — se pueden mover, rotar,
+            agrandar o duplicar como cualquier otro objeto.
           </p>
         </div>
 
@@ -276,6 +351,17 @@
       "700 40px 'Playfair Display'",
       "700 40px Raleway",
       "700 40px Lato",
+      "400 40px Pacifico",
+      "700 40px 'Dancing Script'",
+      "400 40px 'Archivo Black'",
+      "700 40px 'Passion One'",
+      "700 40px 'Baloo 2'",
+      "600 40px Fredoka",
+      "700 40px 'Cormorant Garamond'",
+      "700 40px 'Space Grotesk'",
+      "700 40px Merriweather",
+      "400 40px Bungee",
+      "700 40px 'Space Mono'",
     ];
 
     function loadFonts() {
@@ -520,6 +606,115 @@
       canvas.setActiveObject(path);
       canvas.renderAll();
     }
+
+    // --- Imágenes: subir desde archivo, pegar desde el portapapeles, y
+    // quitar el fondo de la imagen seleccionada (ver /editor/remove-background,
+    // que corre el modelo de IA localmente en el servidor). ---
+
+    function addImageFromDataUrl(dataUrl) {
+      fabric.Image.fromURL(dataUrl, function (img) {
+        // La imagen entra a un tamaño razonable (no del tamaño original, que
+        // puede ser enorme si viene de una foto de celular) para que se vea
+        // completa dentro del lienzo y el negocio la reacomode a su gusto.
+        const maxSize = 320;
+        if (img.width > maxSize || img.height > maxSize) {
+          const scale = maxSize / Math.max(img.width, img.height);
+          img.scale(scale);
+        }
+        img.set({
+          left: (DISPLAY_SIZE - img.getScaledWidth()) / 2,
+          top: (DISPLAY_SIZE - img.getScaledHeight()) / 2,
+        });
+        canvas.add(img);
+        canvas.setActiveObject(img);
+        canvas.renderAll();
+      });
+    }
+
+    function readFileAsImage(file) {
+      if (!file || file.type.indexOf("image/") !== 0) return;
+      const reader = new FileReader();
+      reader.onload = function (e) { addImageFromDataUrl(e.target.result); };
+      reader.readAsDataURL(file);
+    }
+
+    document.getElementById("btn-upload-image").addEventListener("click", function () {
+      document.getElementById("image-file-input").click();
+    });
+
+    document.getElementById("image-file-input").addEventListener("change", function (e) {
+      const file = e.target.files && e.target.files[0];
+      readFileAsImage(file);
+      e.target.value = ""; // permite volver a elegir el mismo archivo después
+    });
+
+    // Pegar imagen con Ctrl+V/Cmd+V. Si el negocio está escribiendo/editando
+    // un texto en ese momento, dejamos que el pegado normal de texto ocurra
+    // (no lo interceptamos) — solo tomamos el control si el portapapeles
+    // trae una IMAGEN.
+    document.addEventListener("paste", function (e) {
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image/") === 0) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            readFileAsImage(file);
+          }
+          return;
+        }
+      }
+      // si no había imagen en el portapapeles, no hacemos nada especial —
+      // el pegado de texto normal (si aplica) sigue su curso.
+    });
+
+    const btnRemoveBg = document.getElementById("btn-remove-bg");
+    const removeBgStatus = document.getElementById("remove-bg-status");
+
+    function updateRemoveBgAvailability() {
+      const obj = canvas.getActiveObject();
+      const isImage = Boolean(obj && obj.type === "image");
+      btnRemoveBg.disabled = !isImage;
+      if (isImage) {
+        removeBgStatus.textContent = "Imagen seleccionada — puedes quitarle el fondo.";
+      } else {
+        removeBgStatus.textContent = "Selecciona una imagen en el lienzo para poder quitarle el fondo.";
+      }
+    }
+
+    btnRemoveBg.addEventListener("click", function () {
+      const obj = canvas.getActiveObject();
+      if (!obj || obj.type !== "image") return;
+
+      const sourceDataUrl = obj.toDataURL({ format: "png" });
+      btnRemoveBg.disabled = true;
+      removeBgStatus.textContent = "Quitando el fondo… puede tardar unos segundos.";
+
+      fetch("/editor/remove-background", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: sourceDataUrl }),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            removeBgStatus.textContent = data.error || "No se pudo quitar el fondo.";
+            btnRemoveBg.disabled = false;
+            return;
+          }
+          // setSrc conserva posición/tamaño/rotación del objeto; solo cambia
+          // el contenido de la imagen por la versión ya recortada.
+          obj.setSrc(data.image, function () {
+            canvas.renderAll();
+            removeBgStatus.textContent = "¡Listo! Fondo quitado.";
+            btnRemoveBg.disabled = false;
+          });
+        })
+        .catch(function () {
+          removeBgStatus.textContent = "Ocurrió un error al quitar el fondo. Intenta de nuevo.";
+          btnRemoveBg.disabled = false;
+        });
+    });
 
     // Punto de partida cuando el negocio entra por primera vez (sin edición
     // guardada): arma, ENCIMA de la foto de la IA, un layout ya "diseñado" —
@@ -787,6 +982,48 @@
       },
     };
 
+    // "Recursos 3D": el negocio pidió stickers/íconos con look 3D como los de
+    // Canva. En vez de depender de un banco de íconos con licencia externa
+    // (varios de los más conocidos son de pago o de uso restringido, y
+    // descargar assets de terceros en cada instalación es frágil), usamos el
+    // emoji a color nativo del sistema operativo/navegador — Apple, Google,
+    // Microsoft y Samsung ya dibujan sus emoji con un estilo "3D" brillante
+    // con degradados y sombras. Es gratis, no depende de ningún servicio
+    // externo, no tiene restricciones de licencia, y se ve bien en cualquier
+    // dispositivo moderno. Es un punto de partida — si más adelante quieren
+    // un set más específico de su marca, se puede sustituir por un banco de
+    // íconos con licencia (ej. Flaticon, Freepik) sin cambiar esta mecánica.
+    const STICKERS_3D = {
+      bolsa: "🛍️",
+      regalo: "🎁",
+      fuego: "🔥",
+      cohete: "🚀",
+      moneda: "🪙",
+      megafono: "📣",
+      reloj: "⏰",
+      like: "👍",
+      corazon: "❤️",
+      estrella: "⭐",
+      calendario: "📅",
+      ubicacion: "📍",
+      carrito: "🛒",
+      celebracion: "🎉",
+    };
+
+    function addSticker3D(key) {
+      const emoji = STICKERS_3D[key];
+      if (!emoji) return;
+      const sticker = new fabric.Text(emoji, {
+        left: 160,
+        top: 160,
+        fontSize: 90,
+        shadow: "rgba(0,0,0,0.35) 0px 6px 10px",
+      });
+      canvas.add(sticker);
+      canvas.setActiveObject(sticker);
+      canvas.renderAll();
+    }
+
     function addSticker(key) {
       const factory = STICKERS[key];
       if (!factory) return;
@@ -894,6 +1131,12 @@
       });
     });
 
+    document.querySelectorAll("[data-sticker3d]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        addSticker3D(btn.getAttribute("data-sticker3d"));
+      });
+    });
+
     document.getElementById("text-color").addEventListener("input", function (e) {
       const obj = canvas.getActiveObject();
       if (obj && obj.type === "textbox") {
@@ -914,6 +1157,42 @@
       const obj = canvas.getActiveObject();
       if (obj && obj.type === "textbox") {
         obj.set("fontFamily", e.target.value);
+        canvas.renderAll();
+      }
+    });
+
+    // Negrita/cursiva/alineación/espaciado — más control de estilo de texto,
+    // al estilo de la barra de herramientas de texto de Canva. Negrita y
+    // cursiva son "toggle" (se activan/desactivan sobre el texto seleccionado).
+    document.getElementById("btn-text-bold").addEventListener("click", function () {
+      const obj = canvas.getActiveObject();
+      if (!obj || obj.type !== "textbox") return;
+      const isBold = obj.fontWeight === "700" || obj.fontWeight === "800" || obj.fontWeight === 700 || obj.fontWeight === 800;
+      obj.set("fontWeight", isBold ? "400" : "800");
+      canvas.renderAll();
+    });
+
+    document.getElementById("btn-text-italic").addEventListener("click", function () {
+      const obj = canvas.getActiveObject();
+      if (!obj || obj.type !== "textbox") return;
+      obj.set("fontStyle", obj.fontStyle === "italic" ? "normal" : "italic");
+      canvas.renderAll();
+    });
+
+    function setTextAlign(align) {
+      const obj = canvas.getActiveObject();
+      if (!obj || obj.type !== "textbox") return;
+      obj.set("textAlign", align);
+      canvas.renderAll();
+    }
+    document.getElementById("btn-text-align-left").addEventListener("click", function () { setTextAlign("left"); });
+    document.getElementById("btn-text-align-center").addEventListener("click", function () { setTextAlign("center"); });
+    document.getElementById("btn-text-align-right").addEventListener("click", function () { setTextAlign("right"); });
+
+    document.getElementById("text-spacing").addEventListener("input", function (e) {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "textbox") {
+        obj.set("charSpacing", parseInt(e.target.value, 10));
         canvas.renderAll();
       }
     });
@@ -969,6 +1248,7 @@
           document.getElementById("text-color").value = obj.fill;
         }
         document.getElementById("text-size").value = Math.round(obj.fontSize || 36);
+        document.getElementById("text-spacing").value = obj.charSpacing || 0;
         const fontSelect = document.getElementById("text-font");
         if (obj.fontFamily && Array.from(fontSelect.options).some((o) => o.value === obj.fontFamily)) {
           fontSelect.value = obj.fontFamily;
@@ -998,6 +1278,9 @@
     }
     canvas.on("selection:created", syncControlsToSelection);
     canvas.on("selection:updated", syncControlsToSelection);
+    canvas.on("selection:created", updateRemoveBgAvailability);
+    canvas.on("selection:updated", updateRemoveBgAvailability);
+    canvas.on("selection:cleared", updateRemoveBgAvailability);
 
     // Por defecto el editor arranca en "modo simple": el diseño ya sale
     // completo (armado por buildDefaultLayout), así que solo se muestra el

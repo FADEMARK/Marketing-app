@@ -180,6 +180,17 @@ El flujo actual tiene 3 pasos, pensado para que el negocio tenga control total y
 
 El negocio ve cada uno de estos pasos de inmediato (no espera aprobación para verlos) — pero la imagen final solo se publica en Facebook después de que tu equipo la revise y la apruebe desde el panel admin.
 
+## Editor de imágenes: tipografías, imágenes propias y quitar fondo
+
+El mini-editor (`/campaigns/:id/editor`) se amplió para acercarse más a un Canva/Photoshop rápido, sin salir del navegador:
+
+- **Más tipografías**: 19 fuentes de Google Fonts organizadas por estilo (impacto/títulos, texto/cuerpo, elegante/serif, manuscrita, amigable/redondeada), más controles de negrita, cursiva, alineación y espaciado entre letras — todo aplicable a cualquier texto seleccionado.
+- **Imágenes propias**: se pueden subir desde archivo o **pegar directamente con Ctrl+V/Cmd+V** (copiando de cualquier lado: el explorador de archivos, Google, Word, etc.) — se agregan como un objeto más del lienzo, movible y redimensionable.
+- **Quitar fondo**: con una imagen seleccionada, el botón "✂️ Quitar fondo" aísla el sujeto/objeto principal (como en Canva), dejando el resto transparente. Corre **100% en el propio servidor** con un modelo de IA ya entrenado (U²-Net, variante ligera `u2netp`, vía `onnxruntime-node`) — no se manda la imagen a ningún servicio externo, no hay costo por imagen ni API key que configurar. Se descartó a propósito la librería más conocida para esto (`@imgly/background-removal`) porque es de licencia **AGPL**, que habría obligado a liberar el código fuente completo de la plataforma al ofrecerla como servicio a otras empresas — justo el modelo de negocio de este proyecto. Lo que se usa en su lugar (`onnxruntime-node` + el modelo `u2netp.onnx`, en `models/`) es libre de usar en un producto comercial cerrado.
+  - Trade-off aceptado a propósito: se usa el modelo "ligero" (~4.5MB) en vez del modelo completo (~176MB) para que quepa dentro del proyecto sin descargarlo en cada arranque y para que no consuma demasiada memoria en un plan de hosting modesto. La calidad es buena para fotos de producto/objetos con un sujeto razonablemente definido; en casos difíciles (pelo muy fino, fondos de bajo contraste) puede no quedar perfecto — para esos casos siempre queda la opción de subir la imagen ya recortada a mano.
+  - Si más adelante el volumen de uso crece y quieren mejor calidad/velocidad a cambio de un costo por imagen, la alternativa es una API de pago (ej. remove.bg, Clipdrop) — cambiar a eso solo implica reemplazar `services/backgroundRemoval.js` por una llamada HTTP, sin tocar el resto del editor.
+- **Recursos 3D (stickers)**: 14 stickers listos para arrastrar sobre el diseño (bolsa, regalo, fuego/oferta, cohete, moneda, megáfono, reloj, like, corazón, estrella, calendario, ubicación, carrito, celebración). Usan el emoji a color nativo del sistema operativo/navegador (ya tienen un estilo "3D" brillante con degradados y sombras) en vez de depender de un banco de íconos con licencia externa — es un punto de partida pensado para poder sustituirse después por un set de marca propio (ej. Flaticon, Freepik) sin cambiar la mecánica del editor.
+
 ## Claude (Anthropic): afinar el prompt + revisar la foto generada (opcional)
 
 Anthropic no ofrece un modelo que genere imágenes — Claude sigue siendo Gemini/OpenAI para eso. Pero se puede usar Claude alrededor del paso 2 de arriba para dos cosas, ambas opcionales:

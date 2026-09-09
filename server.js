@@ -25,6 +25,7 @@ const {
 } = require("./services/crmStatus");
 const { MODULES, requireModule } = require("./services/modules");
 const erpStatus = require("./services/erpStatus");
+const backgroundRemoval = require("./services/backgroundRemoval");
 const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const promptSettings = require("./services/promptSettings");
@@ -2319,11 +2320,21 @@ app.post("/campaigns/:id/generate-image", requireBusinessAuth, async (req, res, 
     const backgroundImageData = candidates[0]?.dataUri || null;
     const newStatus = backgroundImageData ? STATUSES.EN_DISENO : campaign.status;
 
+    // canvas_state = NULL a propósito: si ya había una edición guardada de un
+    // fondo anterior, sus textos/formas quedaban posicionados para ESA foto
+    // (ej. una toma vertical con espacio arriba) y no necesariamente cuadran
+    // con la composición del fondo nuevo (ej. una toma cenital tipo flat-lay
+    // sin ese espacio). Al limpiar el estado, la próxima vez que el negocio
+    // entre al editor, buildDefaultLayout() arma de nuevo el diseño completo
+    // — título, oferta, WhatsApp y contacto — ya ajustado a la foto actual,
+    // en vez de restaurar una edición vieja (o una reducida a solo el logo,
+    // si en algún momento se borró todo lo demás sin querer).
     await pool.query(
       `UPDATE campaigns SET
         background_image_data = $1,
         image_candidates = $2,
         status = $3,
+        canvas_state = NULL,
         updated_at = NOW()
        WHERE id = $4`,
       [
@@ -2359,8 +2370,12 @@ app.post("/campaigns/:id/choose-background", requireBusinessAuth, async (req, re
 
     const chosen = candidates.find((c) => c.engine === engine);
     if (chosen) {
+      // canvas_state = NULL: mismo motivo que en /generate-image — cambiar
+      // de fondo (aquí, entre el candidato de Gemini y el de OpenAI) hace
+      // que el editor vuelva a armar el diseño automático completo para la
+      // foto elegida, en vez de restaurar textos/formas pensados para la otra.
       await pool.query(
-        "UPDATE campaigns SET background_image_data = $1, updated_at = NOW() WHERE id = $2 AND business_id = $3",
+        "UPDATE campaigns SET background_image_data = $1, canvas_state = NULL, updated_at = NOW() WHERE id = $2 AND business_id = $3",
         [chosen.dataUri, req.params.id, req.session.businessId]
       );
     }
@@ -2435,6 +2450,28 @@ app.post("/campaigns/:id/save-edited-image", requireBusinessAuth, async (req, re
     res.json({ ok: true, redirect: `/campaigns/${req.params.id}` });
   } catch (err) {
     next(err);
+  }
+});
+
+// Quitar el fondo de una imagen que el negocio pegó/subió en el editor (ver
+// services/backgroundRemoval.js — corre localmente en el servidor, sin
+// mandar la foto a ningún servicio externo ni gastar una llamada de IA de
+// pago). No está atada a una campaña en particular: solo requiere que quien
+// llama esté autenticado como negocio, igual que el resto del editor.
+app.post("/editor/remove-background", requireBusinessAuth, async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image || typeof image !== "string" || !image.startsWith("data:image/")) {
+      return res.status(400).json({ ok: false, error: "Imagen inválida." });
+    }
+    const result = await backgroundRemoval.removeBackgroundFromDataUri(image);
+    res.json({ ok: true, image: result });
+  } catch (err) {
+    console.error("[editor/remove-background] Error al quitar el fondo:", err.message);
+    res.status(500).json({
+      ok: false,
+      error: "No se pudo quitar el fondo de esa imagen. Intenta con otra foto o continúa sin recortarla.",
+    });
   }
 });
 
