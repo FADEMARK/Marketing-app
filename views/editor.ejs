@@ -158,6 +158,37 @@
         </div>
 
         <div class="tool-group">
+          <h4>Filtros</h4>
+          <button type="button" class="tool-btn" id="btn-filter-target-bg">🖼️ Editar la foto de fondo</button>
+          <p class="muted small" id="filter-target-status" style="margin-top:6px;">
+            Selecciona una imagen en el lienzo, o usa el botón de arriba para editar la foto de
+            fondo — los filtros de abajo se aplican a lo que esté activo.
+          </p>
+          <label class="muted small" style="display:block; margin-top:10px;">Preajustes</label>
+          <div class="shape-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="ninguno">Ninguno</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="vivido">Vívido</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="bn">Blanco y negro</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="sepia">Sepia</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="calido">Cálido</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="frio">Frío</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="contraste">Alto contraste</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="nitida">Nítida</button>
+            <button type="button" class="tool-btn filter-preset-btn" data-filter-preset="suave">Suave</button>
+          </div>
+          <label class="muted small" style="display:block; margin-top:10px;">Brillo</label>
+          <input type="range" id="filter-brightness" min="-100" max="100" value="0" style="width:100%;" />
+          <label class="muted small" style="display:block; margin-top:8px;">Contraste</label>
+          <input type="range" id="filter-contrast" min="-100" max="100" value="0" style="width:100%;" />
+          <label class="muted small" style="display:block; margin-top:8px;">Saturación</label>
+          <input type="range" id="filter-saturation" min="-100" max="100" value="0" style="width:100%;" />
+          <p class="muted small" style="margin-top:6px;">
+            Los preajustes son un punto de partida rápido; después puedes afinar con los controles
+            de brillo/contraste/saturación (mover cualquiera de estos tres reemplaza el preajuste).
+          </p>
+        </div>
+
+        <div class="tool-group">
           <h4>Íconos de contacto</h4>
           <div class="shape-grid">
             <button type="button" class="tool-btn icon-btn" data-icon="location" title="Ubicación / Dirección" style="color:#EA4335;">
@@ -232,22 +263,13 @@
 
         <div class="tool-group">
           <h4>Recursos 3D</h4>
-          <div class="shape-grid">
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="bolsa" title="Bolsa de compras" style="font-size:20px;">🛍️</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="regalo" title="Regalo" style="font-size:20px;">🎁</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="fuego" title="Oferta caliente" style="font-size:20px;">🔥</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="cohete" title="Lanzamiento / novedad" style="font-size:20px;">🚀</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="moneda" title="Ahorro / cashback" style="font-size:20px;">🪙</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="megafono" title="Anuncio" style="font-size:20px;">📣</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="reloj" title="Tiempo limitado" style="font-size:20px;">⏰</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="like" title="Me gusta" style="font-size:20px;">👍</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="corazon" title="Favorito" style="font-size:20px;">❤️</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="estrella" title="Calificación" style="font-size:20px;">⭐</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="calendario" title="Fecha / evento" style="font-size:20px;">📅</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="ubicacion" title="Visítanos" style="font-size:20px;">📍</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="carrito" title="Carrito de compras" style="font-size:20px;">🛒</button>
-            <button type="button" class="tool-btn icon-btn" data-sticker3d="celebracion" title="Celebración" style="font-size:20px;">🎉</button>
-          </div>
+          <input
+            type="text"
+            id="stickers3d-search"
+            placeholder="Buscar (ej. fuego, dinero, reloj, navidad...)"
+            style="width:100%; box-sizing:border-box; margin-bottom:10px; padding:6px 8px; border-radius:6px; border:1px solid var(--border);"
+          />
+          <div id="stickers3d-container"></div>
           <p class="muted small" style="margin-top:8px;">
             Stickers grandes y a color, listos para poner sobre tu foto — se pueden mover, rotar,
             agrandar o duplicar como cualquier otro objeto.
@@ -716,6 +738,159 @@
         });
     });
 
+    // --- Filtros de imagen (brillo/contraste/saturación + preajustes) ---
+    // Usa los filtros nativos de fabric.js (fabric.Image.filters.*), que ya
+    // vienen incluidos con la librería — no se agrega ninguna dependencia
+    // nueva. Se pueden aplicar a la foto de fondo (que no es un objeto
+    // seleccionable normalmente, por eso el botón aparte) o a cualquier
+    // imagen que el negocio haya subido/pegado y tenga seleccionada.
+    let backgroundFilterMode = false;
+    const filterTargetStatus = document.getElementById("filter-target-status");
+
+    function getFilterTarget() {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "image") return obj;
+      if (backgroundFilterMode && canvas.backgroundImage) return canvas.backgroundImage;
+      return null;
+    }
+
+    function updateFilterTargetStatus() {
+      const obj = canvas.getActiveObject();
+      if (obj && obj.type === "image") {
+        filterTargetStatus.textContent = "Editando: la imagen seleccionada.";
+      } else if (backgroundFilterMode) {
+        filterTargetStatus.textContent = "Editando: la foto de fondo.";
+      } else {
+        filterTargetStatus.textContent =
+          "Selecciona una imagen en el lienzo, o usa el botón de arriba para editar la foto de fondo.";
+      }
+    }
+
+    document.getElementById("btn-filter-target-bg").addEventListener("click", function () {
+      canvas.discardActiveObject();
+      canvas.renderAll();
+      backgroundFilterMode = true;
+      syncFilterSlidersToTarget();
+      updateFilterTargetStatus();
+    });
+
+    // Cualquier selección de objeto (de lo que sea, no solo imágenes) sale
+    // del "modo foto de fondo", para que no queden dos cosas activas a la vez.
+    canvas.on("selection:created", function () { backgroundFilterMode = false; updateFilterTargetStatus(); });
+    canvas.on("selection:updated", function () { backgroundFilterMode = false; updateFilterTargetStatus(); });
+    canvas.on("selection:cleared", updateFilterTargetStatus);
+
+    function syncFilterSlidersToTarget() {
+      const target = getFilterTarget();
+      const state = (target && target.__filterState) || { brightness: 0, contrast: 0, saturation: 0 };
+      document.getElementById("filter-brightness").value = state.brightness;
+      document.getElementById("filter-contrast").value = state.contrast;
+      document.getElementById("filter-saturation").value = state.saturation;
+    }
+
+    // Reconstruye el arreglo de filtros del objetivo actual a partir de los
+    // tres sliders (brillo/contraste/saturación) — mover cualquiera de los
+    // tres siempre reemplaza cualquier preajuste anterior, para que el
+    // resultado sea predecible.
+    function applySliderFilters() {
+      const target = getFilterTarget();
+      if (!target) {
+        filterTargetStatus.textContent =
+          "Selecciona una imagen en el lienzo, o usa \"Editar la foto de fondo\", antes de ajustar filtros.";
+        return;
+      }
+      const brightness = parseInt(document.getElementById("filter-brightness").value, 10) / 100;
+      const contrast = parseInt(document.getElementById("filter-contrast").value, 10) / 100;
+      const saturation = parseInt(document.getElementById("filter-saturation").value, 10) / 100;
+      target.filters = [
+        new fabric.Image.filters.Brightness({ brightness: brightness }),
+        new fabric.Image.filters.Contrast({ contrast: contrast }),
+        new fabric.Image.filters.Saturation({ saturation: saturation }),
+      ];
+      target.__filterState = { brightness: brightness * 100, contrast: contrast * 100, saturation: saturation * 100 };
+      target.applyFilters();
+      canvas.renderAll();
+    }
+
+    ["filter-brightness", "filter-contrast", "filter-saturation"].forEach(function (id) {
+      document.getElementById(id).addEventListener("input", applySliderFilters);
+    });
+
+    // Preajustes: combinaciones fijas listas para un resultado rápido, al
+    // estilo de los filtros de Instagram/Canva. Pisan cualquier ajuste
+    // manual anterior (y reinician los sliders a 0, salvo que el preajuste
+    // en sí sea de brillo/contraste/saturación, en cuyo caso reflejan ese
+    // valor en los sliders para que se puedan seguir afinando).
+    const FILTER_PRESETS = {
+      ninguno: function (target) {
+        target.filters = [];
+        return { brightness: 0, contrast: 0, saturation: 0 };
+      },
+      vivido: function (target) {
+        target.filters = [
+          new fabric.Image.filters.Saturation({ saturation: 0.4 }),
+          new fabric.Image.filters.Contrast({ contrast: 0.12 }),
+        ];
+        return { brightness: 0, contrast: 12, saturation: 40 };
+      },
+      bn: function (target) {
+        target.filters = [new fabric.Image.filters.Grayscale()];
+        return { brightness: 0, contrast: 0, saturation: 0 };
+      },
+      sepia: function (target) {
+        target.filters = [new fabric.Image.filters.Sepia()];
+        return { brightness: 0, contrast: 0, saturation: 0 };
+      },
+      calido: function (target) {
+        target.filters = [
+          new fabric.Image.filters.BlendColor({ color: "#FF9900", mode: "tint", alpha: 0.15 }),
+          new fabric.Image.filters.Saturation({ saturation: 0.1 }),
+        ];
+        return { brightness: 0, contrast: 0, saturation: 10 };
+      },
+      frio: function (target) {
+        target.filters = [
+          new fabric.Image.filters.BlendColor({ color: "#0EA5E9", mode: "tint", alpha: 0.15 }),
+        ];
+        return { brightness: 0, contrast: 0, saturation: 0 };
+      },
+      contraste: function (target) {
+        target.filters = [
+          new fabric.Image.filters.Contrast({ contrast: 0.3 }),
+          new fabric.Image.filters.Saturation({ saturation: 0.1 }),
+        ];
+        return { brightness: 0, contrast: 30, saturation: 10 };
+      },
+      nitida: function (target) {
+        target.filters = [
+          new fabric.Image.filters.Convolute({ matrix: [0, -1, 0, -1, 5, -1, 0, -1, 0] }),
+        ];
+        return { brightness: 0, contrast: 0, saturation: 0 };
+      },
+      suave: function (target) {
+        target.filters = [new fabric.Image.filters.Blur({ blur: 0.12 })];
+        return { brightness: 0, contrast: 0, saturation: 0 };
+      },
+    };
+
+    document.querySelectorAll("[data-filter-preset]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const target = getFilterTarget();
+        if (!target) {
+          filterTargetStatus.textContent =
+            "Selecciona una imagen en el lienzo, o usa \"Editar la foto de fondo\", antes de aplicar un filtro.";
+          return;
+        }
+        const preset = FILTER_PRESETS[btn.getAttribute("data-filter-preset")];
+        if (!preset) return;
+        const sliderState = preset(target);
+        target.__filterState = sliderState;
+        target.applyFilters();
+        canvas.renderAll();
+        syncFilterSlidersToTarget();
+      });
+    });
+
     // Punto de partida cuando el negocio entra por primera vez (sin edición
     // guardada): arma, ENCIMA de la foto de la IA, un layout ya "diseñado" —
     // logo, título, una insignia circular con texto editable, una barra de
@@ -993,27 +1168,142 @@
     // dispositivo moderno. Es un punto de partida — si más adelante quieren
     // un set más específico de su marca, se puede sustituir por un banco de
     // íconos con licencia (ej. Flaticon, Freepik) sin cambiar esta mecánica.
-    const STICKERS_3D = {
-      bolsa: "🛍️",
-      regalo: "🎁",
-      fuego: "🔥",
-      cohete: "🚀",
-      moneda: "🪙",
-      megafono: "📣",
-      reloj: "⏰",
-      like: "👍",
-      corazon: "❤️",
-      estrella: "⭐",
-      calendario: "📅",
-      ubicacion: "📍",
-      carrito: "🛒",
-      celebracion: "🎉",
-    };
+    // Catálogo amplio, organizado por categoría de marketing y con una
+    // etiqueta en español por cada uno (para el buscador). Cubre las
+    // categorías más pedidas para campañas 2026: ofertas/ventas, dinero,
+    // redes/digital, tiempo y fechas, comunicación, reacciones, comida,
+    // belleza/salud, negocios, transporte/logística, temporada y personas.
+    const STICKERS_3D = [
+      // --- Ofertas y ventas ---
+      { key: "etiqueta", emoji: "🏷️", label: "Etiqueta de precio", cat: "Ofertas y ventas" },
+      { key: "bolsa", emoji: "🛍️", label: "Bolsa de compras", cat: "Ofertas y ventas" },
+      { key: "carrito", emoji: "🛒", label: "Carrito de compras", cat: "Ofertas y ventas" },
+      { key: "fuego", emoji: "🔥", label: "Oferta caliente / tendencia", cat: "Ofertas y ventas" },
+      { key: "rayo", emoji: "⚡", label: "Oferta relámpago", cat: "Ofertas y ventas" },
+      { key: "objetivo", emoji: "🎯", label: "Objetivo / promoción directa", cat: "Ofertas y ventas" },
+      { key: "nuevo", emoji: "🆕", label: "Nuevo", cat: "Ofertas y ventas" },
+      { key: "gratis", emoji: "🆓", label: "Gratis", cat: "Ofertas y ventas" },
+      { key: "reciclable", emoji: "♻️", label: "Sustentable / reciclable", cat: "Ofertas y ventas" },
+      { key: "paquete", emoji: "📦", label: "Paquete / envío", cat: "Ofertas y ventas" },
+      { key: "cien", emoji: "💯", label: "100% / garantía total", cat: "Ofertas y ventas" },
+      { key: "candado", emoji: "🔒", label: "Compra segura", cat: "Ofertas y ventas" },
+
+      // --- Dinero y finanzas ---
+      { key: "moneda", emoji: "🪙", label: "Moneda / cashback", cat: "Dinero" },
+      { key: "billetes", emoji: "💵", label: "Billetes / efectivo", cat: "Dinero" },
+      { key: "billetesvolando", emoji: "💸", label: "Ahorro / gasto", cat: "Dinero" },
+      { key: "tarjeta", emoji: "💳", label: "Tarjeta / pago", cat: "Dinero" },
+      { key: "alcancia", emoji: "🐷", label: "Alcancía / ahorro", cat: "Dinero" },
+      { key: "grafica-subida", emoji: "📈", label: "Crecimiento / ventas al alza", cat: "Dinero" },
+      { key: "grafica-bajada", emoji: "📉", label: "Descuento / baja de precio", cat: "Dinero" },
+      { key: "diamante", emoji: "💎", label: "Premium / exclusivo", cat: "Dinero" },
+
+      // --- Redes y digital ---
+      { key: "celular", emoji: "📱", label: "Celular / app", cat: "Redes y digital" },
+      { key: "laptop", emoji: "💻", label: "Computadora / online", cat: "Redes y digital" },
+      { key: "wifi", emoji: "📶", label: "Señal / conexión", cat: "Redes y digital" },
+      { key: "campana", emoji: "🔔", label: "Notificación / avisa", cat: "Redes y digital" },
+      { key: "correo", emoji: "📧", label: "Correo / newsletter", cat: "Redes y digital" },
+      { key: "chat", emoji: "💬", label: "Chat / mensaje", cat: "Redes y digital" },
+      { key: "camara", emoji: "📸", label: "Foto / cámara", cat: "Redes y digital" },
+      { key: "video", emoji: "🎥", label: "Video / reel", cat: "Redes y digital" },
+      { key: "play", emoji: "▶️", label: "Reproducir / ver más", cat: "Redes y digital" },
+      { key: "link", emoji: "🔗", label: "Enlace / link en bio", cat: "Redes y digital" },
+      { key: "codigoqr", emoji: "📲", label: "Escanea / QR", cat: "Redes y digital" },
+
+      // --- Tiempo y eventos ---
+      { key: "reloj", emoji: "⏰", label: "Tiempo limitado", cat: "Tiempo y eventos" },
+      { key: "reloj-arena", emoji: "⏳", label: "Se acaba el tiempo", cat: "Tiempo y eventos" },
+      { key: "calendario", emoji: "📅", label: "Fecha / evento", cat: "Tiempo y eventos" },
+      { key: "calendario2", emoji: "🗓️", label: "Agenda / reservar", cat: "Tiempo y eventos" },
+      { key: "campana-alarma", emoji: "⏱️", label: "Cuenta regresiva", cat: "Tiempo y eventos" },
+
+      // --- Comunicación y llamados a la acción ---
+      { key: "megafono", emoji: "📣", label: "Anuncio / aviso importante", cat: "Comunicación" },
+      { key: "megafono2", emoji: "📢", label: "Anuncio general", cat: "Comunicación" },
+      { key: "foco", emoji: "💡", label: "Idea / tip", cat: "Comunicación" },
+      { key: "pregunta", emoji: "❓", label: "Pregunta / duda", cat: "Comunicación" },
+      { key: "exclamacion", emoji: "❗", label: "Importante / atención", cat: "Comunicación" },
+      { key: "check", emoji: "✅", label: "Confirmado / garantía", cat: "Comunicación" },
+      { key: "equis", emoji: "❌", label: "No / evita esto", cat: "Comunicación" },
+      { key: "ojo", emoji: "👀", label: "Mira esto / atención", cat: "Comunicación" },
+      { key: "senalando", emoji: "👉", label: "Señalando / mira aquí", cat: "Comunicación" },
+
+      // --- Reacciones ---
+      { key: "like", emoji: "👍", label: "Me gusta", cat: "Reacciones" },
+      { key: "aplausos", emoji: "👏", label: "Felicitaciones / aplausos", cat: "Reacciones" },
+      { key: "manos-arriba", emoji: "🙌", label: "Celebración / logro", cat: "Reacciones" },
+      { key: "corazon", emoji: "❤️", label: "Favorito / me encanta", cat: "Reacciones" },
+      { key: "ojos-corazon", emoji: "😍", label: "Enamorado del producto", cat: "Reacciones" },
+      { key: "sorpresa", emoji: "🤩", label: "Sorprendido / wow", cat: "Reacciones" },
+      { key: "fiesta-cara", emoji: "🥳", label: "Celebrando", cat: "Reacciones" },
+      { key: "estrella", emoji: "⭐", label: "Calificación / reseña", cat: "Reacciones" },
+      { key: "cinco-estrellas", emoji: "🌟", label: "Excelente / destacado", cat: "Reacciones" },
+
+      // --- Comida y bebida ---
+      { key: "pizza", emoji: "🍕", label: "Pizza", cat: "Comida y bebida" },
+      { key: "hamburguesa", emoji: "🍔", label: "Hamburguesa", cat: "Comida y bebida" },
+      { key: "papas", emoji: "🍟", label: "Papas fritas", cat: "Comida y bebida" },
+      { key: "taco", emoji: "🌮", label: "Taco / comida mexicana", cat: "Comida y bebida" },
+      { key: "cafe", emoji: "☕", label: "Café", cat: "Comida y bebida" },
+      { key: "pastel", emoji: "🍰", label: "Pastel / postre", cat: "Comida y bebida" },
+      { key: "cupcake", emoji: "🧁", label: "Cupcake", cat: "Comida y bebida" },
+      { key: "bebida", emoji: "🥤", label: "Bebida / refresco", cat: "Comida y bebida" },
+      { key: "copa", emoji: "🍷", label: "Vino / bebida especial", cat: "Comida y bebida" },
+
+      // --- Belleza y salud ---
+      { key: "esmalte", emoji: "💅", label: "Manicure / belleza", cat: "Belleza y salud" },
+      { key: "labial", emoji: "💄", label: "Maquillaje", cat: "Belleza y salud" },
+      { key: "spa", emoji: "🧖‍♀️", label: "Spa / relajación", cat: "Belleza y salud" },
+      { key: "diente", emoji: "🦷", label: "Dental / sonrisa", cat: "Belleza y salud" },
+      { key: "sonrisa", emoji: "😁", label: "Sonrisa / satisfacción", cat: "Belleza y salud" },
+      { key: "corazon-salud", emoji: "💪", label: "Fitness / salud", cat: "Belleza y salud" },
+
+      // --- Negocios ---
+      { key: "maletin", emoji: "💼", label: "Negocio / profesional", cat: "Negocios" },
+      { key: "apreton", emoji: "🤝", label: "Acuerdo / alianza", cat: "Negocios" },
+      { key: "trofeo", emoji: "🏆", label: "Logro / número uno", cat: "Negocios" },
+      { key: "graduacion", emoji: "🎓", label: "Certificación / experiencia", cat: "Negocios" },
+      { key: "nota", emoji: "📝", label: "Cotización / detalles", cat: "Negocios" },
+      { key: "grafica-barras", emoji: "📊", label: "Resultados / estadísticas", cat: "Negocios" },
+
+      // --- Transporte y logística ---
+      { key: "auto", emoji: "🚗", label: "Auto", cat: "Transporte y logística" },
+      { key: "camion", emoji: "🚚", label: "Entrega / envío", cat: "Transporte y logística" },
+      { key: "cohete", emoji: "🚀", label: "Lanzamiento / novedad", cat: "Transporte y logística" },
+      { key: "avion", emoji: "✈️", label: "Viaje / envío internacional", cat: "Transporte y logística" },
+      { key: "casa", emoji: "🏠", label: "Casa / bienes raíces", cat: "Transporte y logística" },
+      { key: "ubicacion", emoji: "📍", label: "Visítanos / ubicación", cat: "Transporte y logística" },
+      { key: "tienda", emoji: "🏢", label: "Sucursal / oficina", cat: "Transporte y logística" },
+
+      // --- Temporada 2026 / fechas especiales ---
+      { key: "navidad", emoji: "🎄", label: "Navidad", cat: "Temporada" },
+      { key: "regalo", emoji: "🎁", label: "Regalo", cat: "Temporada" },
+      { key: "calabaza", emoji: "🎃", label: "Halloween", cat: "Temporada" },
+      { key: "conejo", emoji: "🐰", label: "Pascua / primavera", cat: "Temporada" },
+      { key: "flor", emoji: "🌸", label: "Primavera / día de las madres", cat: "Temporada" },
+      { key: "sol", emoji: "☀️", label: "Verano", cat: "Temporada" },
+      { key: "copo", emoji: "❄️", label: "Invierno / frío", cat: "Temporada" },
+      { key: "corazon-amor", emoji: "💘", label: "San Valentín", cat: "Temporada" },
+      { key: "bandera-mx", emoji: "🇲🇽", label: "México / mes patrio", cat: "Temporada" },
+      { key: "fuegos-artificiales", emoji: "🎆", label: "Año nuevo / gran evento", cat: "Temporada" },
+
+      // --- Personas y celebración ---
+      { key: "celebracion", emoji: "🎉", label: "Celebración", cat: "Personas y celebración" },
+      { key: "confeti", emoji: "🎊", label: "Confeti / gran anuncio", cat: "Personas y celebración" },
+      { key: "globo", emoji: "🎈", label: "Globo / cumpleaños", cat: "Personas y celebración" },
+      { key: "familia", emoji: "👨‍👩‍👧‍👦", label: "Familia", cat: "Personas y celebración" },
+      { key: "pareja", emoji: "🧑‍🤝‍🧑", label: "Clientes / comunidad", cat: "Personas y celebración" },
+    ];
+
+    function findSticker3D(key) {
+      return STICKERS_3D.find(function (s) { return s.key === key; });
+    }
 
     function addSticker3D(key) {
-      const emoji = STICKERS_3D[key];
-      if (!emoji) return;
-      const sticker = new fabric.Text(emoji, {
+      const item = findSticker3D(key);
+      if (!item) return;
+      const sticker = new fabric.Text(item.emoji, {
         left: 160,
         top: 160,
         fontSize: 90,
@@ -1023,6 +1313,60 @@
       canvas.setActiveObject(sticker);
       canvas.renderAll();
     }
+
+    // Arma el panel de "Recursos 3D" agrupado por categoría, con un buscador
+    // que filtra por la etiqueta en español de cada sticker (ej. escribir
+    // "dinero" muestra moneda/billetes/tarjeta aunque no digan "dinero"
+    // literal en el nombre del emoji). Se genera por JS en vez de a mano en
+    // el HTML porque son ~100 stickers — mantenerlos como datos es más
+    // simple que escribir cada <button> uno por uno.
+    function renderStickers3D(filterText) {
+      const container = document.getElementById("stickers3d-container");
+      const term = (filterText || "").trim().toLowerCase();
+      const filtered = term
+        ? STICKERS_3D.filter(function (s) { return s.label.toLowerCase().indexOf(term) !== -1; })
+        : STICKERS_3D;
+
+      if (!filtered.length) {
+        container.innerHTML = '<p class="muted small">Sin resultados para "' + term + '".</p>';
+        return;
+      }
+
+      const categories = [];
+      const byCategory = {};
+      filtered.forEach(function (item) {
+        if (!byCategory[item.cat]) {
+          byCategory[item.cat] = [];
+          categories.push(item.cat);
+        }
+        byCategory[item.cat].push(item);
+      });
+
+      let html = "";
+      categories.forEach(function (cat) {
+        html += '<p class="muted small" style="margin:10px 0 4px; font-weight:700;">' + cat + "</p>";
+        html += '<div class="shape-grid">';
+        byCategory[cat].forEach(function (item) {
+          html +=
+            '<button type="button" class="tool-btn icon-btn" data-sticker3d="' + item.key +
+            '" title="' + item.label + '" style="font-size:20px;">' + item.emoji + "</button>";
+        });
+        html += "</div>";
+      });
+      container.innerHTML = html;
+
+      // Los botones se recrean cada vez que se filtra, así que hay que
+      // volver a engancharles el evento de clic.
+      container.querySelectorAll("[data-sticker3d]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          addSticker3D(btn.getAttribute("data-sticker3d"));
+        });
+      });
+    }
+
+    document.getElementById("stickers3d-search").addEventListener("input", function (e) {
+      renderStickers3D(e.target.value);
+    });
 
     function addSticker(key) {
       const factory = STICKERS[key];
@@ -1131,11 +1475,9 @@
       });
     });
 
-    document.querySelectorAll("[data-sticker3d]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        addSticker3D(btn.getAttribute("data-sticker3d"));
-      });
-    });
+    // El panel de Recursos 3D se genera dinámicamente (ver renderStickers3D)
+    // porque son ~100 stickers con buscador — no hay botones fijos en el
+    // HTML que enganchar aquí.
 
     document.getElementById("text-color").addEventListener("input", function (e) {
       const obj = canvas.getActiveObject();
@@ -1416,6 +1758,8 @@
           statusEl.textContent = "Ocurrió un error al guardar. Intenta de nuevo.";
         });
     });
+
+    renderStickers3D("");
 
     loadFonts().then(function () {
       loadBackground();
