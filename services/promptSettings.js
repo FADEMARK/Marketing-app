@@ -27,6 +27,8 @@ Guía de estilo según el giro del negocio (aplica la que corresponda, o algo an
 
 Si el público objetivo incluye niños o familias, es válido mostrarlos genuinamente felices en la escena, de forma apropiada y no forzada.
 
+Dirección creativa de esta toma en particular (varía en cada generación a propósito, para que las publicaciones no se sientan repetitivas entre sí): {{angulo_creativo}}
+
 {{colores_marca}}
 {{notas_adicionales}}`;
 

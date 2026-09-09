@@ -59,11 +59,39 @@ function dataUriToBuffer(dataUri) {
   return Buffer.from(match[2], "base64");
 }
 
+// Sin esto, la IA converge casi siempre en la misma composición "de banco de
+// imágenes" para un mismo tipo de negocio (ej. persona sonriendo de frente a
+// cámara con el pulgar arriba) — el prompt describe QUÉ debe pasar en la
+// escena, pero no CÓMO encuadrarla, y el modelo rellena ese hueco con la
+// opción más genérica/predecible. Elegir al azar un ángulo/estilo de toma en
+// cada generación fuerza variedad real entre publicaciones, en vez de dejarlo
+// a la opción más probable del modelo.
+const CREATIVE_ANGLES = [
+  "Plano detalle (macro) muy cercano, con fondo desenfocado (bokeh) — enfócate en un solo elemento genuino de la escena (una sonrisa real, unas manos, un producto) en vez de encuadrar a la persona completa mirando a cámara.",
+  "Toma documental/candid: captura a las personas en medio de una interacción o risa genuina, sin posar ni mirar directo a la cámara — como si un fotógrafo hubiera capturado el momento de pasada.",
+  "Ángulo por encima del hombro (over-the-shoulder), como si el espectador estuviera viviendo la escena en primera persona, no observándola de frente.",
+  "Composición asimétrica con mucho espacio negativo limpio a un lado — el sujeto ocupa solo un tercio del encuadre, dejando aire visual amplio.",
+  "Luz dramática lateral o a contraluz (rim light), con sombras marcadas y alto contraste, estilo editorial de revista.",
+  "Toma cenital (top-down/flat-lay) del entorno, producto o elementos relacionados con la promoción, sin mostrar rostros.",
+  "Silueta o semi-silueta contra una ventana o fuente de luz natural, priorizando la forma y el ambiente sobre el detalle facial.",
+  "Foto de acción/movimiento genuino (alguien caminando, riendo, en pleno gesto), con ligero motion blur intencional, no una pose estática.",
+  "Plano amplio ambientado, con la(s) persona(s) pequeña(s) dentro de un entorno rico y bien iluminado — el espacio cuenta tanto de la historia como la persona.",
+  "Estilo cinematográfico de fotograma de película: profundidad de campo marcada, paleta de color con mood definido, composición que sugiere una historia en curso.",
+  "Retrato ambientado en tercer plano/perfil (nunca mirando directo a cámara), con enfoque genuino en una actividad real relacionada con el negocio.",
+  "Composición conceptual/simbólica: usa objetos, colores y texturas propias del giro del negocio para sugerir la idea de la promoción, sin necesidad de mostrar personas.",
+];
+
+function pickCreativeAngle() {
+  return CREATIVE_ANGLES[Math.floor(Math.random() * CREATIVE_ANGLES.length)];
+}
+
 // Reglas técnicas fijas (no editables desde el prompt studio): garantizan
 // que la IA se quede solo en la fotografía y no intente escribir texto ni
 // dibujar logos/círculos/barras — esos los agrega el editor como objetos
-// reales, movibles y editables.
-function buildFixedRules(brief, { hasReferencePhoto = false } = {}) {
+// reales, movibles y editables. También fuerza variedad creativa (ver
+// CREATIVE_ANGLES) SIEMPRE, incluso si el equipo personalizó la parte
+// editable del prompt desde el prompt studio y no incluyó {{angulo_creativo}}.
+function buildFixedRules(brief, { hasReferencePhoto = false, creativeAngle = "" } = {}) {
   const referencePhotoInstruction = hasReferencePhoto
     ? "IMPORTANTE SOBRE LA FOTO BASE: te adjunto una fotografía REAL del negocio, el producto o el " +
       "lugar (tal cual son en la vida real). Usa ESA foto como base y mejórala profesionalmente: ajusta " +
@@ -75,6 +103,12 @@ function buildFixedRules(brief, { hasReferencePhoto = false } = {}) {
 
   return [
     referencePhotoInstruction,
+    "EVITA CLICHÉS DE BANCO DE IMÁGENES: nada de personas mirando directo a cámara sonriendo con el " +
+      "pulgar arriba, poses acartonadas de foto corporativa, ni composiciones perfectamente simétricas " +
+      "y centradas. Debe sentirse como una fotografía editorial real, no como una plantilla genérica.",
+    creativeAngle
+      ? `DIRECCIÓN CREATIVA OBLIGATORIA PARA ESTA TOMA: ${creativeAngle}`
+      : "",
     "IMPORTANTE SOBRE TEXTO, LOGO Y ELEMENTOS GRÁFICOS: NO escribas ningún texto dentro de la imagen — " +
       "ni títulos, subtítulos, porcentajes, teléfonos, direcciones, nombres de negocio, botones ni " +
       "letreros. NO generes ni redibujes ningún logotipo. NO dibujes círculos, insignias, barras, marcos " +
@@ -94,8 +128,13 @@ function buildFixedRules(brief, { hasReferencePhoto = false } = {}) {
     .join(" ");
 }
 
-function templateVars(brief, { hasReferencePhoto = false } = {}) {
+function templateVars(brief, { hasReferencePhoto = false, creativeAngle = "" } = {}) {
   return {
+    // También queda disponible como {{angulo_creativo}} por si el equipo
+    // quiere referenciarlo explícitamente al editar la parte creativa del
+    // prompt desde el prompt studio — pero ver buildFixedRules: se aplica
+    // SIEMPRE de todas formas, se use o no este placeholder.
+    angulo_creativo: creativeAngle,
     modo_intro: hasReferencePhoto
       ? "Tu tarea principal es MEJORAR una fotografía real que te adjunto (ver instrucciones abajo), no generar una escena nueva desde cero."
       : "Genera una fotografía publicitaria profesional de alta gama para una campaña real.",
@@ -126,12 +165,13 @@ function templateVars(brief, { hasReferencePhoto = false } = {}) {
 // GET /campaigns/:id) usa enrich=false para no gastar una llamada a Claude
 // en cada carga de página, solo cuando de verdad se va a generar la imagen.
 async function buildPrompt(brief, { hasReferencePhoto = false, enrich = false } = {}) {
+  const creativeAngle = pickCreativeAngle();
   const template = await getPromptTemplate();
-  let creativePart = renderTemplate(template, templateVars(brief, { hasReferencePhoto }));
+  let creativePart = renderTemplate(template, templateVars(brief, { hasReferencePhoto, creativeAngle }));
   if (enrich) {
     creativePart = await aiReview.enrichPrompt(creativePart);
   }
-  const fixedRules = buildFixedRules(brief, { hasReferencePhoto });
+  const fixedRules = buildFixedRules(brief, { hasReferencePhoto, creativeAngle });
   return `${creativePart}\n\n${fixedRules}`;
 }
 
