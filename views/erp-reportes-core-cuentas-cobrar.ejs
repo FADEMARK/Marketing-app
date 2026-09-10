@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Cuentas por cobrar — Reportes</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'reportes' }) %>
+
+  <main class="page">
+    <a href="/erp/reportes/core" class="back-link">&larr; Volver a Reportes del ERP</a>
+    <h1>💰 Cuentas por cobrar</h1>
+    <p class="muted small">Saldo pendiente por cliente: total facturado (no cancelado) menos total pagado.</p>
+
+    <form method="GET" action="/erp/reportes/core/cuentas-por-cobrar" class="report-filters">
+      <label>Moneda
+        <select name="currency">
+          <option value="">Todas</option>
+          <% currencies.forEach(function(c) { %>
+            <option value="<%= c.code %>" <%= currency === c.code ? 'selected' : '' %>><%= c.code %> — <%= c.name %></option>
+          <% }); %>
+        </select>
+      </label>
+      <button type="submit" class="btn-primary">Aplicar</button>
+    </form>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <table class="admin-table">
+        <thead><tr><th>Cliente</th><th>Facturado</th><th>Pagado</th><th>Saldo</th><th></th></tr></thead>
+        <tbody>
+          <% rows.forEach(function(r) { %>
+            <tr>
+              <td><%= r.cliente %></td>
+              <td>$<%= Number(r.total_facturado).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+              <td>$<%= Number(r.total_pagado).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+              <td><strong>$<%= Number(r.saldo).toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td>
+              <td><a href="/erp/clientes/<%= r.id %>">Ver cliente</a></td>
+            </tr>
+          <% }); %>
+          <% if (rows.length === 0) { %><tr><td colspan="5" class="muted small">Ningún cliente tiene saldo pendiente.</td></tr><% } %>
+        </tbody>
+        <tfoot><tr><td colspan="3"><strong>Total por cobrar</strong></td><td colspan="2"><strong>$<%= total.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

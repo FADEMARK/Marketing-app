@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Workflows de aprobación — Configuración</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Workflows de aprobación</h1>
+    <p class="muted small">
+      Marca qué tipos de documento necesitan aprobación antes de poder avanzar a su siguiente paso
+      (ej. una orden de compra grande). Mientras esté pendiente, el documento no se puede convertir.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+
+    <div class="detail-box">
+      <% docTypes.forEach(function(dt) { %>
+        <form id="aprobacion-form-<%= dt %>" method="POST" action="/erp/configuracion/aprobaciones/<%= dt %>"></form>
+      <% }); %>
+      <table class="admin-table">
+        <thead><tr><th>Documento</th><th>Requiere aprobación</th><th>Aprobador sugerido</th><th></th></tr></thead>
+        <tbody>
+          <% docTypes.forEach(function(dt) { %>
+            <% var rule = rulesByDocType[dt] || { requires_approval: false, approver_employee_id: null }; %>
+            <tr>
+              <td><%= docTypeTitles[dt] %></td>
+              <td>
+                <input type="checkbox" name="requires_approval" form="aprobacion-form-<%= dt %>" <%= rule.requires_approval ? 'checked' : '' %> style="width:auto;" />
+              </td>
+              <td>
+                <select name="approver_employee_id" form="aprobacion-form-<%= dt %>">
+                  <option value="">— Cualquiera con acceso —</option>
+                  <% employees.forEach(function(emp) { %>
+                    <option value="<%= emp.id %>" <%= rule.approver_employee_id === emp.id ? 'selected' : '' %>><%= emp.name %></option>
+                  <% }); %>
+                </select>
+              </td>
+              <td><button type="submit" form="aprobacion-form-<%= dt %>" class="link-button">Guardar</button></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

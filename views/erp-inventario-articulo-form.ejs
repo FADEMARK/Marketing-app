@@ -57,6 +57,9 @@
           <% }); %>
         </select>
       </label>
+
+      <%- include('partials/custom-fields-inputs', { customFieldDefs, customFieldValues }) %>
+
       <button type="submit" class="btn-primary full-width">Guardar artículo</button>
     </form>
   </main>

@@ -12,7 +12,10 @@
 
     <div class="page-header">
       <h1><%= title %> <%= transaction.folio %></h1>
-      <span class="status-badge status-<%= transaction.status %>"><%= transaction.status %></span>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <a href="/erp/core/<%= flow %>/<%= docType %>/<%= transaction.id %>/pdf" target="_blank" class="btn-secondary">📄 Descargar PDF</a>
+        <span class="status-badge status-<%= transaction.status %>"><%= transaction.status %></span>
+      </div>
     </div>
     <p class="muted small">
       <%= flow === 'ventas' ? 'Cliente' : 'Proveedor' %>:
@@ -65,6 +68,8 @@
       </div>
     <% } %>
 
+    <%- include('partials/custom-fields-display', { customFieldDefs, customFieldValues }) %>
+
     <% if (derived.length > 0) { %>
       <div class="detail-box" style="margin-top:20px;">
         <h3>Documentos generados a partir de este</h3>
@@ -81,6 +86,79 @@
             <% }); %>
           </tbody>
         </table>
+      </div>
+    <% } %>
+
+    <% if (isPayableInvoice && transaction.status !== 'cancelada') { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <h3>Pagos</h3>
+        <p class="muted small" style="margin:2px 0;">Total facturado: $<%= Number(transaction.total).toFixed(2) %></p>
+        <p class="muted small" style="margin:2px 0;">Pagado: $<%= totalPaid.toFixed(2) %></p>
+        <p style="margin:2px 0;">
+          <strong>Saldo pendiente: $<%= balance.toFixed(2) %></strong>
+          <% if (balance <= 0) { %><span class="status-badge status-aprobado" style="margin-left:6px;">Liquidada</span><% } %>
+        </p>
+
+        <% if (payments.length > 0) { %>
+          <table class="admin-table" style="margin-top:10px;">
+            <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Notas</th></tr></thead>
+            <tbody>
+              <% payments.forEach(function(p) { %>
+                <tr>
+                  <td><%= new Date(p.payment_date).toLocaleDateString('es-MX') %></td>
+                  <td>$<%= Number(p.amount).toFixed(2) %></td>
+                  <td class="muted small"><%= p.method %></td>
+                  <td class="muted small"><%= p.notes || '—' %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        <% } %>
+
+        <% if (canEdit && balance > 0) { %>
+          <form method="POST" action="/erp/core/<%= flow %>/<%= docType %>/<%= transaction.id %>/pagar" class="card-form" style="margin-top:14px;">
+            <div class="two-col">
+              <label>Monto
+                <input type="number" name="amount" step="0.01" min="0.01" required value="<%= balance.toFixed(2) %>" />
+              </label>
+              <label>Fecha
+                <input type="date" name="payment_date" />
+              </label>
+            </div>
+            <label>Método
+              <select name="method">
+                <option value="efectivo">Efectivo</option>
+                <option value="transferencia">Transferencia</option>
+                <option value="tarjeta">Tarjeta</option>
+                <option value="cheque">Cheque</option>
+                <option value="otro">Otro</option>
+              </select>
+            </label>
+            <label>Notas (opcional)
+              <input type="text" name="notes" />
+            </label>
+            <button type="submit" class="btn-primary full-width">Registrar pago</button>
+          </form>
+        <% } %>
+      </div>
+    <% } %>
+
+    <% if (transaction.status === 'pendiente_aprobacion') { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <h3>⏳ Pendiente de aprobación</h3>
+        <p class="muted small">
+          Este documento requiere aprobación (ver Configuración &gt; Workflows de aprobación) antes de
+          poder convertirse al siguiente eslabón de su cadena.
+        </p>
+        <% if (canEdit) { %>
+          <form method="POST" action="/erp/core/<%= flow %>/<%= docType %>/<%= transaction.id %>/aprobar" style="margin-top:10px;">
+            <button type="submit" class="btn-primary full-width">✅ Aprobar</button>
+          </form>
+          <form method="POST" action="/erp/core/<%= flow %>/<%= docType %>/<%= transaction.id %>/cancelar" style="margin-top:10px;"
+                onsubmit="return confirm('¿Rechazar (cancelar) este documento? No se puede deshacer.');">
+            <button type="submit" class="link-button" style="color:#B3261E;">Rechazar</button>
+          </form>
+        <% } %>
       </div>
     <% } %>
 

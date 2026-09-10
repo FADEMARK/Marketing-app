@@ -289,6 +289,7 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
   color: #444;
 }
 .status-pendiente_revision { background: #FFF6E5; color: #8A5A00; }
+.status-pendiente_aprobacion { background: #FFF6E5; color: #8A5A00; }
 .status-en_diseno { background: #E8F0FE; color: #1967D2; }
 .status-listo_para_aprobacion { background: #F3E8FD; color: #7B2FF2; }
 .status-aprobado { background: #E6F4EA; color: #1E7E34; }

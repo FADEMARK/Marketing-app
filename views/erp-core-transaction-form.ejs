@@ -43,7 +43,7 @@
           <h3>Moneda y ubicación</h3>
           <div class="two-col">
             <label>Moneda
-              <select name="currency_code">
+              <select name="currency_code" id="tc-currency-select">
                 <option value="">— Moneda base —</option>
                 <% currencies.forEach(function(c) { %>
                   <option value="<%= c.code %>"><%= c.code %> — <%= c.name %></option>
@@ -51,9 +51,13 @@
               </select>
             </label>
             <label>Tipo de cambio (manual, ej. valor DOF del día)
-              <input type="number" name="exchange_rate" step="0.000001" min="0" value="1" />
+              <div style="display:flex; gap:8px;">
+                <input type="number" name="exchange_rate" id="tc-exchange-rate" step="0.000001" min="0" value="1" style="flex:1;" />
+                <button type="button" id="tc-suggest-btn" class="btn-secondary" style="white-space:nowrap;">💱 Sugerir</button>
+              </div>
             </label>
           </div>
+          <p class="muted small" id="tc-suggest-note" style="display:none;"></p>
           <label>Ubicación<%= isExecution ? ' (obligatoria para ejecutar el pedido)' : ' (opcional)' %>
             <select name="location_id" <%= isExecution ? 'required' : '' %>>
               <option value="">— Sin ubicación —</option>
@@ -66,15 +70,27 @@
 
         <div class="detail-box">
           <h3>Artículos</h3>
+          <p class="muted small">
+            El impuesto de cada línea se sugiere del artículo, pero puedes cambiarlo solo para esta
+            transacción (no modifica el catálogo).
+          </p>
           <% items.forEach(function(it) { %>
-            <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);">
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
               <input type="checkbox" name="item_ids" value="<%= it.id %>" id="item-<%= it.id %>" style="width:auto;" />
-              <label for="item-<%= it.id %>" style="flex:1; font-weight:400; margin:0;">
-                <%= it.name %> <span class="muted small"><%= it.sku ? '(' + it.sku + ')' : '' %><%= it.tax_name ? ' — ' + it.tax_name : '' %></span>
+              <label for="item-<%= it.id %>" style="flex:1; min-width:160px; font-weight:400; margin:0;">
+                <%= it.name %> <span class="muted small"><%= it.sku ? '(' + it.sku + ')' : '' %></span>
               </label>
               <input type="number" name="qty_<%= it.id %>" step="0.01" min="0.01" value="1" placeholder="Cant." style="width:80px;" />
               <input type="number" name="price_<%= it.id %>" step="0.01" min="0" placeholder="Precio"
                      value="<%= flow === 'ventas' ? it.price : it.cost %>" style="width:110px;" />
+              <select name="tax_id_<%= it.id %>" style="width:150px;" title="Impuesto de esta línea">
+                <option value="" <%= !it.tax_id ? 'selected' : '' %>>Sin impuesto</option>
+                <% taxes.forEach(function(t) { %>
+                  <option value="<%= t.id %>" <%= it.tax_id === t.id ? 'selected' : '' %>>
+                    <%= t.name %> (<%= Number(t.rate).toString() %>%)
+                  </option>
+                <% }); %>
+              </select>
             </div>
           <% }); %>
         </div>
@@ -82,6 +98,8 @@
         <label>Notas
           <textarea name="notes" rows="2"></textarea>
         </label>
+
+        <%- include('partials/custom-fields-inputs', { customFieldDefs, customFieldValues }) %>
 
         <button type="submit" class="btn-primary full-width">Guardar</button>
       </form>
@@ -136,6 +154,48 @@
         if (ev.target !== nameInput && !box.contains(ev.target)) {
           box.style.display = 'none';
         }
+      });
+    })();
+
+    // Botón "Sugerir tipo de cambio" (Moneda > sugerencia de referencia).
+    // Nunca sobreescribe el campo sin que el usuario lo pida — solo llena el
+    // valor al hacer clic, el usuario lo puede seguir editando a mano igual
+    // que siempre.
+    (function() {
+      var btn = document.getElementById('tc-suggest-btn');
+      var currencySelect = document.getElementById('tc-currency-select');
+      var rateInput = document.getElementById('tc-exchange-rate');
+      var note = document.getElementById('tc-suggest-note');
+      if (!btn) return;
+
+      btn.addEventListener('click', function() {
+        var currency = currencySelect.value;
+        if (!currency) {
+          note.textContent = 'Elige primero una moneda distinta a la base para pedir una sugerencia.';
+          note.style.display = 'block';
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Consultando...';
+        fetch('/erp/tipo-cambio-sugerido?currency=' + encodeURIComponent(currency))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data.ok) {
+              rateInput.value = data.rate;
+              note.textContent = data.note || ('Sugerido: ' + data.rate);
+            } else {
+              note.textContent = data.error || 'No se pudo obtener una sugerencia.';
+            }
+            note.style.display = 'block';
+          })
+          .catch(function() {
+            note.textContent = 'No se pudo consultar un tipo de cambio de referencia. Captúralo manualmente.';
+            note.style.display = 'block';
+          })
+          .finally(function() {
+            btn.disabled = false;
+            btn.textContent = '💱 Sugerir';
+          });
       });
     })();
   </script>

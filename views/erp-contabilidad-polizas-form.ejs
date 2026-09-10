@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nueva póliza — Contabilidad</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'contabilidad' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/contabilidad/polizas" class="back-link">&larr; Volver a Pólizas de diario</a>
+    <h1>Nueva póliza de diario</h1>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <% if (accounts.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no tienes cuentas contables activas.</p>
+        <a href="/erp/configuracion/cuentas-contables" class="btn-primary">Ir a Cuentas contables</a>
+      </div>
+    <% } else { %>
+      <form method="POST" action="/erp/contabilidad/polizas" class="card-form" id="poliza-form">
+        <div class="detail-box">
+          <h3>Datos generales</h3>
+          <div class="two-col">
+            <label>Fecha
+              <input type="date" name="entry_date" />
+            </label>
+            <label>Memo / concepto general
+              <input type="text" name="memo" placeholder="Ej. Pago de renta de septiembre" />
+            </label>
+          </div>
+        </div>
+
+        <div class="detail-box">
+          <h3>Líneas (cargo / abono)</h3>
+          <p class="muted small">
+            Elige la cuenta y captura el monto en <strong>Cargo</strong> o en <strong>Abono</strong> (nunca
+            los dos en la misma línea). Deja en blanco las líneas que no vayas a usar. La suma de cargos
+            debe ser igual a la suma de abonos.
+          </p>
+          <table class="admin-table" id="poliza-lines-table">
+            <thead><tr><th>Cuenta</th><th>Cargo</th><th>Abono</th><th>Memo (opcional)</th></tr></thead>
+            <tbody>
+              <% for (let i = 0; i < 8; i++) { %>
+                <tr>
+                  <td>
+                    <select name="account_id">
+                      <option value="">— Sin usar —</option>
+                      <% accounts.forEach(function(a) { %>
+                        <option value="<%= a.id %>"><%= a.code %> — <%= a.name %></option>
+                      <% }); %>
+                    </select>
+                  </td>
+                  <td><input type="number" name="debit" step="0.01" min="0" class="poliza-debit" style="width:100px;" /></td>
+                  <td><input type="number" name="credit" step="0.01" min="0" class="poliza-credit" style="width:100px;" /></td>
+                  <td><input type="text" name="line_memo" style="width:140px;" /></td>
+                </tr>
+              <% } %>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td class="muted small">Totales</td>
+                <td id="poliza-total-debit">$0.00</td>
+                <td id="poliza-total-credit">$0.00</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+          <p class="muted small" id="poliza-balance-msg"></p>
+        </div>
+
+        <%- include('partials/custom-fields-inputs', { customFieldDefs, customFieldValues }) %>
+
+        <button type="submit" class="btn-primary full-width">Guardar póliza</button>
+      </form>
+    <% } %>
+  </main>
+
+  <script>
+    (function() {
+      var table = document.getElementById('poliza-lines-table');
+      if (!table) return;
+      var debitInputs = table.querySelectorAll('.poliza-debit');
+      var creditInputs = table.querySelectorAll('.poliza-credit');
+      var totalDebitEl = document.getElementById('poliza-total-debit');
+      var totalCreditEl = document.getElementById('poliza-total-credit');
+      var balanceMsg = document.getElementById('poliza-balance-msg');
+
+      function recalc() {
+        var totalDebit = 0, totalCredit = 0;
+        debitInputs.forEach(function(i) { totalDebit += parseFloat(i.value) || 0; });
+        creditInputs.forEach(function(i) { totalCredit += parseFloat(i.value) || 0; });
+        totalDebitEl.textContent = '$' + totalDebit.toFixed(2);
+        totalCreditEl.textContent = '$' + totalCredit.toFixed(2);
+        if (Math.abs(totalDebit - totalCredit) < 0.01 && totalDebit > 0) {
+          balanceMsg.textContent = '✓ La póliza cuadra.';
+          balanceMsg.style.color = 'green';
+        } else {
+          balanceMsg.textContent = 'La póliza todavía no cuadra (cargos deben ser igual a abonos).';
+          balanceMsg.style.color = '';
+        }
+      }
+      debitInputs.forEach(function(i) { i.addEventListener('input', recalc); });
+      creditInputs.forEach(function(i) { i.addEventListener('input', recalc); });
+      recalc();
+    })();
+  </script>
+</body>
+</html>

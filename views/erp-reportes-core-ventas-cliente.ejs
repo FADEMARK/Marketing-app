@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Ventas por cliente — Reportes</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'reportes' }) %>
+
+  <main class="page">
+    <a href="/erp/reportes/core" class="back-link">&larr; Volver a Reportes del ERP</a>
+    <h1>🧾 Ventas por cliente</h1>
+    <p class="muted small">Facturas de venta (no canceladas) agrupadas por cliente.</p>
+
+    <form method="GET" action="/erp/reportes/core/ventas-por-cliente" class="report-filters">
+      <label>Desde
+        <input type="date" name="from" value="<%= from %>" />
+      </label>
+      <label>Hasta
+        <input type="date" name="to" value="<%= to %>" />
+      </label>
+      <label>Moneda
+        <select name="currency">
+          <option value="">Todas (agrupadas por moneda)</option>
+          <% currencies.forEach(function(c) { %>
+            <option value="<%= c.code %>" <%= currency === c.code ? 'selected' : '' %>><%= c.code %> — <%= c.name %></option>
+          <% }); %>
+        </select>
+      </label>
+      <button type="submit" class="btn-primary">Aplicar</button>
+    </form>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <table class="admin-table">
+        <thead><tr><th>Cliente</th><th>Moneda</th><th># Facturas</th><th>Total facturado</th></tr></thead>
+        <tbody>
+          <% rows.forEach(function(r) { %>
+            <tr>
+              <td><%= r.cliente %></td>
+              <td class="muted small"><%= r.moneda %></td>
+              <td><%= r.num_facturas %></td>
+              <td>$<%= Number(r.total_facturado).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+            </tr>
+          <% }); %>
+          <% if (rows.length === 0) { %><tr><td colspan="4" class="muted small">Sin facturas de venta en este periodo.</td></tr><% } %>
+        </tbody>
+        <tfoot><tr><td colspan="3"><strong>Total<%= currency ? ' (' + currency + ')' : '' %></strong></td><td><strong>$<%= total.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+      <% if (!currency && rows.length > 0) { %>
+        <p class="muted small" style="margin-top:8px;">
+          El total suma montos de distintas monedas tal cual (sin convertir) — usa el filtro de moneda para ver un total limpio de una sola moneda.
+        </p>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

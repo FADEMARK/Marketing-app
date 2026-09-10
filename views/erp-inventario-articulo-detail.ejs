@@ -82,6 +82,9 @@
               <% }); %>
             </select>
           </label>
+
+          <%- include('partials/custom-fields-inputs', { customFieldDefs, customFieldValues }) %>
+
           <button type="submit" class="btn-primary full-width">Guardar cambios</button>
         </form>
         <form method="POST" action="/erp/inventario/articulos/<%= item.id %>/toggle-active" style="margin-top:10px;">

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Reportes del ERP</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'reportes' }) %>
+
+  <main class="page">
+    <a href="/erp/reportes" class="back-link">&larr; Volver a Reportes</a>
+    <h1>📊 Reportes del ERP</h1>
+    <p class="subtitle">Reportes financieros del core ERP, a partir de tus Pólizas de diario y tus transacciones de Ventas/Compras.</p>
+
+    <div class="campaign-grid">
+      <a href="/erp/reportes/core/estado-resultados" class="campaign-card">
+        <h3>📈 Estado de resultados</h3>
+        <p class="muted small">Ingresos, costos y gastos en un rango de fechas, a partir de tus Pólizas de diario.</p>
+      </a>
+      <a href="/erp/reportes/core/balance-general" class="campaign-card">
+        <h3>⚖️ Balance general</h3>
+        <p class="muted small">Activo, pasivo y capital acumulados a una fecha de corte.</p>
+      </a>
+      <a href="/erp/reportes/core/ventas-por-cliente" class="campaign-card">
+        <h3>🧾 Ventas por cliente</h3>
+        <p class="muted small">Facturas de venta agrupadas por cliente, con filtro de moneda y rango de fechas.</p>
+      </a>
+      <a href="/erp/reportes/core/compras-por-proveedor" class="campaign-card">
+        <h3>📦 Compras por proveedor</h3>
+        <p class="muted small">Facturas de compra agrupadas por proveedor, con filtro de moneda y rango de fechas.</p>
+      </a>
+      <a href="/erp/reportes/core/cuentas-por-cobrar" class="campaign-card">
+        <h3>💰 Cuentas por cobrar</h3>
+        <p class="muted small">Saldo pendiente de cada cliente (facturado menos pagado).</p>
+      </a>
+      <a href="/erp/reportes/core/cuentas-por-pagar" class="campaign-card">
+        <h3>💸 Cuentas por pagar</h3>
+        <p class="muted small">Saldo pendiente con cada proveedor (facturado menos pagado).</p>
+      </a>
+    </div>
+  </main>
+</body>
+</html>

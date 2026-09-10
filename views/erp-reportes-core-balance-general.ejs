@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Balance general — Reportes</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'reportes' }) %>
+
+  <main class="page">
+    <a href="/erp/reportes/core" class="back-link">&larr; Volver a Reportes del ERP</a>
+    <h1>⚖️ Balance general</h1>
+    <p class="muted small">Saldo acumulado de todas tus Pólizas de diario hasta la fecha de corte.</p>
+
+    <form method="GET" action="/erp/reportes/core/balance-general" class="report-filters">
+      <label>Fecha de corte
+        <input type="date" name="asOf" value="<%= asOf %>" />
+      </label>
+      <button type="submit" class="btn-primary">Aplicar</button>
+    </form>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Activo</h3>
+      <table class="admin-table">
+        <thead><tr><th>Cuenta</th><th>Saldo</th></tr></thead>
+        <tbody>
+          <% report.activos.forEach(function(l) { %>
+            <tr><td><%= l.code %> — <%= l.name %></td><td>$<%= l.balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+          <% }); %>
+          <% if (report.activos.length === 0) { %><tr><td colspan="2" class="muted small">Sin movimientos.</td></tr><% } %>
+        </tbody>
+        <tfoot><tr><td><strong>Total activo</strong></td><td><strong>$<%= report.totalActivo.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Pasivo</h3>
+      <table class="admin-table">
+        <thead><tr><th>Cuenta</th><th>Saldo</th></tr></thead>
+        <tbody>
+          <% report.pasivos.forEach(function(l) { %>
+            <tr><td><%= l.code %> — <%= l.name %></td><td>$<%= l.balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+          <% }); %>
+          <% if (report.pasivos.length === 0) { %><tr><td colspan="2" class="muted small">Sin movimientos.</td></tr><% } %>
+        </tbody>
+        <tfoot><tr><td><strong>Total pasivo</strong></td><td><strong>$<%= report.totalPasivo.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Capital</h3>
+      <table class="admin-table">
+        <thead><tr><th>Cuenta</th><th>Saldo</th></tr></thead>
+        <tbody>
+          <% report.capital.forEach(function(l) { %>
+            <tr><td><%= l.code %> — <%= l.name %></td><td>$<%= l.balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+          <% }); %>
+          <tr><td class="muted small">Utilidad acumulada (no cerrada a capital)</td><td>$<%= report.utilidadAcumulada.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+        </tbody>
+        <tfoot><tr><td><strong>Total capital</strong></td><td><strong>$<%= report.totalCapital.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px; background:#F3F7FF;">
+      <h3>Pasivo + Capital: $<%= (report.totalPasivo + report.totalCapital).toLocaleString('es-MX', {minimumFractionDigits:2}) %></h3>
+      <p class="muted small">Debe ser igual al Total activo si toda tu contabilidad está capturada en Pólizas.</p>
+    </div>
+  </main>
+</body>
+</html>

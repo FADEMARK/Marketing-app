@@ -1,0 +1,33 @@
+<%
+// Partial reutilizable para pintar los campos personalizados de UNA entidad
+// (Artículos/Venta/Compra/Empleados/Pólizas) dentro de cualquier formulario.
+// Espera dos variables locales al hacer el include:
+//   customFieldDefs: filas de erp_custom_field_defs (ya filtradas/activas)
+//   customFieldValues: objeto { field_key: valor } (ya parseado con
+//     erpCustomFields.parseCustomFieldsJson) — {} si es un formulario de alta.
+const _defs = typeof customFieldDefs !== "undefined" ? customFieldDefs : [];
+const _values = typeof customFieldValues !== "undefined" ? customFieldValues : {};
+%>
+<% if (_defs.length > 0) { %>
+  <div class="detail-box">
+    <h3>Campos personalizados</h3>
+    <% _defs.forEach(function(def) { %>
+      <label><%= def.field_label %>
+        <% if (def.field_type === 'opcion') { %>
+          <select name="custom_field_<%= def.field_key %>">
+            <option value="">— Elige una opción —</option>
+            <% (def.options_csv || '').split(',').map(function(o){ return o.trim(); }).filter(Boolean).forEach(function(opt) { %>
+              <option value="<%= opt %>" <%= _values[def.field_key] === opt ? 'selected' : '' %>><%= opt %></option>
+            <% }); %>
+          </select>
+        <% } else if (def.field_type === 'numero') { %>
+          <input type="number" step="any" name="custom_field_<%= def.field_key %>" value="<%= _values[def.field_key] || '' %>" />
+        <% } else if (def.field_type === 'fecha') { %>
+          <input type="date" name="custom_field_<%= def.field_key %>" value="<%= _values[def.field_key] || '' %>" />
+        <% } else { %>
+          <input type="text" name="custom_field_<%= def.field_key %>" value="<%= _values[def.field_key] || '' %>" />
+        <% } %>
+      </label>
+    <% }); %>
+  </div>
+<% } %>

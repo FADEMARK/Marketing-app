@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Personalizar campos — Configuración</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Personalizar campos</h1>
+    <p class="muted small">
+      Agrega tus propios campos a Artículos, Venta, Compra, Empleados y Pólizas — igual que un
+      campo personalizado de NetSuite. Aparecen en el formulario correspondiente y su valor se
+      guarda junto con cada registro.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Nuevo campo</h3>
+      <form method="POST" action="/erp/configuracion/campos-personalizados" class="card-form" id="custom-field-form">
+        <label>Entidad
+          <select name="entity_type" required>
+            <option value="">— Elige dónde va este campo —</option>
+            <% Object.values(entityTypes).forEach(function(et) { %>
+              <option value="<%= et %>"><%= entityTypeLabels[et] %></option>
+            <% }); %>
+          </select>
+        </label>
+        <div class="two-col">
+          <label>Etiqueta del campo
+            <input type="text" name="field_label" required placeholder="Ej. Color, Talla, Referencia..." />
+          </label>
+          <label>Tipo de campo
+            <select name="field_type" id="custom-field-type" required>
+              <% Object.values(fieldTypes).forEach(function(ft) { %>
+                <option value="<%= ft %>"><%= fieldTypeLabels[ft] %></option>
+              <% }); %>
+            </select>
+          </label>
+        </div>
+        <label id="custom-field-options-label" style="display:none;">Opciones (separadas por coma)
+          <input type="text" name="options_csv" placeholder="Rojo, Verde, Azul" />
+        </label>
+        <button type="submit" class="btn-primary full-width">+ Agregar campo</button>
+      </form>
+    </div>
+
+    <% Object.values(entityTypes).forEach(function(et) { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <h3><%= entityTypeLabels[et] %></h3>
+        <% if (!fieldsByEntity[et] || fieldsByEntity[et].length === 0) { %>
+          <p class="muted small">Todavía no hay campos personalizados para esta entidad.</p>
+        <% } else { %>
+          <table class="admin-table">
+            <thead><tr><th>Etiqueta</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              <% fieldsByEntity[et].forEach(function(f) { %>
+                <tr>
+                  <td><%= f.field_label %> <span class="muted small">(<%= f.field_key %>)</span></td>
+                  <td class="muted small">
+                    <%= fieldTypeLabels[f.field_type] || f.field_type %>
+                    <% if (f.field_type === 'opcion' && f.options_csv) { %> — <%= f.options_csv %><% } %>
+                  </td>
+                  <td>
+                    <span class="status-badge <%= f.active ? 'status-aprobado' : 'status-pendiente_revision' %>">
+                      <%= f.active ? 'Activo' : 'Inactivo' %>
+                    </span>
+                  </td>
+                  <td>
+                    <form method="POST" action="/erp/configuracion/campos-personalizados/<%= f.id %>/toggle-active" class="inline-form">
+                      <button type="submit" class="link-button"><%= f.active ? 'Desactivar' : 'Activar' %></button>
+                    </form>
+                  </td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    <% }); %>
+  </main>
+
+  <script>
+    (function() {
+      var typeSelect = document.getElementById('custom-field-type');
+      var optionsLabel = document.getElementById('custom-field-options-label');
+      function sync() {
+        optionsLabel.style.display = typeSelect.value === 'opcion' ? 'block' : 'none';
+      }
+      typeSelect.addEventListener('change', sync);
+      sync();
+    })();
+  </script>
+</body>
+</html>

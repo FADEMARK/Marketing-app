@@ -61,6 +61,9 @@
               <% }); %>
             </select>
           </label>
+
+          <%- include('partials/custom-fields-inputs', { customFieldDefs, customFieldValues }) %>
+
           <button type="submit" class="btn-primary full-width">+ Agregar empleado</button>
         </form>
       <% } %>
@@ -83,7 +86,16 @@
           <tbody>
             <% employees.forEach(function(emp) { %>
               <tr>
-                <td><%= emp.name %></td>
+                <td>
+                  <%= emp.name %>
+                  <% var filledFields = customFieldDefs.filter(function(def){ return emp.customFieldValues[def.field_key]; }); %>
+                  <% if (filledFields.length > 0) { %>
+                    <br />
+                    <span class="muted small">
+                      <% filledFields.forEach(function(def, i) { %><%= def.field_label %>: <%= emp.customFieldValues[def.field_key] %><%= i < filledFields.length - 1 ? ' · ' : '' %><% }); %>
+                    </span>
+                  <% } %>
+                </td>
                 <td class="muted"><%= emp.email %></td>
                 <td>
                   <form method="POST" action="/erp/empleados/<%= emp.id %>/update" class="inline-form">

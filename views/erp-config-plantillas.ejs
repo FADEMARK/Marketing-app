@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Personalización de plantillas — Configuración</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Personalización de plantillas</h1>
+    <p class="muted small">
+      Este texto se agrega al PDF de comprobante de cualquier transacción (Cotización, Orden,
+      Ejecución, Factura o Nota de crédito — ver el botón "Descargar PDF" en cualquier documento).
+      El logo y los colores de marca se configuran aparte en
+      <a href="/erp/configuracion/empresa">Configuración &gt; Empresa</a>.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+
+    <div class="detail-box">
+      <form method="POST" action="/erp/configuracion/plantillas" class="card-form">
+        <label>Encabezado (debajo del nombre del negocio)
+          <textarea name="erp_doc_template_header" rows="2" placeholder="Ej. Av. Siempre Viva 123, Col. Centro — RFC XAXX010101000"><%= business.erp_doc_template_header || '' %></textarea>
+        </label>
+        <label>Pie de página (al final de cada PDF)
+          <textarea name="erp_doc_template_footer" rows="2" placeholder="Ej. Gracias por su compra. Este documento no es una factura fiscal."><%= business.erp_doc_template_footer || '' %></textarea>
+        </label>
+        <button type="submit" class="btn-primary full-width">Guardar plantilla</button>
+      </form>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Vista previa</h3>
+      <p class="muted small">Así se vería el encabezado y pie de página en el PDF de comprobante:</p>
+      <div style="border:1px solid var(--border); border-radius:8px; padding:16px; background:#fff;">
+        <p style="font-weight:700; margin:0 0 4px;"><%= (erpActor && erpActor.businessName) || business.name %></p>
+        <p class="muted small" style="margin:0 0 16px;"><%= business.erp_doc_template_header || '(sin encabezado configurado)' %></p>
+        <p class="muted small" style="margin:24px 0 0; text-align:center; border-top:1px solid var(--border); padding-top:8px;">
+          <%= business.erp_doc_template_footer || '(sin pie de página configurado)' %>
+        </p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

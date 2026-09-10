@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Estado de resultados — Reportes</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'reportes' }) %>
+
+  <main class="page">
+    <a href="/erp/reportes/core" class="back-link">&larr; Volver a Reportes del ERP</a>
+    <h1>📈 Estado de resultados</h1>
+    <p class="muted small">A partir de tus Pólizas de diario (Contabilidad &gt; Pólizas). Si todavía no capturas pólizas, este reporte se ve en ceros.</p>
+
+    <form method="GET" action="/erp/reportes/core/estado-resultados" class="report-filters">
+      <label>Desde
+        <input type="date" name="from" value="<%= from %>" />
+      </label>
+      <label>Hasta
+        <input type="date" name="to" value="<%= to %>" />
+      </label>
+      <button type="submit" class="btn-primary">Aplicar</button>
+    </form>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Ingresos</h3>
+      <table class="admin-table">
+        <thead><tr><th>Cuenta</th><th>Monto</th></tr></thead>
+        <tbody>
+          <% report.ingresos.forEach(function(l) { %>
+            <tr><td><%= l.code %> — <%= l.name %></td><td>$<%= l.balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+          <% }); %>
+          <% if (report.ingresos.length === 0) { %><tr><td colspan="2" class="muted small">Sin movimientos en el periodo.</td></tr><% } %>
+        </tbody>
+        <tfoot><tr><td><strong>Total ingresos</strong></td><td><strong>$<%= report.totalIngresos.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Costos</h3>
+      <table class="admin-table">
+        <thead><tr><th>Cuenta</th><th>Monto</th></tr></thead>
+        <tbody>
+          <% report.costos.forEach(function(l) { %>
+            <tr><td><%= l.code %> — <%= l.name %></td><td>$<%= l.balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+          <% }); %>
+          <% if (report.costos.length === 0) { %><tr><td colspan="2" class="muted small">Sin movimientos en el periodo.</td></tr><% } %>
+        </tbody>
+        <tfoot><tr><td><strong>Total costos</strong></td><td><strong>$<%= report.totalCostos.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+      <p style="margin-top:10px;"><strong>Utilidad bruta: $<%= report.utilidadBruta.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></p>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Gastos</h3>
+      <table class="admin-table">
+        <thead><tr><th>Cuenta</th><th>Monto</th></tr></thead>
+        <tbody>
+          <% report.gastos.forEach(function(l) { %>
+            <tr><td><%= l.code %> — <%= l.name %></td><td>$<%= l.balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %></td></tr>
+          <% }); %>
+          <% if (report.gastos.length === 0) { %><tr><td colspan="2" class="muted small">Sin movimientos en el periodo.</td></tr><% } %>
+        </tbody>
+        <tfoot><tr><td><strong>Total gastos</strong></td><td><strong>$<%= report.totalGastos.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td></tr></tfoot>
+      </table>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px; background:#F3F7FF;">
+      <h3>Utilidad neta del periodo: $<%= report.utilidadNeta.toLocaleString('es-MX', {minimumFractionDigits:2}) %></h3>
+    </div>
+  </main>
+</body>
+</html>

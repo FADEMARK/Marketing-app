@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Pólizas de diario — Contabilidad</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'contabilidad' }) %>
+
+  <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
+    <div class="page-header">
+      <h1>Pólizas de diario</h1>
+      <a href="/erp/contabilidad/polizas/nueva" class="btn-primary">+ Nueva póliza</a>
+    </div>
+    <p class="muted small">
+      Asientos contables (cargo/abono) contra tu catálogo de
+      <a href="/erp/configuracion/cuentas-contables">Cuentas contables</a>. Cada póliza debe cuadrar:
+      la suma de cargos tiene que ser igual a la suma de abonos.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Póliza guardada.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <% if (entries.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no has capturado ninguna póliza.</p>
+        <a href="/erp/contabilidad/polizas/nueva" class="btn-primary">+ Nueva póliza</a>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead><tr><th>Folio</th><th>Fecha</th><th>Memo</th><th>Cargo</th><th>Abono</th><th></th></tr></thead>
+        <tbody>
+          <% entries.forEach(function(e) { %>
+            <tr>
+              <td><%= e.folio %></td>
+              <td><%= new Date(e.entry_date).toLocaleDateString('es-MX') %></td>
+              <td class="muted small"><%= e.memo || '—' %></td>
+              <td>$<%= Number(e.total_debit).toFixed(2) %></td>
+              <td>$<%= Number(e.total_credit).toFixed(2) %></td>
+              <td><a href="/erp/contabilidad/polizas/<%= e.id %>">Ver</a></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

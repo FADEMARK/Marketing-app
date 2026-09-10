@@ -275,7 +275,7 @@ Se llega por el menú **Ventas ▾** / **Compras ▾** (siempre visibles, no dep
 
 - **Clientes** (`/erp/clientes`) ya existía para Cotizaciones/Ventas de YonkSuite; ahora también alimenta el core de Ventas (el mismo cliente se reutiliza en ambas cadenas). Se le agregó:
   - **Aceptar pago**: registra un pago (monto, fecha, método, moneda/tipo de cambio) aplicado a una factura específica o "en cuenta" si el cliente paga por adelantado.
-  - **Estado de cuenta** (`/erp/clientes/:id/estado-cuenta`): todas las facturas del cliente menos todos sus pagos, con saldo corriendo — la cuenta corriente que cualquier negocio necesita para saber cuánto le debe cada cliente. (Esto no es un módulo de Contabilidad con pólizas/cuentas contables — eso es Fase 2, ver el roadmap al final.)
+  - **Estado de cuenta** (`/erp/clientes/:id/estado-cuenta`): todas las facturas del cliente menos todos sus pagos, con saldo corriendo — la cuenta corriente que cualquier negocio necesita para saber cuánto le debe cada cliente. (Esto es un estado de cuenta por cliente; el módulo de Contabilidad con pólizas/cuentas contables y los reportes financieros de todo el negocio se describen más abajo, en "Contabilidad".)
 - **Proveedores** (`/erp/proveedores`, nuevo) — mismo patrón que Clientes pero para Compras: folio propio (`PROV-0001`), datos fiscales opcionales, autocompletado al capturar una orden de compra.
 
 ### Configuración del core (`/erp/configuracion`)
@@ -283,13 +283,17 @@ Se llega por el menú **Ventas ▾** / **Compras ▾** (siempre visibles, no dep
 Ajustes nuevos, además de Empresa/Transacciones/Categorías que ya existían:
 
 - **Ubicaciones**: bodegas/sucursales para Inventario (ver arriba).
-- **Monedas**: catálogo de monedas en las que el negocio transacciona (una es la "base", normalmente MXN). **Multi-moneda con tipo de cambio manual**: cada transacción en moneda extranjera captura su propio tipo de cambio (por ejemplo, pegando el valor del día del DOF si el negocio es mexicano) — no hay integración automática a un servicio de tipo de cambio en esta fase; ver el roadmap.
+- **Monedas**: catálogo de monedas en las que el negocio transacciona (una es la "base", normalmente MXN). **Multi-moneda con tipo de cambio sugerido**: cada transacción en moneda extranjera captura su propio tipo de cambio, y un botón "Sugerir tipo de cambio" (`GET /erp/tipo-cambio-sugerido`, `services/erpExchangeRate.js`) propone un valor de referencia — el tipo de cambio que realmente se guarda siempre es el que el usuario confirma o edita a mano, nunca se aplica solo. Los 6 reportes del core (ver "Contabilidad" más abajo) agrupan o filtran por moneda para no mezclar montos de distintas divisas en un mismo total.
 - **Impuestos**: catálogo de impuestos aplicables a los artículos. Trae un botón "Sembrar impuestos usuales del SAT" que da de alta de un clic los más comunes en México: IVA 16%, IVA 8% (frontera), IVA 0%, Exento, Honorarios (retención ISR 10%) y RESICO — después se pueden editar o agregar los propios.
 - **Localización mexicana**: régimen fiscal (catálogo `c_RegimenFiscal` del SAT) y proveedor de timbrado (PAC) — **por ahora es solo configuración**, no timbra CFDIs de verdad todavía (ver el roadmap, es exactamente lo que se pidió dejar listo "para que se configure fácil" en un upgrade posterior).
 
 ### YonkSuite (ERP Yonkes): control de autos siniestrados y venta de piezas
 
 Módulo opcional **sobre el ERP core** (`/erp/vehiculos` y relacionados, requiere `module_yonksuite_enabled` además de `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. Es una cadena de datos completamente aparte del motor genérico de arriba (`erp_vehicles`/`erp_parts`/`erp_quotes`/`erp_sales`, NO `erp_transactions`) porque nació antes del core genérico y se mantuvo intacta para no arriesgar a los negocios que ya la usan — un yonke real tiene AMBOS módulos activos y ve tanto "Vehículos ▾" (esto) como "Ventas ▾"/"Compras ▾"/"Inventario ▾" (el core) en su menú, y puede usar el que le convenga para cada caso.
+
+### Fusión ligera con Inventario core: las piezas disponibles se ven en ambos lados
+
+Aunque `erp_vehicles`/`erp_parts` viven aparte del core (a propósito, para no tocar un flujo ya probado), cualquier pieza que esté en estado **"Disponible"** se refleja automáticamente como un artículo más de Inventario core (`erp_items` + `erp_item_stock`, cantidad 1 por pieza, cada una es única) — así aparece también en **Artículos**, **Visualizar inventario** y en los 6 reportes de Contabilidad (ver abajo), sin que nadie tenga que capturarla dos veces. En cuanto la pieza deja de estar disponible (se reserva en una cotización, se vende, se desecha o se borra) su espejo se desactiva y su existencia baja a 0; si vuelve a estar disponible (se rechaza la cotización, se cancela la venta), el espejo se reactiva solo. Esto vive en `services/erpYonkeInventoryMirror.js` y usa un SKU determinista (`YK-PART-<id de la pieza>`) para encontrar/actualizar su espejo, así que no requirió ninguna columna ni migración nueva en `erp_parts`. Si el negocio todavía no había dado de alta ninguna ubicación en Configuración → Ubicaciones, se le crea una "Bodega Yonke" automáticamente la primera vez que hace falta.
 
 ### Cómo se entra a YonkSuite
 
@@ -379,16 +383,37 @@ Dado que la idea es venderlo como producto aparte (estilo NetSuite, pero mucho m
 - **Historial de auditoría por empleado**: hoy se sabe qué rol tiene cada empleado, pero no queda un registro de "quién exactamente dio de alta esta pieza" (sí queda para ventas, con "Vendido por") — útil si el yonke crece y quiere rastrear responsabilidad por captura.
 - **Facturación electrónica real (CFDI)** si en algún momento se vuelve un requisito — se dejó la puerta abierta guardando los datos fiscales del cliente/negocio, pero conectar un PAC (proveedor autorizado del SAT) es un desarrollo aparte, con costo recurrente propio del PAC.
 
-## Fase 2 (roadmap): Contabilidad, Customización y automatizaciones
+## Fase 2: Contabilidad, Customización y automatizaciones
 
-Cuando se definió el alcance de este ERP core se decidió construir primero el "core transaccional" (todo lo de arriba: Ventas/Compras/Inventario/Clientes/Proveedores + YonkSuite como módulo) y dejar documentado, pero **sin construir todavía**, lo siguiente — son piezas grandes que vale la pena priorizar según qué tan seguido las pida el negocio real que las vaya a usar:
+Cuando se definió el alcance de este ERP core se decidió construir primero el "core transaccional" (Ventas/Compras/Inventario/Clientes/Proveedores + YonkSuite como módulo, ver arriba) y dejar documentado, para una siguiente iteración, todo lo de esta sección. Esa siguiente iteración ya se construyó — lo que sigue es lo que se agregó y cómo usarlo, más lo poco que sigue quedando pendiente al final.
 
-- **Contabilidad** (Pólizas de diario, Cuentas contables): cada transacción de Ventas/Compras ya calcula subtotal/impuesto/total y mueve inventario, pero todavía no genera una póliza contable (cargo/abono a cuentas específicas). El siguiente paso sería un catálogo de cuentas contables configurable (poblado con las más usuales según el SAT) y, al capturar cada tipo de documento, una regla de qué cuenta se carga y cuál se abona (ej. una venta carga Clientes/Bancos y abona Ingresos + IVA por pagar; una compra de inventario carga Inventario y abona Proveedores). Vale la pena investigar a fondo antes de construirlo — es la parte que un usuario sin formación contable encuentra más intimidante, así que el objetivo es una UI que se sienta como llenar un formulario, no como un asiento contable de libro de texto.
-- **Multi-moneda automática**: hoy el tipo de cambio se captura a mano por transacción (decisión explícita para esta fase, ver la sección de Monedas arriba). Un upgrade natural sería traer automáticamente el tipo de cambio del DOF (Banco de México publica un API) para negocios mexicanos, y sugerir uno razonable para otros países — dejando siempre la opción de sobreescribirlo a mano.
-- **Localización mexicana real (timbrado CFDI)**: la pantalla de Configuración → Localización mexicana ya guarda régimen fiscal y qué PAC usaría el negocio (ver arriba) — conectar la API real de ese PAC para timbrar automáticamente al generar una Factura es el siguiente paso, con su propio costo recurrente del PAC.
-- **Customización** (Crear listas y campos, Workflows de aprobación): campos personalizados por negocio para Artículos/Ventas/Compras/Empleados/Pólizas (ya existe un patrón parecido para CRM en `/admin/businesses/:id/crm-fields`, se podría extender) y un motor de workflows de aprobación estilo NetSuite (por ejemplo, una orden de compra arriba de cierto monto necesita aprobación de un supervisor antes de poder ejecutarse). La versión más simple de esto — un toggle "requiere aprobación" por tipo de documento con un aprobador asignado — es más rápida de construir que un editor visual de workflows con condiciones; conviene empezar por ahí y crecer según la demanda real.
-- **Búsqueda global sobre el core**: `/erp/buscar` hoy solo indexa Inventario/Clientes/Cotizaciones/Ventas de YonkSuite — agregarle los documentos del motor genérico (`erp_transactions`) para que una búsqueda encuentre también una factura o una orden de compra por folio o por cliente/proveedor.
-- **PDF de documentos de Ventas/Compras**: igual que el "Próximo paso" ya anotado para YonkSuite, los documentos del core (cotización, orden, factura, nota de crédito) también se beneficiarían de un PDF con el logo/color de marca del negocio, reutilizando `services/pdfBuilder.js`.
+### Contabilidad
+
+- **Cuentas contables** (`/erp/configuracion/cuentas-contables`): catálogo de cuentas (Activo/Pasivo/Capital/Ingreso/Costo/Gasto) por negocio, con un botón "Sembrar cuentas SAT" que da de alta de un clic 16 cuentas usuales en México (Caja, Bancos, Clientes, Proveedores, IVA por pagar/acreditar, Ventas, Costo de ventas, etc.) — después se pueden agregar, editar o desactivar las propias.
+- **Pólizas de diario** (`/erp/contabilidad/polizas`): captura manual de cargo/abono a cualquier cuenta del catálogo, con folio consecutivo propio y validación de que cargos = abonos antes de guardar.
+- **6 reportes estilo NetSuite** (`/erp/reportes/core`, enlazado también desde Reportes de YonkSuite): Estado de resultados, Balance general (con "utilidad acumulada" calculada, ya que el sistema no hace cierre de periodo formal), Ventas por cliente, Compras por proveedor, Cuentas por cobrar y Cuentas por pagar — cada uno con filtro de rango de fechas y/o de moneda. Como el tipo de cambio se captura por transacción y no hay conversión automática entre monedas (ver "Monedas" arriba), los reportes agrupan por moneda por default y dejan un filtro para ver un total limpio de una sola — a propósito, para no fabricar una conversión que nadie pidió.
+- **Pagar directamente desde la transacción**: cualquier Factura de Venta o de Compra tiene su propio botón "Registrar pago" en el detalle, sin tener que ir hasta Clientes/Proveedores a buscarla.
+
+### Impuestos y documentos
+
+- **Impuesto editable por línea**: al capturar un artículo dentro de una Venta o Compra, el impuesto ya no viene fijo del catálogo del artículo — se puede cambiar por línea (útil para excepciones, como una venta exenta a un cliente específico).
+- **PDF de comprobante por transacción**: cualquier documento del core (Cotización, Orden, Ejecución, Factura, Nota de crédito) tiene un botón para descargarlo como PDF, generado con `services/pdfBuilder.js` (la misma librería que ya usaba Documentos, ahora con una segunda función para transacciones del ERP).
+- **Personalización de plantillas de documentos** (`/erp/configuracion/plantillas`): encabezado y pie de página configurables por negocio para esos PDFs (por ejemplo, condiciones de pago o datos bancarios), sin tocar código.
+
+### Customización
+
+- **Campos personalizados** (`/erp/configuracion/campos-personalizados`): el dueño (o un Admin) puede agregar sus propios campos (texto, número, fecha, sí/no, selección) a Artículos, Transacciones, Empleados y Pólizas — un catálogo por negocio (`erp_custom_field_defs`) más una columna `custom_fields` (JSON) en cada tabla, sin necesitar una migración por campo nuevo.
+- **Workflows de aprobación simple** (`/erp/configuracion/aprobaciones`): un toggle "requiere aprobación" por tipo de documento (Orden de venta, Orden de compra, etc.) con un aprobador asignado — cuando está activo, el documento nace en estado "Pendiente de aprobación" y no se puede convertir al siguiente paso hasta que el aprobador lo aprueba (o lo rechaza) desde su propio detalle.
+
+### Fusión YonkSuite ↔ Inventario
+
+Ver la sección "Fusión ligera con Inventario core" dentro de YonkSuite, arriba: las piezas "Disponibles" ahora también aparecen en Artículos/Visualizar/reportes del core, sin haber tocado el flujo ya probado de `erp_vehicles`/`erp_parts`.
+
+### Lo que sigue pendiente
+
+- **Localización mexicana real (timbrado CFDI)**: la pantalla de Configuración → Localización mexicana ya guarda régimen fiscal y qué PAC usaría el negocio — conectar la API real de ese PAC para timbrar automáticamente al generar una Factura sigue siendo un desarrollo aparte, con su propio costo recurrente del PAC.
+- **Multi-moneda 100% automática**: hoy existe un botón de "Sugerir tipo de cambio" (ver "Monedas" arriba) que consulta un servicio de referencia, pero el valor que se guarda en la transacción siempre lo confirma o edita la persona a mano — no se aplica solo. Conectar directamente el API del DOF para negocios mexicanos (en vez del servicio de referencia genérico usado hoy) y aplicar el tipo de cambio sin intervención manual sería el siguiente paso, si el negocio lo pide.
+- **Búsqueda global sobre el core**: `/erp/buscar` sigue indexando solo Inventario/Clientes/Cotizaciones/Ventas de YonkSuite — agregarle los documentos del motor genérico (`erp_transactions`) para que una búsqueda encuentre también una factura o una orden de compra por folio o por cliente/proveedor.
 
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 
@@ -413,9 +438,14 @@ marketing-app/
 │   ├── backgroundRemoval.js # quitar fondo de imágenes (self-hosted, sin licencia AGPL)
 │   ├── canva.js             # genera el diseño vía Canva Connect API
 │   ├── erpStatus.js         # constantes del ERP (estados, planes, roles/permisos, catálogos MX)
-│   ├── erpNumbering.js      # folios consecutivos de los 13 tipos de documento del ERP
+│   ├── erpNumbering.js      # folios consecutivos de los tipos de documento del ERP
 │   ├── erpTransactions.js   # motor genérico de Ventas/Compras (cotización→orden→ejecución→factura→NC)
 │   ├── erpPartCategories.js # categorías de piezas configurables por negocio (YonkSuite)
+│   ├── erpCustomFields.js   # campos personalizados por negocio (Artículos/Transacciones/Empleados/Pólizas)
+│   ├── erpExchangeRate.js   # sugerencia de tipo de cambio (referencia; el usuario siempre confirma/edita)
+│   ├── erpReports.js        # los 6 reportes de Contabilidad (estado de resultados, balance, CxC/CxP, etc.)
+│   ├── erpYonkeInventoryMirror.js # fusión ligera: piezas "Disponibles" de YonkSuite espejadas en Inventario core
+│   ├── pdfBuilder.js        # genera PDFs (Documentos rápidos de Marketing + comprobantes de transacción del ERP)
 │   ├── modules.js           # activar/desactivar módulos (CRM/ERP) por negocio, lado Marketing
 │   ├── facebook.js          # publica en Facebook vía Meta Graph API
 │   ├── middleware.js        # protección de rutas (negocio / admin / ERP por rol / módulo YonkSuite)

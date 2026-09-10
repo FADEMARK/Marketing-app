@@ -701,6 +701,131 @@ async function init() {
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_tax_regime TEXT;`);
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_pac_provider TEXT;`);
   await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_pac_notes TEXT;`);
+
+  // ================== FASE 2: Contabilidad, Customización, Workflows ==================
+  // (segunda pasada sobre el core, pedida después de tener Ventas/Compras/
+  // Inventario/Clientes/Proveedores ya funcionando)
+
+  // --- Cuentas contables (catálogo configurable, ver Configuración >
+  // Cuentas contables). account_type agrupa para reportes tipo Balance
+  // general / Estado de resultados sin tener que adivinar por el nombre.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_chart_of_accounts (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      account_type TEXT NOT NULL,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, code)
+    );
+  `);
+
+  // --- Pólizas de diario: cargo/abono seleccionando cuentas del catálogo de
+  // arriba. erp_journal_entries es el encabezado (folio, fecha, memo);
+  // erp_journal_entry_lines son los renglones de cargo/abono — se valida en
+  // la ruta que sumen igual antes de guardar (no a nivel de base de datos,
+  // porque PGlite/Postgres no hace fácil un CHECK entre filas de una misma
+  // póliza sin un trigger, y el trigger sería más frágil que validarlo en
+  // la única ruta que inserta pólizas).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_journal_entries (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      folio TEXT,
+      entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      memo TEXT,
+      related_transaction_id INTEGER REFERENCES erp_transactions(id),
+      created_by_actor_type TEXT,
+      created_by_employee_id INTEGER REFERENCES erp_employees(id),
+      created_by_name TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_journal_entry_lines (
+      id SERIAL PRIMARY KEY,
+      journal_entry_id INTEGER NOT NULL REFERENCES erp_journal_entries(id) ON DELETE CASCADE,
+      account_id INTEGER NOT NULL REFERENCES erp_chart_of_accounts(id),
+      debit NUMERIC(14,2) NOT NULL DEFAULT 0,
+      credit NUMERIC(14,2) NOT NULL DEFAULT 0,
+      memo TEXT
+    );
+  `);
+
+  // --- Pagos a proveedor: mismo patrón que erp_customer_payments, para el
+  // botón "Pagar" directo desde una factura de compra.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_vendor_payments (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      vendor_id INTEGER NOT NULL REFERENCES erp_vendors(id),
+      amount NUMERIC(14,2) NOT NULL,
+      currency_code TEXT,
+      exchange_rate NUMERIC(14,6) NOT NULL DEFAULT 1,
+      payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      method TEXT NOT NULL DEFAULT 'efectivo',
+      applied_to_transaction_id INTEGER REFERENCES erp_transactions(id),
+      notes TEXT,
+      created_by_actor_type TEXT,
+      created_by_employee_id INTEGER REFERENCES erp_employees(id),
+      created_by_name TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- Snapshot de qué impuesto se usó en cada línea (antes solo se
+  // guardaba la tasa ya calculada) — permite, entre otras cosas, que
+  // Pólizas sepa a qué cuenta de IVA mandar cada línea más adelante.
+  await pool.query(`ALTER TABLE erp_transaction_lines ADD COLUMN IF NOT EXISTS tax_id INTEGER REFERENCES erp_taxes(id);`);
+
+  // --- Customización: campos personalizados por tipo de entidad (Artículos,
+  // Venta, Compra, Empleados, Pólizas). Un solo catálogo de definiciones
+  // (erp_custom_field_defs) + los valores capturados se guardan como JSON en
+  // la columna custom_fields de cada tabla (erp_items ya la tenía; se agrega
+  // a las demás) — evita una tabla EAV de valores separada para este primer
+  // alcance.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_custom_field_defs (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      entity_type TEXT NOT NULL,
+      field_key TEXT NOT NULL,
+      field_label TEXT NOT NULL,
+      field_type TEXT NOT NULL DEFAULT 'texto',
+      options_csv TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, entity_type, field_key)
+    );
+  `);
+  await pool.query(`ALTER TABLE erp_transactions ADD COLUMN IF NOT EXISTS custom_fields TEXT;`);
+  await pool.query(`ALTER TABLE erp_employees ADD COLUMN IF NOT EXISTS custom_fields TEXT;`);
+  await pool.query(`ALTER TABLE erp_journal_entries ADD COLUMN IF NOT EXISTS custom_fields TEXT;`);
+
+  // --- Workflows de aprobación (versión simple: un toggle por tipo de
+  // documento + un aprobador). Si requires_approval es TRUE, las
+  // transacciones nuevas de ese doc_type nacen en status 'pendiente_aprobacion'
+  // en vez de 'abierta', y no se pueden convertir hasta que el aprobador (o
+  // el dueño) las apruebe.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_approval_rules (
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      doc_type TEXT NOT NULL,
+      requires_approval BOOLEAN NOT NULL DEFAULT FALSE,
+      approver_employee_id INTEGER REFERENCES erp_employees(id),
+      PRIMARY KEY (business_id, doc_type)
+    );
+  `);
+
+  // --- Personalización de plantilla de documentos (PDF de transacciones):
+  // encabezado/pie de página configurables, reutilizando el logo/colores ya
+  // capturados en Empresa.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_doc_template_header TEXT;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_doc_template_footer TEXT;`);
 }
 
 module.exports = { pool, init };

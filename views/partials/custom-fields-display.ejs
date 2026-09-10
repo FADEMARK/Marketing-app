@@ -1,0 +1,16 @@
+<%
+// Partial de SOLO LECTURA para mostrar los valores de campos personalizados
+// ya capturados (detalle de un registro). Mismas variables locales que
+// custom-fields-inputs.ejs, pero solo pinta los que tengan valor.
+const _defs = typeof customFieldDefs !== "undefined" ? customFieldDefs : [];
+const _values = typeof customFieldValues !== "undefined" ? customFieldValues : {};
+const _filled = _defs.filter(function(def) { return _values[def.field_key]; });
+%>
+<% if (_filled.length > 0) { %>
+  <div class="detail-box" style="margin-top:20px;">
+    <h3>Campos personalizados</h3>
+    <% _filled.forEach(function(def) { %>
+      <p class="muted small" style="margin:4px 0;"><strong><%= def.field_label %>:</strong> <%= _values[def.field_key] %></p>
+    <% }); %>
+  </div>
+<% } %>

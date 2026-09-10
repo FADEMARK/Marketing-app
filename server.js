@@ -34,6 +34,10 @@ const scheduler = require("./services/scheduler");
 const erpNumbering = require("./services/erpNumbering");
 const erpPartCategories = require("./services/erpPartCategories");
 const erpTransactions = require("./services/erpTransactions");
+const erpCustomFields = require("./services/erpCustomFields");
+const erpExchangeRate = require("./services/erpExchangeRate");
+const erpReports = require("./services/erpReports");
+const erpYonkeInventoryMirror = require("./services/erpYonkeInventoryMirror");
 const {
   requireBusinessAuth,
   requireAdminAuth,
@@ -1121,9 +1125,13 @@ app.get(
       }
 
       const { rows: employees } = await pool.query(
-        "SELECT id, name, email, role, active, created_at FROM erp_employees WHERE business_id = $1 ORDER BY created_at ASC",
+        "SELECT id, name, email, role, active, created_at, custom_fields FROM erp_employees WHERE business_id = $1 ORDER BY created_at ASC",
         [req.erpActor.businessId]
       );
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.EMPLEADO);
+      employees.forEach((emp) => {
+        emp.customFieldValues = erpCustomFields.parseCustomFieldsJson(emp.custom_fields);
+      });
 
       res.render("erp-empleados", {
         currentSection: "empleados",
@@ -1134,6 +1142,8 @@ app.get(
         ERP_ROLES: erpStatus.ERP_ROLES,
         ERP_ROLE_LABELS: erpStatus.ERP_ROLE_LABELS,
         ERP_ROLE_DESCRIPTIONS: erpStatus.ERP_ROLE_DESCRIPTIONS,
+        customFieldDefs,
+        customFieldValues: {},
         error: req.query.error || null,
         saved: req.query.saved === "1",
       });
@@ -1190,10 +1200,12 @@ app.post(
       }
 
       const passwordHash = bcrypt.hashSync(password, 10);
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.EMPLEADO);
+      const customFieldsJson = erpCustomFields.buildCustomFieldsJson(customFieldDefs, req.body);
       await pool.query(
-        `INSERT INTO erp_employees (business_id, name, email, password_hash, role)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.erpActor.businessId, name.trim(), email.trim(), passwordHash, validRole]
+        `INSERT INTO erp_employees (business_id, name, email, password_hash, role, custom_fields)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [req.erpActor.businessId, name.trim(), email.trim(), passwordHash, validRole, customFieldsJson]
       );
 
       res.redirect("/erp/empleados?saved=1");
@@ -1838,11 +1850,22 @@ app.post(
         ? condition_grade
         : null;
 
-      await pool.query(
+      const { rows: newPartRows } = await pool.query(
         `INSERT INTO erp_parts (vehicle_id, business_id, name, category, asking_price, notes, condition_grade)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
         [vehicle.id, req.erpActor.businessId, name.trim(), cat, price, (notes || "").trim() || null, condition]
       );
+
+      // Fusión con Inventario core: una pieza nueva siempre nace "disponible"
+      // (default de la columna), así que se refleja de una vez en
+      // erp_items/erp_item_stock.
+      await erpYonkeInventoryMirror.syncPartMirror(pool, req.erpActor.businessId, {
+        id: newPartRows[0].id,
+        name: name.trim(),
+        category: cat,
+        asking_price: price,
+        status: "disponible",
+      });
 
       res.redirect(`/erp/vehicles/${vehicle.id}`);
     } catch (err) {
@@ -1900,6 +1923,17 @@ app.post("/erp/parts/:id/update", requireErpAuth, requireYonksuiteModule, requir
       [name.trim(), cat, price, (notes || "").trim() || null, nextStatus, condition, part.id, req.erpActor.businessId]
     );
 
+    // Fusión con Inventario core: si el estado cambió (o si cambió el
+    // nombre/categoría/precio de una que ya estaba disponible), refleja el
+    // cambio en su espejo de erp_items.
+    await erpYonkeInventoryMirror.syncPartMirror(pool, req.erpActor.businessId, {
+      id: part.id,
+      name: name.trim(),
+      category: cat,
+      asking_price: price,
+      status: nextStatus,
+    });
+
     res.redirect(`/erp/vehicles/${part.vehicle_id}`);
   } catch (err) {
     next(err);
@@ -1926,6 +1960,11 @@ app.post("/erp/parts/:id/delete", requireErpAuth, requireYonksuiteModule, requir
       part.id,
       req.erpActor.businessId,
     ]);
+
+    // Fusión con Inventario core: si esta pieza tenía espejo en erp_items,
+    // se desactiva (no se borra, por si ya la referencia algún reporte).
+    await erpYonkeInventoryMirror.deactivateMirror(pool, req.erpActor.businessId, part.id);
+
     res.redirect(`/erp/vehicles/${part.vehicle_id}`);
   } catch (err) {
     next(err);
@@ -2032,6 +2071,15 @@ app.post(
           "UPDATE erp_parts SET status = $1, updated_at = NOW() WHERE id = $2",
           [erpStatus.PART_STATUSES.VENDIDA, part.id]
         );
+        // Fusión con Inventario core: al venderse, sale del espejo de
+        // Inventario/erp_items (ya no está disponible).
+        await erpYonkeInventoryMirror.syncPartMirror(client, req.erpActor.businessId, {
+          id: part.id,
+          name: part.name,
+          category: part.category,
+          asking_price: part.asking_price,
+          status: erpStatus.PART_STATUSES.VENDIDA,
+        });
       }
 
       await client.query("COMMIT");
@@ -2064,6 +2112,26 @@ app.post("/erp/sales/:id/delete", requireErpAuth, requireYonksuiteModule, requir
        WHERE id IN (SELECT part_id FROM erp_sale_items WHERE sale_id = $2)`,
       [erpStatus.PART_STATUSES.DISPONIBLE, sale.id]
     );
+
+    // Fusión con Inventario core: las piezas que regresan a "disponible"
+    // reaparecen en su espejo de erp_items. Se leen ANTES de borrar la venta
+    // porque erp_sale_items se borra en cascada junto con ella.
+    const { rows: revertedParts } = await client.query(
+      `SELECT erp_parts.* FROM erp_parts
+       JOIN erp_sale_items ON erp_sale_items.part_id = erp_parts.id
+       WHERE erp_sale_items.sale_id = $1`,
+      [sale.id]
+    );
+    for (const part of revertedParts) {
+      await erpYonkeInventoryMirror.syncPartMirror(client, sale.business_id, {
+        id: part.id,
+        name: part.name,
+        category: part.category,
+        asking_price: part.asking_price,
+        status: erpStatus.PART_STATUSES.DISPONIBLE,
+      });
+    }
+
     await client.query("DELETE FROM erp_sales WHERE id = $1", [sale.id]);
     await client.query("COMMIT");
     res.redirect(`/erp/vehicles/${sale.vehicle_id}`);
@@ -2663,6 +2731,14 @@ app.get(
         "SELECT * FROM erp_locations WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
         [businessId]
       );
+      const { rows: taxes } = await pool.query(
+        "SELECT * FROM erp_taxes WHERE business_id = $1 AND active = TRUE ORDER BY rate DESC, name ASC",
+        [businessId]
+      );
+      const customFieldDefs = await erpCustomFields.getFieldDefs(
+        businessId,
+        flow === "ventas" ? erpStatus.CUSTOM_FIELD_ENTITY_TYPES.VENTA : erpStatus.CUSTOM_FIELD_ENTITY_TYPES.COMPRA
+      );
       res.render("erp-core-transaction-form", {
         currentSection: flow === "ventas" ? "core-ventas" : "core-compras",
         erpActor: req.erpActor,
@@ -2673,6 +2749,9 @@ app.get(
         items,
         currencies,
         locations,
+        taxes,
+        customFieldDefs,
+        customFieldValues: {},
         error: null,
         form: {},
       });
@@ -2715,14 +2794,45 @@ app.post(
          WHERE erp_items.id = ANY($1::int[]) AND erp_items.business_id = $2`,
         [itemIds, businessId]
       );
-      const lines = itemRows.map((item) => ({
-        item_id: item.id,
-        description: item.name,
-        quantity: parseFloat(req.body["qty_" + item.id]) || 1,
-        unit_price:
-          parseFloat(req.body["price_" + item.id]) || Number(flow === "ventas" ? item.price : item.cost),
-        tax_rate: Number(item.tax_rate) || 0,
-      }));
+      // El impuesto default del artículo es solo un punto de partida: al
+      // capturar la venta/compra se puede elegir otro impuesto ya dado de
+      // alta (tax_id_<item.id> en el form) para ESA línea nada más, sin
+      // tocar el catálogo del artículo. "" (Sin impuesto) es una opción
+      // válida y distinta de "no mandaron nada" (dejar el default).
+      const { rows: businessTaxes } = await client.query(
+        "SELECT * FROM erp_taxes WHERE business_id = $1",
+        [businessId]
+      );
+      const taxesById = {};
+      businessTaxes.forEach((t) => { taxesById[t.id] = t; });
+
+      const lines = itemRows.map((item) => {
+        const overrideField = "tax_id_" + item.id;
+        let taxId = item.tax_id || null;
+        let taxRate = Number(item.tax_rate) || 0;
+        if (Object.prototype.hasOwnProperty.call(req.body, overrideField)) {
+          const rawOverride = (req.body[overrideField] || "").trim();
+          if (rawOverride === "") {
+            taxId = null;
+            taxRate = 0;
+          } else {
+            const chosen = taxesById[parseInt(rawOverride, 10)];
+            if (chosen) {
+              taxId = chosen.id;
+              taxRate = Number(chosen.rate) || 0;
+            }
+          }
+        }
+        return {
+          item_id: item.id,
+          description: item.name,
+          quantity: parseFloat(req.body["qty_" + item.id]) || 1,
+          unit_price:
+            parseFloat(req.body["price_" + item.id]) || Number(flow === "ventas" ? item.price : item.cost),
+          tax_rate: taxRate,
+          tax_id: taxId,
+        };
+      });
 
       let clientId = null;
       let vendorId = null;
@@ -2755,6 +2865,13 @@ app.post(
         entityNameSnapshot = erpVendor ? erpVendor.name : (req.body.vendor_name || "").trim() || null;
       }
 
+      const customFieldDefs = await erpCustomFields.getFieldDefs(
+        businessId,
+        flow === "ventas" ? erpStatus.CUSTOM_FIELD_ENTITY_TYPES.VENTA : erpStatus.CUSTOM_FIELD_ENTITY_TYPES.COMPRA,
+        client
+      );
+      const customFields = erpCustomFields.buildCustomFieldsJson(customFieldDefs, req.body);
+
       const transaction = await erpTransactions.createTransaction(
         {
           businessId,
@@ -2768,6 +2885,7 @@ app.post(
           locationId: req.body.location_id || null,
           lines,
           actor: req.erpActor,
+          customFields,
         },
         client
       );
@@ -2795,6 +2913,31 @@ app.get("/erp/core/:flow/:docType/:id", requireErpAuth, requireFlowDocType, asyn
       [req.erpActor.businessId]
     );
     const nextDocType = erpTransactions.nextDocType(docType);
+
+    // Pagar directamente desde la factura (Ventas: erp_customer_payments,
+    // Compras: erp_vendor_payments) — pedido explícito del negocio para no
+    // tener que ir hasta Clientes/Proveedores nada más para cobrar/pagar una
+    // factura que se está viendo. Solo aplica a las facturas (factura_venta/
+    // factura_compra), no al resto de la cadena.
+    let payments = [];
+    let isPayableInvoice = false;
+    if (docType === "factura_venta" && flow === "ventas") {
+      isPayableInvoice = true;
+      const { rows } = await pool.query(
+        "SELECT * FROM erp_customer_payments WHERE applied_to_transaction_id = $1 AND business_id = $2 ORDER BY payment_date DESC, id DESC",
+        [result.transaction.id, req.erpActor.businessId]
+      );
+      payments = rows;
+    } else if (docType === "factura_compra" && flow === "compras") {
+      isPayableInvoice = true;
+      const { rows } = await pool.query(
+        "SELECT * FROM erp_vendor_payments WHERE applied_to_transaction_id = $1 AND business_id = $2 ORDER BY payment_date DESC, id DESC",
+        [result.transaction.id, req.erpActor.businessId]
+      );
+      payments = rows;
+    }
+    const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+
     res.render("erp-core-transaction-detail", {
       currentSection: flow === "ventas" ? "core-ventas" : "core-compras",
       erpActor: req.erpActor,
@@ -2809,6 +2952,15 @@ app.get("/erp/core/:flow/:docType/:id", requireErpAuth, requireFlowDocType, asyn
       nextIsExecution: Boolean(nextDocType && erpTransactions.EXECUTION_DOC_TYPES[nextDocType]),
       nextTitle: nextDocType ? erpTransactions.DOC_TYPE_TITLES[nextDocType] : null,
       canEdit: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, flow === "compras" ? "compras" : "ventas"),
+      isPayableInvoice,
+      payments,
+      totalPaid,
+      balance: Number(result.transaction.total) - totalPaid,
+      customFieldDefs: await erpCustomFields.getFieldDefs(
+        req.erpActor.businessId,
+        flow === "ventas" ? erpStatus.CUSTOM_FIELD_ENTITY_TYPES.VENTA : erpStatus.CUSTOM_FIELD_ENTITY_TYPES.COMPRA
+      ),
+      customFieldValues: erpCustomFields.parseCustomFieldsJson(result.transaction.custom_fields),
       saved: req.query.saved === "1",
       error: req.query.error || null,
     });
@@ -2859,6 +3011,137 @@ app.post(
       const { flow, docType } = req.params;
       await erpTransactions.cancelTransaction(req.erpActor.businessId, req.params.id);
       res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?saved=1`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// Aprobar un documento "pendiente_aprobacion" (ver Configuración >
+// Workflows de aprobación) — requiere el mismo permiso que Configuración
+// para mantenerlo simple (cualquier admin/dueño puede aprobar).
+app.post(
+  "/erp/core/:flow/:docType/:id/aprobar",
+  requireErpAuth,
+  requireFlowDocType,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { flow, docType } = req.params;
+      await erpTransactions.approveTransaction(req.erpActor.businessId, req.params.id);
+      res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?saved=1`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Pagar directamente desde la factura (sin ir a Clientes/Proveedores) --
+// Mismo modelo que /erp/clientes/:id/pagos (Ventas: erp_customer_payments)
+// y su espejo para Compras (erp_vendor_payments) — aquí solo se fija
+// applied_to_transaction_id a ESTA factura y se toma el cliente/proveedor
+// de la propia transacción, para no tener que volver a escribirlo.
+app.post(
+  "/erp/core/:flow/:docType/:id/pagar",
+  requireErpAuth,
+  requireFlowDocType,
+  requireFlowPermission,
+  async (req, res, next) => {
+    const { flow, docType } = req.params;
+    try {
+      if (!(docType === "factura_venta" && flow === "ventas") && !(docType === "factura_compra" && flow === "compras")) {
+        return res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?error=` + encodeURIComponent("Solo se puede registrar un pago directo sobre una factura."));
+      }
+
+      const { rows: txRows } = await pool.query(
+        "SELECT * FROM erp_transactions WHERE id = $1 AND business_id = $2 AND doc_type = $3",
+        [req.params.id, req.erpActor.businessId, docType]
+      );
+      const transaction = txRows[0];
+      if (!transaction) return res.status(404).send("Documento no encontrado.");
+      if (transaction.status === "cancelada") {
+        return res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?error=` + encodeURIComponent("No se puede registrar un pago sobre una factura cancelada."));
+      }
+
+      const amount = parseFloat(req.body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?error=` + encodeURIComponent("Escribe un monto de pago válido."));
+      }
+
+      const paymentFields = [
+        req.erpActor.businessId,
+        amount,
+        (req.body.currency_code || "").trim() || null,
+        parseFloat(req.body.exchange_rate) || 1,
+        req.body.payment_date || null,
+        (req.body.method || "efectivo").trim(),
+        transaction.id,
+        (req.body.notes || "").trim() || null,
+        req.erpActor.type,
+        req.erpActor.employeeId,
+        req.erpActor.name,
+      ];
+
+      if (flow === "ventas") {
+        if (!transaction.client_id) {
+          return res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?error=` + encodeURIComponent("Esta factura no tiene un cliente ligado, no se puede registrar el pago."));
+        }
+        await pool.query(
+          `INSERT INTO erp_customer_payments
+             (business_id, client_id, amount, currency_code, exchange_rate, payment_date, method,
+              applied_to_transaction_id, notes, created_by_actor_type, created_by_employee_id, created_by_name)
+           VALUES ($1,$2,$3,$4,$5,COALESCE($6, CURRENT_DATE),$7,$8,$9,$10,$11,$12)`,
+          [paymentFields[0], transaction.client_id, ...paymentFields.slice(1)]
+        );
+      } else {
+        if (!transaction.vendor_id) {
+          return res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?error=` + encodeURIComponent("Esta factura no tiene un proveedor ligado, no se puede registrar el pago."));
+        }
+        await pool.query(
+          `INSERT INTO erp_vendor_payments
+             (business_id, vendor_id, amount, currency_code, exchange_rate, payment_date, method,
+              applied_to_transaction_id, notes, created_by_actor_type, created_by_employee_id, created_by_name)
+           VALUES ($1,$2,$3,$4,$5,COALESCE($6, CURRENT_DATE),$7,$8,$9,$10,$11,$12)`,
+          [paymentFields[0], transaction.vendor_id, ...paymentFields.slice(1)]
+        );
+      }
+
+      res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?saved=1`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- PDF de comprobante ----------------------------------------------------
+// Pedido explícito del negocio: "todas las transacciones deberían generar
+// un PDF suponiendo que es la factura para dar como comprobante". Aplica a
+// cualquiera de los 9 tipos de documento del motor genérico (no solo
+// facturas) — no timbra ante el SAT, es un comprobante interno/de cortesía.
+app.get(
+  "/erp/core/:flow/:docType/:id/pdf",
+  requireErpAuth,
+  requireFlowDocType,
+  async (req, res, next) => {
+    try {
+      const { docType } = req.params;
+      const result = await erpTransactions.getTransaction(req.erpActor.businessId, req.params.id);
+      if (!result || result.transaction.doc_type !== docType) {
+        return res.status(404).send("Documento no encontrado.");
+      }
+      const { rows: bizRows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [req.erpActor.businessId]);
+      const business = bizRows[0];
+
+      const pdfBuffer = await pdfBuilder.buildTransactionPdfBuffer({
+        business,
+        transaction: result.transaction,
+        lines: result.lines,
+        docTitle: erpTransactions.DOC_TYPE_TITLES[docType] || docType,
+      });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `inline; filename="${result.transaction.folio}.pdf"`);
+      res.send(pdfBuffer);
     } catch (err) {
       next(err);
     }
@@ -3127,6 +3410,15 @@ app.post("/erp/cotizaciones", requireErpAuth, requireYonksuiteModule, requirePer
         erpStatus.PART_STATUSES.RESERVADA,
         part.id,
       ]);
+      // Fusión con Inventario core: reservada = ya no disponible, sale del
+      // espejo de erp_items.
+      await erpYonkeInventoryMirror.syncPartMirror(dbClient, req.erpActor.businessId, {
+        id: part.id,
+        name: part.name,
+        category: part.category,
+        asking_price: part.asking_price,
+        status: erpStatus.PART_STATUSES.RESERVADA,
+      });
     }
 
     await dbClient.query("COMMIT");
@@ -3195,7 +3487,9 @@ app.post("/erp/cotizaciones/:id/convertir", requireErpAuth, requireYonksuiteModu
     await dbClient.query("BEGIN");
 
     const { rows: items } = await dbClient.query(
-      `SELECT erp_quote_items.*, erp_parts.status AS part_status
+      `SELECT erp_quote_items.*, erp_parts.status AS part_status,
+              erp_parts.name AS part_name, erp_parts.category AS part_category,
+              erp_parts.asking_price AS part_asking_price
        FROM erp_quote_items JOIN erp_parts ON erp_parts.id = erp_quote_items.part_id
        WHERE erp_quote_items.quote_id = $1 FOR UPDATE OF erp_parts`,
       [quote.id]
@@ -3232,6 +3526,15 @@ app.post("/erp/cotizaciones/:id/convertir", requireErpAuth, requireYonksuiteModu
         erpStatus.PART_STATUSES.VENDIDA,
         item.part_id,
       ]);
+      // Fusión con Inventario core: al convertirse en venta, sale del
+      // espejo de erp_items (ya no está disponible).
+      await erpYonkeInventoryMirror.syncPartMirror(dbClient, req.erpActor.businessId, {
+        id: item.part_id,
+        name: item.part_name,
+        category: item.part_category,
+        asking_price: item.part_asking_price,
+        status: erpStatus.PART_STATUSES.VENDIDA,
+      });
     }
 
     await dbClient.query("UPDATE erp_quotes SET status = 'convertida', updated_at = NOW() WHERE id = $1", [
@@ -3270,6 +3573,25 @@ app.post(
          WHERE id IN (SELECT part_id FROM erp_quote_items WHERE quote_id = $2)`,
         [erpStatus.PART_STATUSES.DISPONIBLE, quote.id]
       );
+
+      // Fusión con Inventario core: las piezas rechazadas regresan a
+      // "disponible" y reaparecen en su espejo de erp_items.
+      const { rows: revertedQuoteParts } = await dbClient.query(
+        `SELECT erp_parts.* FROM erp_parts
+         JOIN erp_quote_items ON erp_quote_items.part_id = erp_parts.id
+         WHERE erp_quote_items.quote_id = $1`,
+        [quote.id]
+      );
+      for (const part of revertedQuoteParts) {
+        await erpYonkeInventoryMirror.syncPartMirror(dbClient, quote.business_id, {
+          id: part.id,
+          name: part.name,
+          category: part.category,
+          asking_price: part.asking_price,
+          status: erpStatus.PART_STATUSES.DISPONIBLE,
+        });
+      }
+
       await dbClient.query("UPDATE erp_quotes SET status = 'rechazada', updated_at = NOW() WHERE id = $1", [
         quote.id,
       ]);
@@ -3498,6 +3820,180 @@ app.get(
   }
 );
 
+// --- Reportes del core ERP (6 reportes estilo NetSuite) --------------------
+// Estado de resultados, Balance general, Ventas por cliente, Compras por
+// proveedor, Cuentas por cobrar y Cuentas por pagar — a partir de Pólizas de
+// diario y del motor genérico de transacciones. Independientes de los
+// reportes de arriba (que son del módulo Vehículos/YonkSuite): cualquier
+// negocio con el core ERP los puede usar, tenga o no vehículos.
+async function getReportCurrencies(businessId) {
+  const { rows } = await pool.query(
+    "SELECT code, name FROM erp_currencies WHERE business_id = $1 ORDER BY is_base DESC, code ASC",
+    [businessId]
+  );
+  return rows;
+}
+
+app.get(
+  "/erp/reportes/core",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  (req, res) => {
+    res.render("erp-reportes-core-home", { currentSection: "reportes", erpActor: req.erpActor });
+  }
+);
+
+app.get(
+  "/erp/reportes/core/estado-resultados",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const businessId = req.erpActor.businessId;
+      const today = new Date().toISOString().slice(0, 10);
+      const yearStart = today.slice(0, 4) + "-01-01";
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || "") ? req.query.from : yearStart;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to || "") ? req.query.to : today;
+      const report = await erpReports.estadoDeResultados(businessId, from, to);
+      res.render("erp-reportes-core-estado-resultados", {
+        currentSection: "reportes",
+        erpActor: req.erpActor,
+        from,
+        to,
+        report,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/reportes/core/balance-general",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const businessId = req.erpActor.businessId;
+      const today = new Date().toISOString().slice(0, 10);
+      const asOf = /^\d{4}-\d{2}-\d{2}$/.test(req.query.asOf || "") ? req.query.asOf : today;
+      const report = await erpReports.balanceGeneral(businessId, asOf);
+      res.render("erp-reportes-core-balance-general", {
+        currentSection: "reportes",
+        erpActor: req.erpActor,
+        asOf,
+        report,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/reportes/core/ventas-por-cliente",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const businessId = req.erpActor.businessId;
+      const today = new Date().toISOString().slice(0, 10);
+      const thirtyDaysAgo = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || "") ? req.query.from : thirtyDaysAgo;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to || "") ? req.query.to : today;
+      const currency = (req.query.currency || "").trim().toUpperCase();
+      const rows = await erpReports.ventasPorCliente(businessId, from, to, currency);
+      res.render("erp-reportes-core-ventas-cliente", {
+        currentSection: "reportes",
+        erpActor: req.erpActor,
+        from,
+        to,
+        currency,
+        currencies: await getReportCurrencies(businessId),
+        rows,
+        total: rows.reduce((sum, r) => sum + Number(r.total_facturado), 0),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/reportes/core/compras-por-proveedor",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const businessId = req.erpActor.businessId;
+      const today = new Date().toISOString().slice(0, 10);
+      const thirtyDaysAgo = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || "") ? req.query.from : thirtyDaysAgo;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to || "") ? req.query.to : today;
+      const currency = (req.query.currency || "").trim().toUpperCase();
+      const rows = await erpReports.comprasPorProveedor(businessId, from, to, currency);
+      res.render("erp-reportes-core-compras-proveedor", {
+        currentSection: "reportes",
+        erpActor: req.erpActor,
+        from,
+        to,
+        currency,
+        currencies: await getReportCurrencies(businessId),
+        rows,
+        total: rows.reduce((sum, r) => sum + Number(r.total_comprado), 0),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/reportes/core/cuentas-por-cobrar",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const businessId = req.erpActor.businessId;
+      const currency = (req.query.currency || "").trim().toUpperCase();
+      const rows = await erpReports.cuentasPorCobrar(businessId, currency);
+      res.render("erp-reportes-core-cuentas-cobrar", {
+        currentSection: "reportes",
+        erpActor: req.erpActor,
+        currency,
+        currencies: await getReportCurrencies(businessId),
+        rows,
+        total: rows.reduce((sum, r) => sum + Number(r.saldo), 0),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/reportes/core/cuentas-por-pagar",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const businessId = req.erpActor.businessId;
+      const currency = (req.query.currency || "").trim().toUpperCase();
+      const rows = await erpReports.cuentasPorPagar(businessId, currency);
+      res.render("erp-reportes-core-cuentas-pagar", {
+        currentSection: "reportes",
+        erpActor: req.erpActor,
+        currency,
+        currencies: await getReportCurrencies(businessId),
+        rows,
+        total: rows.reduce((sum, r) => sum + Number(r.saldo), 0),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // --- Configuración: Empresa, Configuración de transacciones (folios) y
 // Categorías de piezas. Todo gateado a "manage_employees" (el dueño siempre
 // pasa; de los roles de empleado, solo Admin) porque son ajustes de TODO el
@@ -3570,6 +4066,53 @@ app.post(
       );
 
       res.redirect("/erp/configuracion/empresa?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Configuración > Personalización de plantillas -------------------------
+// Encabezado/pie de página que se agregan al PDF de comprobante de
+// cualquier transacción (ver services/pdfBuilder.js buildTransactionPdfBuffer)
+// — pedido explícito: "generar las plantillas como netsuite y poder tener
+// personalizada esa idea". El logo y los colores de marca ya se configuran
+// en Configuración > Empresa; aquí solo vive el texto libre del
+// encabezado/pie, para no duplicar esa pantalla.
+app.get(
+  "/erp/configuracion/plantillas",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [req.erpActor.businessId]);
+      res.render("erp-config-plantillas", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        business: rows[0],
+        saved: req.query.saved === "1",
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/plantillas",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "UPDATE businesses SET erp_doc_template_header = $1, erp_doc_template_footer = $2 WHERE id = $3",
+        [
+          (req.body.erp_doc_template_header || "").trim() || null,
+          (req.body.erp_doc_template_footer || "").trim() || null,
+          req.erpActor.businessId,
+        ]
+      );
+      res.redirect("/erp/configuracion/plantillas?saved=1");
     } catch (err) {
       next(err);
     }
@@ -3931,6 +4474,36 @@ app.post(
   }
 );
 
+// --- Moneda: sugerir tipo de cambio ----------------------------------------
+// Botón "Sugerir tipo de cambio" en el formulario de Venta/Compra: pide una
+// referencia (no oficial) para la moneda elegida contra la moneda base del
+// negocio. Ver services/erpExchangeRate.js para la explicación completa de
+// por qué no es el DOF real y cómo se avisa al negocio de esa limitación.
+app.get(
+  "/erp/tipo-cambio-sugerido",
+  requireErpAuth,
+  async (req, res, next) => {
+    try {
+      const currency = (req.query.currency || "").trim().toUpperCase();
+      const { rows: baseCurrencyRows } = await pool.query(
+        "SELECT code FROM erp_currencies WHERE business_id = $1 AND is_base = TRUE",
+        [req.erpActor.businessId]
+      );
+      const baseCode = baseCurrencyRows[0] ? baseCurrencyRows[0].code : "MXN";
+      const { rows: bizRows } = await pool.query(
+        "SELECT erp_tax_regime FROM businesses WHERE id = $1",
+        [req.erpActor.businessId]
+      );
+      const isMexicanBusiness = Boolean(bizRows[0] && bizRows[0].erp_tax_regime);
+
+      const suggestion = await erpExchangeRate.suggestExchangeRate(currency, baseCode, isMexicanBusiness);
+      res.json(suggestion);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // --- Configuración > Impuestos --------------------------------------------
 // Catálogo de impuestos que se pueden asignar a un artículo (erp_items.tax_id)
 // para que se calculen solos al capturar una transacción. "Sembrar los del
@@ -4051,6 +4624,476 @@ app.post(
   }
 );
 
+// --- Configuración > Cuentas contables -------------------------------------
+// Catálogo de cuentas contables (activo/pasivo/capital/ingreso/costo/gasto)
+// que usarán las Pólizas de diario (Contabilidad > Pólizas). "Sembrar las
+// del SAT" da de alta de un clic las 16 cuentas más usuales para un negocio
+// mexicano chico/mediano, mismo patrón ya probado en Impuestos.
+app.get(
+  "/erp/configuracion/cuentas-contables",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: accounts } = await pool.query(
+        "SELECT * FROM erp_chart_of_accounts WHERE business_id = $1 ORDER BY code ASC",
+        [req.erpActor.businessId]
+      );
+      res.render("erp-config-cuentas-contables", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        accounts,
+        accountTypeLabels: erpStatus.ACCOUNT_TYPE_LABELS,
+        accountTypes: erpStatus.ACCOUNT_TYPES,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/cuentas-contables/sembrar-sat",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      for (const preset of erpStatus.MX_DEFAULT_ACCOUNTS) {
+        await pool.query(
+          `INSERT INTO erp_chart_of_accounts (business_id, code, name, account_type, active, is_default)
+           VALUES ($1, $2, $3, $4, TRUE, TRUE)
+           ON CONFLICT (business_id, code) DO NOTHING`,
+          [req.erpActor.businessId, preset.code, preset.name, preset.account_type]
+        );
+      }
+      res.redirect("/erp/configuracion/cuentas-contables?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/cuentas-contables",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const code = (req.body.code || "").trim();
+      const name = (req.body.name || "").trim();
+      const accountType = (req.body.account_type || "").trim();
+      const validTypes = Object.values(erpStatus.ACCOUNT_TYPES);
+      if (!code || !name || !validTypes.includes(accountType)) {
+        return res.redirect(
+          "/erp/configuracion/cuentas-contables?error=" +
+            encodeURIComponent("Escribe un código, un nombre y elige un tipo de cuenta válido.")
+        );
+      }
+      await pool.query(
+        `INSERT INTO erp_chart_of_accounts (business_id, code, name, account_type, active)
+         VALUES ($1, $2, $3, $4, TRUE)`,
+        [req.erpActor.businessId, code, name, accountType]
+      );
+      res.redirect("/erp/configuracion/cuentas-contables?saved=1");
+    } catch (err) {
+      if (err && err.code === "23505") {
+        return res.redirect(
+          "/erp/configuracion/cuentas-contables?error=" +
+            encodeURIComponent("Ya existe una cuenta con ese código.")
+        );
+      }
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/cuentas-contables/:id/toggle-active",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "UPDATE erp_chart_of_accounts SET active = NOT active WHERE id = $1 AND business_id = $2 AND is_default = FALSE",
+        [req.params.id, req.erpActor.businessId]
+      );
+      res.redirect("/erp/configuracion/cuentas-contables?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Contabilidad > Pólizas de diario --------------------------------------
+// Asientos contables clásicos: cargo(debit)/abono(credit) contra cuentas de
+// erp_chart_of_accounts. La validación de que cargos = abonos (partida
+// doble) se hace aquí en la ruta (no hay trigger en la BD) para poder dar un
+// mensaje de error legible en español en vez de un error crudo de Postgres.
+app.get(
+  "/erp/contabilidad/polizas",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: entries } = await pool.query(
+        `SELECT je.*,
+                COALESCE(SUM(jel.debit), 0) AS total_debit,
+                COALESCE(SUM(jel.credit), 0) AS total_credit
+           FROM erp_journal_entries je
+           LEFT JOIN erp_journal_entry_lines jel ON jel.journal_entry_id = je.id
+          WHERE je.business_id = $1
+          GROUP BY je.id
+          ORDER BY je.entry_date DESC, je.id DESC`,
+        [req.erpActor.businessId]
+      );
+      res.render("erp-contabilidad-polizas", {
+        currentSection: "contabilidad",
+        erpActor: req.erpActor,
+        entries,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/contabilidad/polizas/nueva",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: accounts } = await pool.query(
+        "SELECT * FROM erp_chart_of_accounts WHERE business_id = $1 AND active = TRUE ORDER BY code ASC",
+        [req.erpActor.businessId]
+      );
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.POLIZA);
+      if (accounts.length === 0) {
+        return res.render("erp-contabilidad-polizas-form", {
+          erpActor: req.erpActor,
+          accounts,
+          customFieldDefs,
+          customFieldValues: {},
+          error: null,
+        });
+      }
+      res.render("erp-contabilidad-polizas-form", {
+        erpActor: req.erpActor,
+        accounts,
+        customFieldDefs,
+        customFieldValues: {},
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/contabilidad/polizas",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    const client = await pool.connect();
+    try {
+      const accountIds = [].concat(req.body.account_id || []);
+      const debits = [].concat(req.body.debit || []);
+      const credits = [].concat(req.body.credit || []);
+      const memos = [].concat(req.body.line_memo || []);
+
+      const lines = [];
+      for (let i = 0; i < accountIds.length; i++) {
+        const accountId = parseInt(accountIds[i], 10);
+        const debit = parseFloat(debits[i]) || 0;
+        const credit = parseFloat(credits[i]) || 0;
+        if (!accountId || (debit <= 0 && credit <= 0)) continue;
+        if (debit > 0 && credit > 0) {
+          return res.redirect(
+            "/erp/contabilidad/polizas/nueva?error=" +
+              encodeURIComponent("Cada línea va solo en cargo o solo en abono, no en ambos.")
+          );
+        }
+        lines.push({ accountId, debit, credit, memo: (memos[i] || "").trim() || null });
+      }
+
+      if (lines.length < 2) {
+        return res.redirect(
+          "/erp/contabilidad/polizas/nueva?error=" +
+            encodeURIComponent("Captura al menos dos líneas (un cargo y un abono).")
+        );
+      }
+
+      const totalDebit = lines.reduce((sum, l) => sum + l.debit, 0);
+      const totalCredit = lines.reduce((sum, l) => sum + l.credit, 0);
+      if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        return res.redirect(
+          "/erp/contabilidad/polizas/nueva?error=" +
+            encodeURIComponent(
+              `La póliza no cuadra: cargos $${totalDebit.toFixed(2)} vs abonos $${totalCredit.toFixed(2)}. Deben ser iguales.`
+            )
+        );
+      }
+
+      await client.query("BEGIN");
+
+      const folio = await erpNumbering.nextFolio(req.erpActor.businessId, "poliza", client);
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.POLIZA, client);
+      const customFieldsJson = erpCustomFields.buildCustomFieldsJson(customFieldDefs, req.body);
+
+      const { rows: entryRows } = await client.query(
+        `INSERT INTO erp_journal_entries
+           (business_id, folio, entry_date, memo, created_by_actor_type, created_by_employee_id, created_by_name, custom_fields)
+         VALUES ($1, $2, COALESCE($3, CURRENT_DATE), $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          req.erpActor.businessId,
+          folio,
+          (req.body.entry_date || "").trim() || null,
+          (req.body.memo || "").trim() || null,
+          req.erpActor.type,
+          req.erpActor.employeeId,
+          req.erpActor.name,
+          customFieldsJson,
+        ]
+      );
+      const entryId = entryRows[0].id;
+
+      for (const line of lines) {
+        await client.query(
+          `INSERT INTO erp_journal_entry_lines (journal_entry_id, account_id, debit, credit, memo)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [entryId, line.accountId, line.debit, line.credit, line.memo]
+        );
+      }
+
+      await client.query("COMMIT");
+      res.redirect("/erp/contabilidad/polizas?saved=1");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      next(err);
+    } finally {
+      client.release();
+    }
+  }
+);
+
+app.get(
+  "/erp/contabilidad/polizas/:id",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: entryRows } = await pool.query(
+        "SELECT * FROM erp_journal_entries WHERE id = $1 AND business_id = $2",
+        [req.params.id, req.erpActor.businessId]
+      );
+      const entry = entryRows[0];
+      if (!entry) return res.status(404).send("Póliza no encontrada");
+
+      const { rows: lines } = await pool.query(
+        `SELECT jel.*, coa.code AS account_code, coa.name AS account_name
+           FROM erp_journal_entry_lines jel
+           JOIN erp_chart_of_accounts coa ON coa.id = jel.account_id
+          WHERE jel.journal_entry_id = $1
+          ORDER BY jel.id ASC`,
+        [entry.id]
+      );
+
+      res.render("erp-contabilidad-poliza-detalle", {
+        currentSection: "contabilidad",
+        erpActor: req.erpActor,
+        entry,
+        lines,
+        customFieldDefs: await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.POLIZA),
+        customFieldValues: erpCustomFields.parseCustomFieldsJson(entry.custom_fields),
+        totalDebit: lines.reduce((sum, l) => sum + Number(l.debit), 0),
+        totalCredit: lines.reduce((sum, l) => sum + Number(l.credit), 0),
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Configuración > Workflows de aprobación --------------------------------
+// Versión simple de un workflow de aprobación estilo NetSuite: por tipo de
+// documento (de los 9 del motor genérico de Ventas/Compras), el negocio
+// puede exigir que nazca "pendiente_aprobacion" en vez de "abierta" — y
+// mientras esté así, no se puede convertir al siguiente eslabón de su
+// cadena (ver erpTransactions.createTransaction/convertTransaction). No hay
+// reglas condicionales (ej. "solo si el total > $10,000") en esta primera
+// versión, solo on/off por tipo de documento + quién es el aprobador
+// sugerido.
+const APPROVAL_DOC_TYPES = [].concat(
+  erpTransactions.FLOW_SEQUENCES.ventas,
+  erpTransactions.FLOW_SEQUENCES.compras
+);
+
+app.get(
+  "/erp/configuracion/aprobaciones",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: rules } = await pool.query(
+        "SELECT * FROM erp_approval_rules WHERE business_id = $1",
+        [req.erpActor.businessId]
+      );
+      const rulesByDocType = {};
+      rules.forEach((r) => { rulesByDocType[r.doc_type] = r; });
+
+      const { rows: employees } = await pool.query(
+        "SELECT id, name FROM erp_employees WHERE business_id = $1 AND active = TRUE ORDER BY name ASC",
+        [req.erpActor.businessId]
+      );
+
+      res.render("erp-config-aprobaciones", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        docTypes: APPROVAL_DOC_TYPES,
+        docTypeTitles: erpTransactions.DOC_TYPE_TITLES,
+        rulesByDocType,
+        employees,
+        saved: req.query.saved === "1",
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/aprobaciones/:docType",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const docType = req.params.docType;
+      if (!APPROVAL_DOC_TYPES.includes(docType)) {
+        return res.status(404).send("Tipo de documento inválido.");
+      }
+      const requiresApproval = req.body.requires_approval === "on";
+      const approverEmployeeId = req.body.approver_employee_id || null;
+      await pool.query(
+        `INSERT INTO erp_approval_rules (business_id, doc_type, requires_approval, approver_employee_id)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (business_id, doc_type) DO UPDATE SET requires_approval = EXCLUDED.requires_approval, approver_employee_id = EXCLUDED.approver_employee_id`,
+        [req.erpActor.businessId, docType, requiresApproval, approverEmployeeId]
+      );
+      res.redirect("/erp/configuracion/aprobaciones?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Configuración > Personalizar campos -----------------------------------
+// Campos personalizados por negocio (pedido explícito: "CREAR CAMPOS PARA
+// ARTICULOS / VENTA / COMPRA / EMPLEADOS / POLIZAS"), similar a como
+// NetSuite deja agregar campos custom a cualquier registro. El valor
+// capturado se guarda como JSON en la columna custom_fields de cada
+// entidad (ver services/erpCustomFields.js) — no hay tabla EAV aparte.
+app.get(
+  "/erp/configuracion/campos-personalizados",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: fields } = await pool.query(
+        "SELECT * FROM erp_custom_field_defs WHERE business_id = $1 ORDER BY entity_type ASC, display_order ASC, id ASC",
+        [req.erpActor.businessId]
+      );
+      const fieldsByEntity = {};
+      Object.values(erpStatus.CUSTOM_FIELD_ENTITY_TYPES).forEach((et) => { fieldsByEntity[et] = []; });
+      fields.forEach((f) => { (fieldsByEntity[f.entity_type] || (fieldsByEntity[f.entity_type] = [])).push(f); });
+
+      res.render("erp-config-campos-personalizados", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        fieldsByEntity,
+        entityTypes: erpStatus.CUSTOM_FIELD_ENTITY_TYPES,
+        entityTypeLabels: erpStatus.CUSTOM_FIELD_ENTITY_TYPE_LABELS,
+        fieldTypes: erpStatus.CUSTOM_FIELD_TYPES,
+        fieldTypeLabels: erpStatus.CUSTOM_FIELD_TYPE_LABELS,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/campos-personalizados",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const entityType = (req.body.entity_type || "").trim();
+      const fieldLabel = (req.body.field_label || "").trim();
+      const fieldType = (req.body.field_type || "").trim();
+      const validEntityTypes = Object.values(erpStatus.CUSTOM_FIELD_ENTITY_TYPES);
+      const validFieldTypes = Object.values(erpStatus.CUSTOM_FIELD_TYPES);
+      if (!validEntityTypes.includes(entityType) || !fieldLabel || !validFieldTypes.includes(fieldType)) {
+        return res.redirect(
+          "/erp/configuracion/campos-personalizados?error=" +
+            encodeURIComponent("Elige la entidad, escribe una etiqueta y elige un tipo de campo válido.")
+        );
+      }
+      const fieldKey = slugifyFieldKey(fieldLabel);
+      if (!fieldKey) {
+        return res.redirect(
+          "/erp/configuracion/campos-personalizados?error=" + encodeURIComponent("La etiqueta del campo no es válida.")
+        );
+      }
+      const optionsCsv = fieldType === erpStatus.CUSTOM_FIELD_TYPES.OPCION ? (req.body.options_csv || "").trim() || null : null;
+
+      const { rows: countRows } = await pool.query(
+        "SELECT COUNT(*)::int AS c FROM erp_custom_field_defs WHERE business_id = $1 AND entity_type = $2",
+        [req.erpActor.businessId, entityType]
+      );
+
+      await pool.query(
+        `INSERT INTO erp_custom_field_defs (business_id, entity_type, field_key, field_label, field_type, options_csv, display_order, active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,TRUE)`,
+        [req.erpActor.businessId, entityType, fieldKey, fieldLabel, fieldType, optionsCsv, countRows[0].c]
+      );
+      res.redirect("/erp/configuracion/campos-personalizados?saved=1");
+    } catch (err) {
+      if (err && err.code === "23505") {
+        return res.redirect(
+          "/erp/configuracion/campos-personalizados?error=" +
+            encodeURIComponent("Ya existe un campo con esa etiqueta para esa entidad.")
+        );
+      }
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/campos-personalizados/:id/toggle-active",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "UPDATE erp_custom_field_defs SET active = NOT active WHERE id = $1 AND business_id = $2",
+        [req.params.id, req.erpActor.businessId]
+      );
+      res.redirect("/erp/configuracion/campos-personalizados?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // --- Configuración > Localización mexicana --------------------------------
 // Regímenes fiscales y proveedor de timbrado (PAC). Guardar aquí NO timbra
 // nada todavía: es la base de datos que un futuro upgrade usaría para
@@ -4148,11 +5191,14 @@ app.get(
         "SELECT * FROM erp_taxes WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
         [req.erpActor.businessId]
       );
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.ARTICULO);
       res.render("erp-inventario-articulo-form", {
         currentSection: "inventario",
         erpActor: req.erpActor,
         item: null,
         taxes,
+        customFieldDefs,
+        customFieldValues: {},
         error: null,
       });
     } catch (err) {
@@ -4168,6 +5214,8 @@ app.post(
   async (req, res, next) => {
     try {
       const { name, sku, item_type, category, unit, cost, price, tax_id } = req.body;
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.ARTICULO);
+      const customFieldsJson = erpCustomFields.buildCustomFieldsJson(customFieldDefs, req.body);
       if (!name || !name.trim()) {
         const { rows: taxes } = await pool.query(
           "SELECT * FROM erp_taxes WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
@@ -4178,12 +5226,14 @@ app.post(
           erpActor: req.erpActor,
           item: req.body,
           taxes,
+          customFieldDefs,
+          customFieldValues: erpCustomFields.parseCustomFieldsJson(customFieldsJson),
           error: "El nombre del artículo es obligatorio.",
         });
       }
       const { rows } = await pool.query(
-        `INSERT INTO erp_items (business_id, sku, name, item_type, category, unit, cost, price, tax_id, active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+        `INSERT INTO erp_items (business_id, sku, name, item_type, category, unit, cost, price, tax_id, active, custom_fields)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10)
          RETURNING id`,
         [
           req.erpActor.businessId,
@@ -4195,6 +5245,7 @@ app.post(
           parseFloat(cost) || 0,
           parseFloat(price) || 0,
           tax_id || null,
+          customFieldsJson,
         ]
       );
       res.redirect("/erp/inventario/articulos/" + rows[0].id + "?saved=1");
@@ -4228,6 +5279,7 @@ app.get(
          ORDER BY erp_locations.is_default DESC, erp_locations.name ASC`,
         [req.params.id, req.erpActor.businessId]
       );
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.ARTICULO);
       res.render("erp-inventario-articulo-detail", {
         currentSection: "inventario",
         erpActor: req.erpActor,
@@ -4235,6 +5287,8 @@ app.get(
         taxes,
         stock,
         totalStock: stock.reduce((sum, s) => sum + Number(s.quantity), 0),
+        customFieldDefs,
+        customFieldValues: erpCustomFields.parseCustomFieldsJson(rows[0].custom_fields),
         saved: req.query.saved === "1",
         error: null,
       });
@@ -4259,11 +5313,13 @@ app.post(
       if (!name || !name.trim()) {
         return res.redirect("/erp/inventario/articulos/" + req.params.id);
       }
+      const customFieldDefs = await erpCustomFields.getFieldDefs(req.erpActor.businessId, erpStatus.CUSTOM_FIELD_ENTITY_TYPES.ARTICULO);
+      const customFieldsJson = erpCustomFields.buildCustomFieldsJson(customFieldDefs, req.body);
       await pool.query(
         `UPDATE erp_items SET
            sku = $1, name = $2, item_type = $3, category = $4, unit = $5,
-           cost = $6, price = $7, tax_id = $8, updated_at = NOW()
-         WHERE id = $9 AND business_id = $10`,
+           cost = $6, price = $7, tax_id = $8, custom_fields = $9, updated_at = NOW()
+         WHERE id = $10 AND business_id = $11`,
         [
           (sku || "").trim() || null,
           name.trim(),
@@ -4273,6 +5329,7 @@ app.post(
           parseFloat(cost) || 0,
           parseFloat(price) || 0,
           tax_id || null,
+          customFieldsJson,
           req.params.id,
           req.erpActor.businessId,
         ]
@@ -4536,11 +5593,22 @@ app.post(
         const price =
           item.asking_price !== undefined && item.asking_price !== "" ? parseFloat(item.asking_price) : null;
 
-        await pool.query(
+        const { rows: aiPartRows } = await pool.query(
           `INSERT INTO erp_parts (vehicle_id, business_id, name, category, asking_price, condition_grade)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+           VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
           [vehicle.id, req.erpActor.businessId, name, cat, Number.isFinite(price) ? price : null, condition]
         );
+
+        // Fusión con Inventario core: nace "disponible" (default de la
+        // columna), así que se refleja de una vez en erp_items/erp_item_stock.
+        await erpYonkeInventoryMirror.syncPartMirror(pool, req.erpActor.businessId, {
+          id: aiPartRows[0].id,
+          name,
+          category: cat,
+          asking_price: Number.isFinite(price) ? price : null,
+          status: "disponible",
+        });
+
         insertedCount++;
       }
 

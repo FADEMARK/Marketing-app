@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Póliza <%= entry.folio %> — Contabilidad</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'contabilidad' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/contabilidad/polizas" class="back-link">&larr; Volver a Pólizas de diario</a>
+    <h1>Póliza <%= entry.folio %></h1>
+
+    <div class="detail-box">
+      <p><strong>Fecha:</strong> <%= new Date(entry.entry_date).toLocaleDateString('es-MX') %></p>
+      <p><strong>Memo:</strong> <%= entry.memo || '—' %></p>
+      <p class="muted small"><strong>Capturada por:</strong> <%= entry.created_by_name || '—' %></p>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Líneas</h3>
+      <table class="admin-table">
+        <thead><tr><th>Cuenta</th><th>Cargo</th><th>Abono</th><th>Memo</th></tr></thead>
+        <tbody>
+          <% lines.forEach(function(l) { %>
+            <tr>
+              <td><%= l.account_code %> — <%= l.account_name %></td>
+              <td><%= Number(l.debit) > 0 ? '$' + Number(l.debit).toFixed(2) : '—' %></td>
+              <td><%= Number(l.credit) > 0 ? '$' + Number(l.credit).toFixed(2) : '—' %></td>
+              <td class="muted small"><%= l.memo || '—' %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="muted small">Totales</td>
+            <td><strong>$<%= totalDebit.toFixed(2) %></strong></td>
+            <td><strong>$<%= totalCredit.toFixed(2) %></strong></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <%- include('partials/custom-fields-display', { customFieldDefs, customFieldValues }) %>
+  </main>
+</body>
+</html>

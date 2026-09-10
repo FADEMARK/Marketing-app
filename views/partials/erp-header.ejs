@@ -15,8 +15,8 @@
 //
 // currentSection lo manda cada vista para resaltar la pestaña activa: uno de
 // "dashboard" | "core-ventas" | "core-compras" | "ventas" | "cotizaciones" |
-// "vehiculos" | "inventario" | "clientes" | "proveedores" | "empleados" |
-// "reportes" | "configuracion" | null.
+// "vehiculos" | "inventario" | "contabilidad" | "clientes" | "proveedores" |
+// "empleados" | "reportes" | "configuracion" | null.
 //
 // "Ventas ▾"/"Compras ▾" (core-ventas/core-compras) son el motor genérico de
 // erpTransactions (Cotización→Orden→Ejecución→Factura→Nota de crédito) y
@@ -96,6 +96,17 @@ const _roleLabels = { owner: "Dueño", admin: "Admin", ventas: "Ventas", compras
             <% } %>
             <a href="/erp/ventas">Ventas de vehículos</a>
             <a href="/erp/cotizaciones">Cotizaciones de vehículos</a>
+          </div>
+        </div>
+      <% } %>
+
+      <% if (_erpActor && _erpActor.canManageEmployees) { %>
+        <div class="erp-nav-item">
+          <a href="/erp/contabilidad/polizas" class="<%= _section === 'contabilidad' ? 'active' : '' %>">Contabilidad ▾</a>
+          <div class="erp-nav-dropdown">
+            <a href="/erp/contabilidad/polizas">Pólizas de diario</a>
+            <a href="/erp/contabilidad/polizas/nueva">+ Nueva póliza</a>
+            <a href="/erp/configuracion/cuentas-contables">Cuentas contables</a>
           </div>
         </div>
       <% } %>
