@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= quote.folio %> — Cotizaciones YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'cotizaciones' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/cotizaciones" class="back-link">&larr; Volver a Cotizaciones</a>
+
+    <div class="page-header">
+      <h1><%= quote.folio %></h1>
+      <span class="status-badge status-<%= quote.status %>"><%= quote.status %></span>
+    </div>
+    <p class="muted small">
+      Vehículo: <%= quote.brand %> <%= quote.model %> <%= quote.year || '' %> ·
+      Cliente: <%= erpClient ? erpClient.name : (quote.client_name_snapshot || '—') %> ·
+      Creada el <%= quote.created_at %> por <%= quote.created_by_name %>
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cotización creada.</div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Piezas cotizadas</h3>
+      <table class="admin-table">
+        <thead><tr><th>Pieza</th><th>Estado actual</th><th>Precio</th></tr></thead>
+        <tbody>
+          <% items.forEach(function(it) { %>
+            <tr>
+              <td><%= it.part_name %></td>
+              <td class="muted small"><%= it.part_status %></td>
+              <td>$<%= Number(it.price).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+      <p style="text-align:right; font-weight:600; margin-top:10px;">
+        Total: $<%= Number(total).toLocaleString('es-MX', {minimumFractionDigits:2}) %>
+      </p>
+    </div>
+
+    <% if (quote.status === 'abierta' && canConvert) { %>
+      <div class="detail-box" style="margin-top:20px; display:flex; gap:10px;">
+        <form method="POST" action="/erp/cotizaciones/<%= quote.id %>/convertir" style="flex:1;"
+              onsubmit="return confirm('¿Convertir esta cotización en venta? Las piezas quedarán vendidas.');">
+          <button type="submit" class="btn-primary full-width">✅ Convertir en venta</button>
+        </form>
+        <form method="POST" action="/erp/cotizaciones/<%= quote.id %>/rechazar" style="flex:1;"
+              onsubmit="return confirm('¿Rechazar esta cotización? Las piezas vuelven a estar disponibles.');">
+          <button type="submit" class="btn-secondary full-width">✕ Rechazar</button>
+        </form>
+      </div>
+    <% } %>
+  </main>
+</body>
+</html>

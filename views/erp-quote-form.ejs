@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Cotizar — <%= vehicle.brand %> <%= vehicle.model %></title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'cotizaciones' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/cotizaciones/new" class="back-link">&larr; Elegir otro vehículo</a>
+    <h1>Cotizar piezas de <%= vehicle.brand %> <%= vehicle.model %> <%= vehicle.year || '' %></h1>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <% if (availableParts.length === 0) { %>
+      <div class="empty-state"><p>Este vehículo ya no tiene piezas disponibles para cotizar.</p></div>
+    <% } else { %>
+      <form method="POST" action="/erp/cotizaciones" class="card-form">
+        <input type="hidden" name="vehicle_id" value="<%= vehicle.id %>" />
+
+        <div class="detail-box" style="position:relative;">
+          <h3>Cliente</h3>
+          <label>Nombre (se autocompleta si ya existe, o se da de alta)
+            <input type="text" id="client-name-input" name="client_name" autocomplete="off" placeholder="Nombre del cliente" />
+          </label>
+          <input type="hidden" id="client-id-input" name="client_id" value="" />
+          <div id="client-suggestions" class="muted small" style="display:none; border:1px solid var(--border); border-radius:6px; margin-top:-8px; background:#fff;"></div>
+          <div class="two-col">
+            <label>Teléfono
+              <input type="text" id="client-phone-input" name="client_phone" />
+            </label>
+            <label>Correo
+              <input type="email" id="client-email-input" name="client_email" />
+            </label>
+          </div>
+        </div>
+
+        <div class="detail-box">
+          <h3>Piezas disponibles</h3>
+          <% availableParts.forEach(function(p) { %>
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);">
+              <input type="checkbox" name="part_ids" value="<%= p.id %>" id="qpart-<%= p.id %>" style="width:auto;" />
+              <label for="qpart-<%= p.id %>" style="flex:1; font-weight:400; margin:0;"><%= p.name %></label>
+              <input type="number" name="price_<%= p.id %>" step="0.01" min="0" placeholder="Precio"
+                     value="<%= p.asking_price || '' %>" style="width:110px;" />
+            </div>
+          <% }); %>
+        </div>
+
+        <label>Notas
+          <textarea name="notes" rows="2"></textarea>
+        </label>
+
+        <button type="submit" class="btn-primary full-width">Generar cotización</button>
+      </form>
+    <% } %>
+  </main>
+
+  <script>
+    (function() {
+      var nameInput = document.getElementById('client-name-input');
+      var idInput = document.getElementById('client-id-input');
+      var phoneInput = document.getElementById('client-phone-input');
+      var emailInput = document.getElementById('client-email-input');
+      var box = document.getElementById('client-suggestions');
+      var timer = null;
+
+      if (!nameInput) return;
+
+      nameInput.addEventListener('input', function() {
+        idInput.value = '';
+        var q = nameInput.value.trim();
+        clearTimeout(timer);
+        if (q.length < 2) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        timer = setTimeout(function() {
+          fetch('/erp/clientes-autocomplete?q=' + encodeURIComponent(q))
+            .then(function(r) { return r.json(); })
+            .then(function(list) {
+              if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+              box.innerHTML = list.map(function(c) {
+                return '<div class="client-suggestion" data-id="' + c.id + '" data-name="' + c.name.replace(/"/g, '&quot;') +
+                  '" data-phone="' + (c.phone || '') + '" data-email="' + (c.email || '') +
+                  '" style="padding:6px 8px; cursor:pointer;">' + c.name + (c.phone ? ' — ' + c.phone : '') + '</div>';
+              }).join('');
+              box.style.display = 'block';
+            })
+            .catch(function() { box.style.display = 'none'; });
+        }, 250);
+      });
+
+      box.addEventListener('click', function(ev) {
+        var target = ev.target.closest('.client-suggestion');
+        if (!target) return;
+        idInput.value = target.getAttribute('data-id');
+        nameInput.value = target.getAttribute('data-name');
+        phoneInput.value = target.getAttribute('data-phone') || '';
+        emailInput.value = target.getAttribute('data-email') || '';
+        box.style.display = 'none';
+        box.innerHTML = '';
+      });
+
+      document.addEventListener('click', function(ev) {
+        if (ev.target !== nameInput && !box.contains(ev.target)) {
+          box.style.display = 'none';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

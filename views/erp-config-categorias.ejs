@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Categorías de piezas — Configuración YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Categorías de piezas</h1>
+    <p class="muted small">
+      Estas son las categorías que aparecen al dar de alta una pieza (Motor, Frenos, etc.).
+      Puedes agregar las tuyas o dejar las que vienen por default.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Agregar categoría</h3>
+      <form method="POST" action="/erp/configuracion/categorias" class="card-form">
+        <div class="two-col">
+          <label>Clave interna (sin espacios, ej. "motor")
+            <input type="text" name="category_key" required placeholder="motor" />
+          </label>
+          <label>Etiqueta visible (ej. "Motor")
+            <input type="text" name="category_label" required placeholder="Motor" />
+          </label>
+        </div>
+        <button type="submit" class="btn-primary full-width">+ Agregar</button>
+      </form>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>
+        <% if (usingDefaults) { %>
+          Categorías por default (todavía no has guardado las tuyas)
+        <% } else { %>
+          Tus categorías
+        <% } %>
+      </h3>
+      <% if (usingDefaults) { %>
+        <table class="admin-table">
+          <thead><tr><th>Clave</th><th>Etiqueta</th></tr></thead>
+          <tbody>
+            <% defaultCategories.forEach(function(key) { %>
+              <tr>
+                <td class="muted small"><%= key %></td>
+                <td><%= defaultLabels[key] %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+        <p class="muted small">En cuanto agregues una categoría propia (arriba), estas dejan de usarse y se usan solo las tuyas.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Clave</th><th>Etiqueta</th><th></th></tr></thead>
+          <tbody>
+            <% categories.forEach(function(c) { %>
+              <tr>
+                <td class="muted small"><%= c.category_key %></td>
+                <td><%= c.category_label %></td>
+                <td>
+                  <form method="POST" action="/erp/configuracion/categorias/<%= c.id %>/delete"
+                        onsubmit="return confirm('¿Borrar esta categoría?');">
+                    <button type="submit" class="link-button" style="color:#B3261E;">Eliminar</button>
+                  </form>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

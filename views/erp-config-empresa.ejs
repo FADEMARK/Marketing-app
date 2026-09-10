@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Empresa — Configuración YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="form-page">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Empresa</h1>
+    <p class="muted small">Estos datos se usan en el encabezado de YonkSuite y en tus cotizaciones/ventas.</p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/erp/configuracion/empresa" enctype="multipart/form-data" class="card-form">
+      <label>Nombre del negocio
+        <input type="text" name="name" required value="<%= business.name || '' %>" />
+      </label>
+
+      <div class="two-col">
+        <label>Teléfono
+          <input type="text" name="phone" value="<%= business.phone || '' %>" />
+        </label>
+        <label>Dirección
+          <input type="text" name="address" value="<%= business.address || '' %>" />
+        </label>
+      </div>
+
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <p class="muted small" style="margin-top:0;">Datos fiscales (para tus cotizaciones/ventas, opcional):</p>
+        <div class="two-col">
+          <label>RFC
+            <input type="text" name="erp_company_tax_id" value="<%= business.erp_company_tax_id || '' %>" />
+          </label>
+          <label>Razón social
+            <input type="text" name="erp_company_legal_name" value="<%= business.erp_company_legal_name || '' %>" />
+          </label>
+        </div>
+      </div>
+
+      <% if (business.logo_data) { %>
+        <div>
+          <p class="muted small" style="margin-bottom:6px;">Logo actual:</p>
+          <img class="logo-preview" src="<%= business.logo_data %>" alt="Logo actual" style="max-height:60px;" />
+        </div>
+      <% } %>
+      <label>Reemplazar logo (opcional)
+        <input type="file" name="logo" accept="image/*" />
+      </label>
+
+      <div class="two-col">
+        <label>Color de marca (principal)
+          <input type="color" name="brand_color_primary" value="<%= business.brand_color_primary || '#1B2A4A' %>" />
+        </label>
+        <label>Color de marca (secundario)
+          <input type="color" name="brand_color_secondary" value="<%= business.brand_color_secondary || '#0B0B0B' %>" />
+        </label>
+      </div>
+
+      <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+    </form>
+  </main>
+</body>
+</html>

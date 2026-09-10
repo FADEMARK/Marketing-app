@@ -338,6 +338,108 @@ async function init() {
     `ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS sold_by_employee_id INTEGER REFERENCES erp_employees(id);`
   );
   await pool.query(`ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS sold_by_name TEXT;`);
+
+  // --- Clientes (CRM propio de YonkSuite, separado del CRM de Marketing):
+  // se llenan solos al capturar una cotización o venta (si el cliente ya
+  // existe se autocompleta por nombre/teléfono; si es nuevo se da de alta
+  // aquí mismo, sin salir del formulario). También tienen su propio folio
+  // consecutivo, igual que cotizaciones y ventas (ver Configuración >
+  // Configuración de transacciones).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_clients (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      folio TEXT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      tax_id TEXT,
+      tax_legal_name TEXT,
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- Cotizaciones: una cotización agrupa piezas (de uno o varios vehículos)
+  // para un cliente, con su propio folio. Mientras está "abierta" las piezas
+  // quedan en status='reservada' (ver erp_parts.status); si se convierte en
+  // venta pasan a 'vendida' y la venta guarda quote_id para no volver a
+  // capturar nada; si se rechaza, las piezas regresan a 'disponible'.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_quotes (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      folio TEXT NOT NULL,
+      client_id INTEGER REFERENCES erp_clients(id) ON DELETE SET NULL,
+      client_name_snapshot TEXT,
+      status TEXT NOT NULL DEFAULT 'abierta',
+      notes TEXT,
+      created_by_actor_type TEXT,
+      created_by_employee_id INTEGER REFERENCES erp_employees(id),
+      created_by_name TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_quote_items (
+      id SERIAL PRIMARY KEY,
+      quote_id INTEGER NOT NULL REFERENCES erp_quotes(id) ON DELETE CASCADE,
+      part_id INTEGER NOT NULL REFERENCES erp_parts(id),
+      price NUMERIC(12,2) NOT NULL
+    );
+  `);
+
+  // --- Ventas: folio propio + cliente ligado (antes solo tenían buyer_name
+  // en texto libre) + referencia a la cotización de la que vino, si aplica.
+  await pool.query(`ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS folio TEXT;`);
+  await pool.query(`ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS client_id INTEGER REFERENCES erp_clients(id) ON DELETE SET NULL;`);
+  await pool.query(`ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS quote_id INTEGER REFERENCES erp_quotes(id) ON DELETE SET NULL;`);
+
+  // --- Configuración de transacciones: prefijo + siguiente número consecutivo
+  // para Cliente, Cotización y Venta, por negocio (ver services/erpNumbering.js).
+  // El número se incrementa de forma atómica (UPDATE ... RETURNING) para que
+  // dos capturas al mismo tiempo nunca se queden con el mismo folio.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_client_prefix TEXT NOT NULL DEFAULT 'CLI';`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_client_next_number INTEGER NOT NULL DEFAULT 1;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_quote_prefix TEXT NOT NULL DEFAULT 'COT';`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_quote_next_number INTEGER NOT NULL DEFAULT 1;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_sale_prefix TEXT NOT NULL DEFAULT 'VTA';`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_sale_next_number INTEGER NOT NULL DEFAULT 1;`);
+
+  // --- Datos fiscales de la empresa para documentos de YonkSuite (cotización/
+  // venta impresos o en PDF más adelante) — independientes de los datos
+  // fiscales que ya guarda cada contacto del CRM de Marketing.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_company_tax_id TEXT;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_company_legal_name TEXT;`);
+
+  // --- Categorías de piezas configurables por negocio (antes una lista fija
+  // en services/erpStatus.js). Si un negocio no tiene ninguna fila aquí
+  // todavía, el código usa la lista por default (ver erpStatus.PART_CATEGORIES)
+  // para no romper negocios ya existentes; en cuanto el negocio guarda su
+  // propia lista desde Configuración, esas son las que se usan.
+  // --- Cotizaciones: por ahora una cotización queda ligada a UN vehículo
+  // (igual que las ventas) para reutilizar tal cual la lógica ya probada de
+  // "piezas disponibles de este vehículo" y el estado de cuenta por
+  // vehículo — un yonke normalmente cotiza piezas de un mismo vehículo por
+  // ticket. Si más adelante se necesita mezclar piezas de varios vehículos
+  // en una sola cotización, este es el primer lugar a tocar.
+  await pool.query(`ALTER TABLE erp_quotes ADD COLUMN IF NOT EXISTS vehicle_id INTEGER REFERENCES erp_vehicles(id);`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_part_categories (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      category_key TEXT NOT NULL,
+      category_label TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, category_key)
+    );
+  `);
 }
 
 module.exports = { pool, init };

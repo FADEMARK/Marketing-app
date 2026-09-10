@@ -31,7 +31,15 @@ const canva = require("./services/canva");
 const facebook = require("./services/facebook");
 const promptSettings = require("./services/promptSettings");
 const scheduler = require("./services/scheduler");
-const { requireBusinessAuth, requireAdminAuth, requireErpAuth, requirePermission } = require("./services/middleware");
+const erpNumbering = require("./services/erpNumbering");
+const erpPartCategories = require("./services/erpPartCategories");
+const {
+  requireBusinessAuth,
+  requireAdminAuth,
+  requireErpAuth,
+  requirePermission,
+  requireAnyPermission,
+} = require("./services/middleware");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1303,6 +1311,42 @@ async function buildVehicleStatement(vehicleId) {
   return { sales, totalSold };
 }
 
+// Clientes (CRM propio de YonkSuite): usado desde Cotizaciones/Ventas para
+// que el cliente "se llene solo" — si ya existe (por id, o por nombre
+// exacto) se reutiliza; si es nuevo se da de alta aquí mismo con su propio
+// folio, sin que el vendedor tenga que ir primero a la sección Clientes.
+//
+// db (opcional): igual que en erpNumbering.nextFolio, pásale el cliente de
+// pg de la transacción en curso cuando se llame desde dentro de una (ver
+// POST /erp/vehicles/:id/sales y /erp/cotizaciones) — si no, usa el pool
+// compartido, lo cual puede interbloquearse contra esa misma transacción.
+async function findOrCreateClient(businessId, { client_id, client_name, client_phone, client_email } = {}, db = pool) {
+  if (client_id) {
+    const { rows } = await db.query(
+      "SELECT * FROM erp_clients WHERE id = $1 AND business_id = $2",
+      [client_id, businessId]
+    );
+    if (rows[0]) return rows[0];
+  }
+
+  const name = (client_name || "").trim();
+  if (!name) return null;
+
+  const { rows: existing } = await db.query(
+    "SELECT * FROM erp_clients WHERE business_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1",
+    [businessId, name]
+  );
+  if (existing[0]) return existing[0];
+
+  const folio = await erpNumbering.nextFolio(businessId, "client", db);
+  const { rows: created } = await db.query(
+    `INSERT INTO erp_clients (business_id, folio, name, phone, email)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [businessId, folio, name, (client_phone || "").trim() || null, (client_email || "").trim() || null]
+  );
+  return created[0];
+}
+
 // Página de inicio del ERP: un dashboard con lo esencial de un vistazo
 // (vehículos en stock, piezas disponibles, ventas del mes) más la barra de
 // búsqueda rápida de stock y accesos directos — el listado completo de
@@ -1519,6 +1563,9 @@ app.get("/erp/vehicles/:id", requireErpAuth, async (req, res, next) => {
       aiSuggestedParts = [];
     }
 
+    const { categories: partCategories, labels: partCategoryLabels } =
+      await erpPartCategories.getPartCategoriesForBusiness(req.erpActor.businessId);
+
     res.render("erp-vehicle-detail", {
       vehicle,
       photos,
@@ -1535,8 +1582,11 @@ app.get("/erp/vehicles/:id", requireErpAuth, async (req, res, next) => {
       VEHICLE_STATUS_LABELS: erpStatus.VEHICLE_STATUS_LABELS,
       PART_STATUSES: erpStatus.PART_STATUSES,
       PART_STATUS_LABELS: erpStatus.PART_STATUS_LABELS,
-      PART_CATEGORIES: erpStatus.PART_CATEGORIES,
-      PART_CATEGORY_LABELS: erpStatus.PART_CATEGORY_LABELS,
+      // Categorías configurables por negocio (Configuración > Categorías de
+      // piezas) — con fallback a la lista por default si el negocio no ha
+      // guardado las suyas (ver services/erpPartCategories.js).
+      PART_CATEGORIES: partCategories,
+      PART_CATEGORY_LABELS: partCategoryLabels,
       PART_CONDITIONS: erpStatus.PART_CONDITIONS,
       PART_CONDITION_LABELS: erpStatus.PART_CONDITION_LABELS,
       MAX_VEHICLE_PHOTOS: erpStatus.MAX_VEHICLE_PHOTOS,
@@ -1731,7 +1781,10 @@ app.post(
         );
       }
 
-      const cat = erpStatus.PART_CATEGORIES.includes(category) ? category : "otro";
+      const { categories: validCategories } = await erpPartCategories.getPartCategoriesForBusiness(
+        req.erpActor.businessId
+      );
+      const cat = validCategories.includes(category) ? category : validCategories[validCategories.length - 1];
       const price = asking_price !== undefined && asking_price !== "" ? parseFloat(asking_price) : null;
       const condition = Object.values(erpStatus.PART_CONDITIONS).includes(condition_grade)
         ? condition_grade
@@ -1766,7 +1819,12 @@ app.post("/erp/parts/:id/update", requireErpAuth, requirePermission("compras"), 
       );
     }
 
-    const cat = erpStatus.PART_CATEGORIES.includes(category) ? category : "otro";
+    const { categories: validCategoriesForUpdate } = await erpPartCategories.getPartCategoriesForBusiness(
+      req.erpActor.businessId
+    );
+    const cat = validCategoriesForUpdate.includes(category)
+      ? category
+      : validCategoriesForUpdate[validCategoriesForUpdate.length - 1];
     const price = asking_price !== undefined && asking_price !== "" ? parseFloat(asking_price) : null;
     const condition = Object.values(erpStatus.PART_CONDITIONS).includes(condition_grade)
       ? condition_grade
@@ -1868,17 +1926,35 @@ app.post(
         );
       }
 
+      // Si mandaron nombre de cliente (o eligieron uno del autocompletado),
+      // esta venta también queda ligada a Clientes — igual que las
+      // cotizaciones. "buyer_name" sigue existiendo para compatibilidad con
+      // ventas rápidas sin cliente formal.
+      const erpClient = await findOrCreateClient(
+        req.erpActor.businessId,
+        {
+          client_id: req.body.client_id,
+          client_name: req.body.client_name,
+          client_phone: req.body.client_phone,
+          client_email: req.body.client_email,
+        },
+        client
+      );
+      const folio = await erpNumbering.nextFolio(req.erpActor.businessId, "sale", client);
+
       const { rows: saleRows } = await client.query(
         `INSERT INTO erp_sales
-           (vehicle_id, business_id, buyer_name, sale_date, notes,
+           (vehicle_id, business_id, buyer_name, sale_date, notes, folio, client_id,
             sold_by_actor_type, sold_by_employee_id, sold_by_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
         [
           vehicle.id,
           req.erpActor.businessId,
-          (req.body.buyer_name || "").trim() || null,
+          (req.body.buyer_name || "").trim() || (erpClient ? erpClient.name : null),
           req.body.sale_date || new Date().toISOString().slice(0, 10),
           (req.body.notes || "").trim() || null,
+          folio,
+          erpClient ? erpClient.id : null,
           // Quién hizo la venta, para el reporte de desempeño por vendedor
           // (ver /erp/reportes). Se guarda el nombre "congelado" al momento
           // de vender, no solo el id, para que el reporte histórico no se
@@ -1947,6 +2023,706 @@ app.post("/erp/sales/:id/delete", requireErpAuth, requirePermission("ventas"), a
     next(err);
   } finally {
     client.release();
+  }
+});
+
+// --- Clientes: CRM propio de YonkSuite (separado del CRM de Marketing) ---
+//
+// Igual que en Cotizaciones/Ventas, cualquier actor con acceso de compras o
+// de ventas puede dar de alta/editar clientes (es un dato que se necesita en
+// mostrador sin importar el rol); solo la consulta libre queda abierta a
+// cualquier sesión de ERP autenticada.
+
+// Autocompletado en JSON para los formularios de Cotización/Venta: escribe
+// nombre o teléfono y sugiere clientes ya existentes de este negocio.
+app.get("/erp/clientes-autocomplete", requireErpAuth, async (req, res, next) => {
+  try {
+    const q = (req.query.q || "").trim();
+    if (!q) return res.json([]);
+    const { rows } = await pool.query(
+      `SELECT id, folio, name, phone, email FROM erp_clients
+       WHERE business_id = $1 AND (name ILIKE $2 OR phone ILIKE $2 OR email ILIKE $2)
+       ORDER BY name ASC LIMIT 10`,
+      [req.erpActor.businessId, `%${q}%`]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/clientes", requireErpAuth, async (req, res, next) => {
+  try {
+    const searchQuery = (req.query.q || "").trim();
+    const params = [req.erpActor.businessId];
+    let query = "SELECT * FROM erp_clients WHERE business_id = $1";
+    const searchWords = searchQuery.split(/\s+/).filter(Boolean);
+    if (searchWords.length) {
+      const blobExpr = `(COALESCE(name,'') || ' ' || COALESCE(phone,'') || ' ' || COALESCE(email,'') || ' ' || COALESCE(folio,''))`;
+      searchWords.forEach((word) => {
+        params.push(`%${word}%`);
+        query += ` AND ${blobExpr} ILIKE $${params.length}`;
+      });
+    }
+    query += " ORDER BY created_at DESC";
+    const { rows: clients } = await pool.query(query, params);
+    res.render("erp-clients-list", {
+      currentSection: "clientes",
+      erpActor: req.erpActor,
+      clients,
+      searchQuery,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/clientes/new", requireErpAuth, requireAnyPermission("compras", "ventas"), (req, res) => {
+  res.render("erp-client-form", {
+    currentSection: "clientes",
+    erpActor: req.erpActor,
+    // OJO: la clave NO puede llamarse "client" — Express le pasa todos los
+    // locals a EJS como "data" y "opts" a la vez, y "client" es un nombre de
+    // opción reservado de EJS (activa su modo de compilación "para
+    // navegador", que NO trae el helper include() y truena con "include is
+    // not a function"). Por eso aquí y en el resto de rutas de Clientes se
+    // usa "erpClient" en vez de "client".
+    erpClient: null,
+    error: null,
+    form: {},
+  });
+});
+
+app.post("/erp/clientes", requireErpAuth, requireAnyPermission("compras", "ventas"), async (req, res, next) => {
+  try {
+    const { name, phone, email, address, tax_id, tax_legal_name, notes } = req.body;
+    if (!name || !name.trim()) {
+      return res.render("erp-client-form", {
+        currentSection: "clientes",
+        erpActor: req.erpActor,
+        erpClient: null,
+        error: "El nombre del cliente es obligatorio.",
+        form: req.body,
+      });
+    }
+    const folio = await erpNumbering.nextFolio(req.erpActor.businessId, "client");
+    const { rows } = await pool.query(
+      `INSERT INTO erp_clients (business_id, folio, name, phone, email, address, tax_id, tax_legal_name, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [
+        req.erpActor.businessId,
+        folio,
+        name.trim(),
+        (phone || "").trim() || null,
+        (email || "").trim() || null,
+        (address || "").trim() || null,
+        (tax_id || "").trim() || null,
+        (tax_legal_name || "").trim() || null,
+        (notes || "").trim() || null,
+      ]
+    );
+    res.redirect(`/erp/clientes/${rows[0].id}?saved=1`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/clientes/:id", requireErpAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM erp_clients WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.erpActor.businessId]
+    );
+    const erpClient = rows[0];
+    if (!erpClient) return res.status(404).send("Cliente no encontrado.");
+
+    const { rows: quotes } = await pool.query(
+      "SELECT * FROM erp_quotes WHERE client_id = $1 ORDER BY created_at DESC",
+      [erpClient.id]
+    );
+    const { rows: sales } = await pool.query(
+      `SELECT erp_sales.*, COALESCE(SUM(erp_sale_items.price), 0)::numeric AS sale_total
+       FROM erp_sales
+       LEFT JOIN erp_sale_items ON erp_sale_items.sale_id = erp_sales.id
+       WHERE erp_sales.client_id = $1
+       GROUP BY erp_sales.id
+       ORDER BY erp_sales.sale_date DESC, erp_sales.id DESC`,
+      [erpClient.id]
+    );
+
+    res.render("erp-client-detail", {
+      currentSection: "clientes",
+      erpActor: req.erpActor,
+      // Ver nota en GET /erp/clientes/new: la clave no puede llamarse "client".
+      erpClient,
+      quotes,
+      sales,
+      canEdit: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, "compras") || erpStatus.roleHasPermission(req.erpActor.role, "ventas"),
+      saved: req.query.saved === "1",
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  "/erp/clientes/:id/update",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    try {
+      const { name, phone, email, address, tax_id, tax_legal_name, notes } = req.body;
+      if (!name || !name.trim()) return res.status(400).send("El nombre es obligatorio.");
+      const { rowCount } = await pool.query(
+        `UPDATE erp_clients
+         SET name = $1, phone = $2, email = $3, address = $4, tax_id = $5, tax_legal_name = $6, notes = $7, updated_at = NOW()
+         WHERE id = $8 AND business_id = $9`,
+        [
+          name.trim(),
+          (phone || "").trim() || null,
+          (email || "").trim() || null,
+          (address || "").trim() || null,
+          (tax_id || "").trim() || null,
+          (tax_legal_name || "").trim() || null,
+          (notes || "").trim() || null,
+          req.params.id,
+          req.erpActor.businessId,
+        ]
+      );
+      if (rowCount === 0) return res.status(404).send("Cliente no encontrado.");
+      res.redirect(`/erp/clientes/${req.params.id}?saved=1`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/clientes/:id/delete",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    try {
+      await pool.query("DELETE FROM erp_clients WHERE id = $1 AND business_id = $2", [
+        req.params.id,
+        req.erpActor.businessId,
+      ]);
+      res.redirect("/erp/clientes");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Ventas como sección propia: lista de TODAS las ventas del negocio (no
+// solo las de un vehículo, como en el detalle de vehículo) + un acceso
+// directo "Nueva venta" que primero pide elegir vehículo y luego reutiliza
+// EXACTAMENTE el mismo formulario/ruta ya probados de
+// POST /erp/vehicles/:id/sales (folio, cliente autocompletado, transacción
+// con FOR UPDATE) — así no hay dos implementaciones de "registrar venta"
+// que puedan desincronizarse.
+
+app.get("/erp/ventas", requireErpAuth, async (req, res, next) => {
+  try {
+    const params = [req.erpActor.businessId];
+    const { rows: sales } = await pool.query(
+      `SELECT erp_sales.*, erp_vehicles.brand, erp_vehicles.model, erp_vehicles.year,
+         erp_clients.name AS client_name,
+         COALESCE(SUM(erp_sale_items.price), 0)::numeric AS total
+       FROM erp_sales
+       JOIN erp_vehicles ON erp_vehicles.id = erp_sales.vehicle_id
+       LEFT JOIN erp_clients ON erp_clients.id = erp_sales.client_id
+       LEFT JOIN erp_sale_items ON erp_sale_items.sale_id = erp_sales.id
+       WHERE erp_sales.business_id = $1
+       GROUP BY erp_sales.id, erp_vehicles.brand, erp_vehicles.model, erp_vehicles.year, erp_clients.name
+       ORDER BY erp_sales.sale_date DESC, erp_sales.id DESC`,
+      params
+    );
+    res.render("erp-sales-list", {
+      currentSection: "ventas",
+      erpActor: req.erpActor,
+      canVentas: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, "ventas"),
+      sales,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Paso 1 (sin vehicle_id): elegir de qué vehículo se va a vender. Paso 2
+// (?vehicle_id=X): el mismo checklist de piezas disponibles + cliente que
+// ya existía dentro del detalle de vehículo, pero como pantalla completa —
+// el formulario postea a la ruta de siempre, /erp/vehicles/:id/sales.
+app.get("/erp/ventas/new", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+  try {
+    const vehicleId = parseInt(req.query.vehicle_id, 10);
+    if (!vehicleId) {
+      const searchQuery = (req.query.q || "").trim();
+      const params = [req.erpActor.businessId];
+      let query = `
+        SELECT erp_vehicles.*,
+          (SELECT COUNT(*)::int FROM erp_parts WHERE vehicle_id = erp_vehicles.id AND status = 'disponible') AS available_count
+        FROM erp_vehicles WHERE business_id = $1`;
+      const searchWords = searchQuery.split(/\s+/).filter(Boolean);
+      if (searchWords.length) {
+        const blobExpr = `(COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(CAST(year AS TEXT),''))`;
+        searchWords.forEach((word) => {
+          params.push(`%${word}%`);
+          query += ` AND ${blobExpr} ILIKE $${params.length}`;
+        });
+      }
+      query += " ORDER BY created_at DESC";
+      const { rows: vehicles } = await pool.query(query, params);
+      return res.render("erp-sale-pick-vehicle", {
+        currentSection: "ventas",
+        erpActor: req.erpActor,
+        vehicles,
+        searchQuery,
+      });
+    }
+
+    const { rows: vehicleRows } = await pool.query(
+      "SELECT * FROM erp_vehicles WHERE id = $1 AND business_id = $2",
+      [vehicleId, req.erpActor.businessId]
+    );
+    const vehicle = vehicleRows[0];
+    if (!vehicle) return res.status(404).send("Vehículo no encontrado.");
+
+    const { rows: availableParts } = await pool.query(
+      "SELECT * FROM erp_parts WHERE vehicle_id = $1 AND status = $2 ORDER BY created_at DESC",
+      [vehicle.id, erpStatus.PART_STATUSES.DISPONIBLE]
+    );
+
+    res.render("erp-sale-form", {
+      currentSection: "ventas",
+      erpActor: req.erpActor,
+      vehicle,
+      availableParts,
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// --- Cotizaciones: "Cotizar" desde YonkSuite. Por ahora, igual que una
+// venta, una cotización queda ligada a UN vehículo (reutiliza la misma
+// lógica ya probada de "piezas disponibles de este vehículo" — ver nota en
+// db/db.js junto a erp_quotes.vehicle_id). Un botón "Convertir en venta"
+// pasa sus piezas de reservada -> vendida sin volver a capturar nada.
+
+app.get("/erp/cotizaciones", requireErpAuth, async (req, res, next) => {
+  try {
+    const statusFilter = req.query.status || "";
+    const params = [req.erpActor.businessId];
+    let query = `
+      SELECT erp_quotes.*, erp_vehicles.brand, erp_vehicles.model, erp_vehicles.year,
+        erp_clients.name AS client_name,
+        (SELECT COALESCE(SUM(price), 0)::numeric FROM erp_quote_items WHERE quote_id = erp_quotes.id) AS total
+      FROM erp_quotes
+      JOIN erp_vehicles ON erp_vehicles.id = erp_quotes.vehicle_id
+      LEFT JOIN erp_clients ON erp_clients.id = erp_quotes.client_id
+      WHERE erp_quotes.business_id = $1`;
+    if (statusFilter) {
+      params.push(statusFilter);
+      query += ` AND erp_quotes.status = $${params.length}`;
+    }
+    query += " ORDER BY erp_quotes.created_at DESC";
+    const { rows: quotes } = await pool.query(query, params);
+    res.render("erp-quotes-list", {
+      currentSection: "cotizaciones",
+      erpActor: req.erpActor,
+      canVentas: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, "ventas"),
+      quotes,
+      statusFilter,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Paso 1 (sin vehicle_id): elegir de qué vehículo se van a cotizar piezas.
+// Paso 2 (?vehicle_id=X): checklist de piezas disponibles de ese vehículo +
+// datos del cliente (se auto-llena/da de alta con findOrCreateClient).
+app.get("/erp/cotizaciones/new", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+  try {
+    const vehicleId = parseInt(req.query.vehicle_id, 10);
+    if (!vehicleId) {
+      const searchQuery = (req.query.q || "").trim();
+      const params = [req.erpActor.businessId];
+      let query = `
+        SELECT erp_vehicles.*,
+          (SELECT COUNT(*)::int FROM erp_parts WHERE vehicle_id = erp_vehicles.id AND status = 'disponible') AS available_count
+        FROM erp_vehicles WHERE business_id = $1`;
+      const searchWords = searchQuery.split(/\s+/).filter(Boolean);
+      if (searchWords.length) {
+        const blobExpr = `(COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(CAST(year AS TEXT),''))`;
+        searchWords.forEach((word) => {
+          params.push(`%${word}%`);
+          query += ` AND ${blobExpr} ILIKE $${params.length}`;
+        });
+      }
+      query += " ORDER BY created_at DESC";
+      const { rows: vehicles } = await pool.query(query, params);
+      return res.render("erp-quote-pick-vehicle", {
+        currentSection: "cotizaciones",
+        erpActor: req.erpActor,
+        vehicles,
+        searchQuery,
+      });
+    }
+
+    const { rows: vehicleRows } = await pool.query(
+      "SELECT * FROM erp_vehicles WHERE id = $1 AND business_id = $2",
+      [vehicleId, req.erpActor.businessId]
+    );
+    const vehicle = vehicleRows[0];
+    if (!vehicle) return res.status(404).send("Vehículo no encontrado.");
+
+    const { rows: availableParts } = await pool.query(
+      "SELECT * FROM erp_parts WHERE vehicle_id = $1 AND status = $2 ORDER BY created_at DESC",
+      [vehicle.id, erpStatus.PART_STATUSES.DISPONIBLE]
+    );
+
+    res.render("erp-quote-form", {
+      currentSection: "cotizaciones",
+      erpActor: req.erpActor,
+      vehicle,
+      availableParts,
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/erp/cotizaciones", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+  const vehicleId = parseInt(req.body.vehicle_id, 10);
+  const { rows: vehicleRows } = await pool.query(
+    "SELECT * FROM erp_vehicles WHERE id = $1 AND business_id = $2",
+    [vehicleId, req.erpActor.businessId]
+  );
+  const vehicle = vehicleRows[0];
+  if (!vehicle) return res.status(404).send("Vehículo no encontrado.");
+
+  const rawIds = req.body.part_ids;
+  const selectedIds = (Array.isArray(rawIds) ? rawIds : rawIds ? [rawIds] : []).map((v) => parseInt(v, 10));
+  if (selectedIds.length === 0) {
+    return res.redirect(
+      `/erp/cotizaciones/new?vehicle_id=${vehicle.id}&error=` +
+        encodeURIComponent("Selecciona al menos una pieza para la cotización.")
+    );
+  }
+
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query("BEGIN");
+
+    const { rows: partsToQuote } = await dbClient.query(
+      `SELECT * FROM erp_parts
+       WHERE id = ANY($1::int[]) AND vehicle_id = $2 AND business_id = $3 AND status = $4
+       FOR UPDATE`,
+      [selectedIds, vehicle.id, req.erpActor.businessId, erpStatus.PART_STATUSES.DISPONIBLE]
+    );
+    if (partsToQuote.length === 0) {
+      await dbClient.query("ROLLBACK");
+      return res.redirect(
+        `/erp/cotizaciones/new?vehicle_id=${vehicle.id}&error=` +
+          encodeURIComponent("Esas piezas ya no están disponibles.")
+      );
+    }
+
+    const erpClient = await findOrCreateClient(
+      req.erpActor.businessId,
+      {
+        client_id: req.body.client_id,
+        client_name: req.body.client_name,
+        client_phone: req.body.client_phone,
+        client_email: req.body.client_email,
+      },
+      dbClient
+    );
+
+    const folio = await erpNumbering.nextFolio(req.erpActor.businessId, "quote", dbClient);
+    const { rows: quoteRows } = await dbClient.query(
+      `INSERT INTO erp_quotes
+         (business_id, vehicle_id, folio, client_id, client_name_snapshot, status, notes,
+          created_by_actor_type, created_by_employee_id, created_by_name)
+       VALUES ($1,$2,$3,$4,$5,'abierta',$6,$7,$8,$9) RETURNING id`,
+      [
+        req.erpActor.businessId,
+        vehicle.id,
+        folio,
+        erpClient ? erpClient.id : null,
+        (req.body.client_name || "").trim() || null,
+        (req.body.notes || "").trim() || null,
+        req.erpActor.type,
+        req.erpActor.employeeId || null,
+        req.erpActor.name,
+      ]
+    );
+    const quoteId = quoteRows[0].id;
+
+    for (const part of partsToQuote) {
+      const rawPrice = req.body["price_" + part.id];
+      const price =
+        rawPrice !== undefined && rawPrice !== "" ? parseFloat(rawPrice) : Number(part.asking_price) || 0;
+      await dbClient.query("INSERT INTO erp_quote_items (quote_id, part_id, price) VALUES ($1, $2, $3)", [
+        quoteId,
+        part.id,
+        price,
+      ]);
+      await dbClient.query("UPDATE erp_parts SET status = $1, updated_at = NOW() WHERE id = $2", [
+        erpStatus.PART_STATUSES.RESERVADA,
+        part.id,
+      ]);
+    }
+
+    await dbClient.query("COMMIT");
+    res.redirect(`/erp/cotizaciones/${quoteId}?saved=1`);
+  } catch (err) {
+    await dbClient.query("ROLLBACK");
+    next(err);
+  } finally {
+    dbClient.release();
+  }
+});
+
+app.get("/erp/cotizaciones/:id", requireErpAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT erp_quotes.*, erp_vehicles.brand, erp_vehicles.model, erp_vehicles.year
+       FROM erp_quotes JOIN erp_vehicles ON erp_vehicles.id = erp_quotes.vehicle_id
+       WHERE erp_quotes.id = $1 AND erp_quotes.business_id = $2`,
+      [req.params.id, req.erpActor.businessId]
+    );
+    const quote = rows[0];
+    if (!quote) return res.status(404).send("Cotización no encontrada.");
+
+    const { rows: items } = await pool.query(
+      `SELECT erp_quote_items.*, erp_parts.name AS part_name, erp_parts.status AS part_status
+       FROM erp_quote_items JOIN erp_parts ON erp_parts.id = erp_quote_items.part_id
+       WHERE erp_quote_items.quote_id = $1 ORDER BY erp_quote_items.id ASC`,
+      [quote.id]
+    );
+    const total = items.reduce((sum, it) => sum + Number(it.price), 0);
+
+    let erpClient = null;
+    if (quote.client_id) {
+      const { rows: clientRows } = await pool.query("SELECT * FROM erp_clients WHERE id = $1", [quote.client_id]);
+      erpClient = clientRows[0] || null;
+    }
+
+    res.render("erp-quote-detail", {
+      currentSection: "cotizaciones",
+      erpActor: req.erpActor,
+      quote,
+      items,
+      total,
+      erpClient,
+      canConvert: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, "ventas"),
+      saved: req.query.saved === "1",
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post("/erp/cotizaciones/:id/convertir", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+  const { rows } = await pool.query("SELECT * FROM erp_quotes WHERE id = $1 AND business_id = $2", [
+    req.params.id,
+    req.erpActor.businessId,
+  ]);
+  const quote = rows[0];
+  if (!quote) return res.status(404).send("Cotización no encontrada.");
+  if (quote.status !== "abierta") {
+    return res.redirect(`/erp/cotizaciones/${quote.id}`);
+  }
+
+  const dbClient = await pool.connect();
+  try {
+    await dbClient.query("BEGIN");
+
+    const { rows: items } = await dbClient.query(
+      `SELECT erp_quote_items.*, erp_parts.status AS part_status
+       FROM erp_quote_items JOIN erp_parts ON erp_parts.id = erp_quote_items.part_id
+       WHERE erp_quote_items.quote_id = $1 FOR UPDATE OF erp_parts`,
+      [quote.id]
+    );
+
+    const folio = await erpNumbering.nextFolio(req.erpActor.businessId, "sale", dbClient);
+    const { rows: saleRows } = await dbClient.query(
+      `INSERT INTO erp_sales
+         (vehicle_id, business_id, buyer_name, sale_date, notes, folio, client_id, quote_id,
+          sold_by_actor_type, sold_by_employee_id, sold_by_name)
+       VALUES ($1,$2,$3,CURRENT_DATE,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [
+        quote.vehicle_id,
+        req.erpActor.businessId,
+        quote.client_name_snapshot,
+        "Convertida desde cotización " + quote.folio,
+        folio,
+        quote.client_id,
+        quote.id,
+        req.erpActor.type,
+        req.erpActor.employeeId || null,
+        req.erpActor.name,
+      ]
+    );
+    const saleId = saleRows[0].id;
+
+    for (const item of items) {
+      await dbClient.query("INSERT INTO erp_sale_items (sale_id, part_id, price) VALUES ($1, $2, $3)", [
+        saleId,
+        item.part_id,
+        item.price,
+      ]);
+      await dbClient.query("UPDATE erp_parts SET status = $1, updated_at = NOW() WHERE id = $2", [
+        erpStatus.PART_STATUSES.VENDIDA,
+        item.part_id,
+      ]);
+    }
+
+    await dbClient.query("UPDATE erp_quotes SET status = 'convertida', updated_at = NOW() WHERE id = $1", [
+      quote.id,
+    ]);
+
+    await dbClient.query("COMMIT");
+    res.redirect(`/erp/vehicles/${quote.vehicle_id}?saved=1`);
+  } catch (err) {
+    await dbClient.query("ROLLBACK");
+    next(err);
+  } finally {
+    dbClient.release();
+  }
+});
+
+app.post(
+  "/erp/cotizaciones/:id/rechazar",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    const { rows } = await pool.query("SELECT * FROM erp_quotes WHERE id = $1 AND business_id = $2", [
+      req.params.id,
+      req.erpActor.businessId,
+    ]);
+    const quote = rows[0];
+    if (!quote) return res.status(404).send("Cotización no encontrada.");
+    if (quote.status !== "abierta") return res.redirect(`/erp/cotizaciones/${quote.id}`);
+
+    const dbClient = await pool.connect();
+    try {
+      await dbClient.query("BEGIN");
+      await dbClient.query(
+        `UPDATE erp_parts SET status = $1, updated_at = NOW()
+         WHERE id IN (SELECT part_id FROM erp_quote_items WHERE quote_id = $2)`,
+        [erpStatus.PART_STATUSES.DISPONIBLE, quote.id]
+      );
+      await dbClient.query("UPDATE erp_quotes SET status = 'rechazada', updated_at = NOW() WHERE id = $1", [
+        quote.id,
+      ]);
+      await dbClient.query("COMMIT");
+      res.redirect(`/erp/cotizaciones/${quote.id}`);
+    } catch (err) {
+      await dbClient.query("ROLLBACK");
+      next(err);
+    } finally {
+      dbClient.release();
+    }
+  }
+);
+
+// --- Búsqueda global (estilo NetSuite): un solo cuadro en la barra de
+// arriba (ver partials/erp-header.ejs) que busca al mismo tiempo en
+// Inventario, Clientes, Cotizaciones y Ventas. Reutiliza el mismo patrón de
+// "junta varias columnas en un texto y exige que cada palabra escrita
+// aparezca en algún lado" que ya usaba /erp/vehiculos, aplicado a las otras
+// tres tablas.
+app.get("/erp/buscar", requireErpAuth, async (req, res, next) => {
+  try {
+    const searchQuery = (req.query.q || "").trim();
+    const businessId = req.erpActor.businessId;
+    const searchWords = searchQuery.split(/\s+/).filter(Boolean);
+
+    let vehicles = [];
+    let clients = [];
+    let quotes = [];
+    let sales = [];
+
+    if (searchWords.length) {
+      const vehicleBlob = `(
+        COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(CAST(year AS TEXT),'') || ' ' ||
+        COALESCE(vin,'') || ' ' || COALESCE(plate,'') || ' ' || COALESCE(color,'')
+      )`;
+      let vParams = [businessId];
+      let vQuery = `SELECT id, brand, model, year, status FROM erp_vehicles WHERE business_id = $1`;
+      searchWords.forEach((w) => {
+        vParams.push(`%${w}%`);
+        vQuery += ` AND ${vehicleBlob} ILIKE $${vParams.length}`;
+      });
+      vQuery += " ORDER BY created_at DESC LIMIT 8";
+      vehicles = (await pool.query(vQuery, vParams)).rows;
+
+      const clientBlob = `(COALESCE(name,'') || ' ' || COALESCE(phone,'') || ' ' || COALESCE(email,'') || ' ' || COALESCE(folio,''))`;
+      let cParams = [businessId];
+      let cQuery = `SELECT id, folio, name, phone, email FROM erp_clients WHERE business_id = $1`;
+      searchWords.forEach((w) => {
+        cParams.push(`%${w}%`);
+        cQuery += ` AND ${clientBlob} ILIKE $${cParams.length}`;
+      });
+      cQuery += " ORDER BY created_at DESC LIMIT 8";
+      clients = (await pool.query(cQuery, cParams)).rows;
+
+      const quoteBlob = `(
+        COALESCE(erp_quotes.folio,'') || ' ' || COALESCE(erp_quotes.client_name_snapshot,'') || ' ' ||
+        COALESCE(erp_clients.name,'') || ' ' || COALESCE(erp_vehicles.brand,'') || ' ' || COALESCE(erp_vehicles.model,'')
+      )`;
+      let qParams = [businessId];
+      let qQuery = `
+        SELECT erp_quotes.id, erp_quotes.folio, erp_quotes.status, erp_vehicles.brand, erp_vehicles.model,
+               erp_clients.name AS client_name
+        FROM erp_quotes
+        JOIN erp_vehicles ON erp_vehicles.id = erp_quotes.vehicle_id
+        LEFT JOIN erp_clients ON erp_clients.id = erp_quotes.client_id
+        WHERE erp_quotes.business_id = $1`;
+      searchWords.forEach((w) => {
+        qParams.push(`%${w}%`);
+        qQuery += ` AND ${quoteBlob} ILIKE $${qParams.length}`;
+      });
+      qQuery += " ORDER BY erp_quotes.created_at DESC LIMIT 8";
+      quotes = (await pool.query(qQuery, qParams)).rows;
+
+      const saleBlob = `(
+        COALESCE(erp_sales.folio,'') || ' ' || COALESCE(erp_sales.buyer_name,'') || ' ' ||
+        COALESCE(erp_clients.name,'') || ' ' || COALESCE(erp_vehicles.brand,'') || ' ' || COALESCE(erp_vehicles.model,'')
+      )`;
+      let sParams = [businessId];
+      let sQuery = `
+        SELECT erp_sales.id, erp_sales.folio, erp_sales.vehicle_id, erp_sales.buyer_name, erp_sales.sale_date,
+               erp_vehicles.brand, erp_vehicles.model, erp_clients.name AS client_name
+        FROM erp_sales
+        JOIN erp_vehicles ON erp_vehicles.id = erp_sales.vehicle_id
+        LEFT JOIN erp_clients ON erp_clients.id = erp_sales.client_id
+        WHERE erp_sales.business_id = $1`;
+      searchWords.forEach((w) => {
+        sParams.push(`%${w}%`);
+        sQuery += ` AND ${saleBlob} ILIKE $${sParams.length}`;
+      });
+      sQuery += " ORDER BY erp_sales.sale_date DESC LIMIT 8";
+      sales = (await pool.query(sQuery, sParams)).rows;
+    }
+
+    res.render("erp-search-results", {
+      currentSection: null,
+      erpActor: req.erpActor,
+      searchGlobalQuery: searchQuery,
+      vehicles,
+      clients,
+      quotes,
+      sales,
+    });
+  } catch (err) {
+    next(err);
   }
 });
 
@@ -2060,10 +2836,237 @@ app.get(
         inventoryByStatus,
         inventoryByCategory,
         vehiclesByStatus,
-        PART_CATEGORY_LABELS: erpStatus.PART_CATEGORY_LABELS,
+        PART_CATEGORY_LABELS: (await erpPartCategories.getPartCategoriesForBusiness(businessId)).labels,
         PART_STATUS_LABELS: erpStatus.PART_STATUS_LABELS,
         VEHICLE_STATUS_LABELS: erpStatus.VEHICLE_STATUS_LABELS,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Configuración: Empresa, Configuración de transacciones (folios) y
+// Categorías de piezas. Todo gateado a "manage_employees" (el dueño siempre
+// pasa; de los roles de empleado, solo Admin) porque son ajustes de TODO el
+// negocio, no de una venta o vehículo en particular.
+
+app.get("/erp/configuracion", requireErpAuth, requirePermission("manage_employees"), (req, res) => {
+  res.render("erp-config-home", { currentSection: "configuracion", erpActor: req.erpActor });
+});
+
+app.get(
+  "/erp/configuracion/empresa",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [req.erpActor.businessId]);
+      res.render("erp-config-empresa", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        business: rows[0],
+        saved: req.query.saved === "1",
+        error: null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/empresa",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  upload.single("logo"),
+  async (req, res, next) => {
+    try {
+      const { name, address, phone, brand_color_primary, brand_color_secondary, erp_company_tax_id, erp_company_legal_name } =
+        req.body;
+      if (!name || !name.trim()) {
+        const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [req.erpActor.businessId]);
+        return res.render("erp-config-empresa", {
+          currentSection: "configuracion",
+          erpActor: req.erpActor,
+          business: { ...rows[0], ...req.body },
+          saved: false,
+          error: "El nombre del negocio es obligatorio.",
+        });
+      }
+
+      const logoData = fileToDataUri(req.file); // null si no subió un archivo nuevo
+
+      await pool.query(
+        `UPDATE businesses SET
+           name = $1, address = $2, phone = $3,
+           brand_color_primary = $4, brand_color_secondary = $5,
+           erp_company_tax_id = $6, erp_company_legal_name = $7,
+           logo_data = COALESCE($8, logo_data)
+         WHERE id = $9`,
+        [
+          name.trim(),
+          (address || "").trim() || null,
+          (phone || "").trim() || null,
+          brand_color_primary || "#1B2A4A",
+          brand_color_secondary || "#0B0B0B",
+          (erp_company_tax_id || "").trim() || null,
+          (erp_company_legal_name || "").trim() || null,
+          logoData,
+          req.erpActor.businessId,
+        ]
+      );
+
+      res.redirect("/erp/configuracion/empresa?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/configuracion/transacciones",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [req.erpActor.businessId]);
+      res.render("erp-config-transacciones", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        business: rows[0],
+        saved: req.query.saved === "1",
+        error: null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/transacciones",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const {
+        erp_client_prefix,
+        erp_client_next_number,
+        erp_quote_prefix,
+        erp_quote_next_number,
+        erp_sale_prefix,
+        erp_sale_next_number,
+      } = req.body;
+
+      const cleanPrefix = (v, fallback) => {
+        const trimmed = (v || "").trim().toUpperCase();
+        return trimmed || fallback;
+      };
+      const cleanNumber = (v, fallback) => {
+        const n = parseInt(v, 10);
+        return Number.isFinite(n) && n >= 1 ? n : fallback;
+      };
+
+      await pool.query(
+        `UPDATE businesses SET
+           erp_client_prefix = $1, erp_client_next_number = $2,
+           erp_quote_prefix = $3, erp_quote_next_number = $4,
+           erp_sale_prefix = $5, erp_sale_next_number = $6
+         WHERE id = $7`,
+        [
+          cleanPrefix(erp_client_prefix, "CLI"),
+          cleanNumber(erp_client_next_number, 1),
+          cleanPrefix(erp_quote_prefix, "COT"),
+          cleanNumber(erp_quote_next_number, 1),
+          cleanPrefix(erp_sale_prefix, "VTA"),
+          cleanNumber(erp_sale_next_number, 1),
+          req.erpActor.businessId,
+        ]
+      );
+
+      res.redirect("/erp/configuracion/transacciones?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/configuracion/categorias",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: categories } = await pool.query(
+        "SELECT * FROM erp_part_categories WHERE business_id = $1 ORDER BY display_order ASC, id ASC",
+        [req.erpActor.businessId]
+      );
+      res.render("erp-config-categorias", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        categories,
+        usingDefaults: categories.length === 0,
+        defaultCategories: erpStatus.PART_CATEGORIES,
+        defaultLabels: erpStatus.PART_CATEGORY_LABELS,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/categorias",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { category_key, category_label } = req.body;
+      const key = (category_key || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+      const label = (category_label || "").trim();
+      if (!key || !label) {
+        return res.redirect(
+          "/erp/configuracion/categorias?error=" + encodeURIComponent("Escribe una clave y una etiqueta para la categoría.")
+        );
+      }
+
+      const { rows: maxRows } = await pool.query(
+        "SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order FROM erp_part_categories WHERE business_id = $1",
+        [req.erpActor.businessId]
+      );
+
+      await pool.query(
+        `INSERT INTO erp_part_categories (business_id, category_key, category_label, display_order)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (business_id, category_key) DO UPDATE SET category_label = EXCLUDED.category_label`,
+        [req.erpActor.businessId, key, label, maxRows[0].next_order]
+      );
+
+      res.redirect("/erp/configuracion/categorias?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/categorias/:id/delete",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query("DELETE FROM erp_part_categories WHERE id = $1 AND business_id = $2", [
+        req.params.id,
+        req.erpActor.businessId,
+      ]);
+      res.redirect("/erp/configuracion/categorias?saved=1");
     } catch (err) {
       next(err);
     }

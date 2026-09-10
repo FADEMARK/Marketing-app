@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Buscar: <%= searchGlobalQuery %> — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
+    <h1>Resultados para "<%= searchGlobalQuery %>"</h1>
+
+    <% const noQuery = !searchGlobalQuery; %>
+    <% const totalResults = vehicles.length + clients.length + quotes.length + sales.length; %>
+
+    <% if (noQuery) { %>
+      <div class="empty-state"><p>Escribe algo en el buscador de arriba para empezar.</p></div>
+    <% } else if (totalResults === 0) { %>
+      <div class="empty-state"><p>No encontramos nada en inventario, clientes, cotizaciones ni ventas.</p></div>
+    <% } else { %>
+
+      <% if (vehicles.length > 0) { %>
+        <div class="detail-box" style="margin-top:16px;">
+          <h3>Inventario (<%= vehicles.length %>)</h3>
+          <table class="admin-table">
+            <thead><tr><th>Vehículo</th><th>Estado</th></tr></thead>
+            <tbody>
+              <% vehicles.forEach(function(v) { %>
+                <tr onclick="window.location='/erp/vehicles/<%= v.id %>'" style="cursor:pointer;">
+                  <td><strong><%= v.brand %> <%= v.model %> <%= v.year || '' %></strong></td>
+                  <td class="muted small"><%= v.status %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+      <% if (clients.length > 0) { %>
+        <div class="detail-box" style="margin-top:16px;">
+          <h3>Clientes (<%= clients.length %>)</h3>
+          <table class="admin-table">
+            <thead><tr><th>Folio</th><th>Nombre</th><th>Teléfono</th></tr></thead>
+            <tbody>
+              <% clients.forEach(function(c) { %>
+                <tr onclick="window.location='/erp/clientes/<%= c.id %>'" style="cursor:pointer;">
+                  <td class="muted small"><%= c.folio || '—' %></td>
+                  <td><strong><%= c.name %></strong></td>
+                  <td class="muted"><%= c.phone || '—' %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+      <% if (quotes.length > 0) { %>
+        <div class="detail-box" style="margin-top:16px;">
+          <h3>Cotizaciones (<%= quotes.length %>)</h3>
+          <table class="admin-table">
+            <thead><tr><th>Folio</th><th>Vehículo</th><th>Cliente</th><th>Estado</th></tr></thead>
+            <tbody>
+              <% quotes.forEach(function(q) { %>
+                <tr onclick="window.location='/erp/cotizaciones/<%= q.id %>'" style="cursor:pointer;">
+                  <td><strong><%= q.folio %></strong></td>
+                  <td class="muted"><%= q.brand %> <%= q.model %></td>
+                  <td class="muted"><%= q.client_name || '—' %></td>
+                  <td><span class="status-badge status-<%= q.status %>"><%= q.status %></span></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+      <% if (sales.length > 0) { %>
+        <div class="detail-box" style="margin-top:16px;">
+          <h3>Ventas (<%= sales.length %>)</h3>
+          <table class="admin-table">
+            <thead><tr><th>Folio</th><th>Vehículo</th><th>Cliente</th><th>Fecha</th></tr></thead>
+            <tbody>
+              <% sales.forEach(function(s) { %>
+                <tr onclick="window.location='/erp/vehicles/<%= s.vehicle_id %>'" style="cursor:pointer;">
+                  <td><strong><%= s.folio || ('#' + s.id) %></strong></td>
+                  <td class="muted"><%= s.brand %> <%= s.model %></td>
+                  <td class="muted"><%= s.client_name || s.buyer_name || '—' %></td>
+                  <td class="muted small"><%= s.sale_date %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+    <% } %>
+  </main>
+</body>
+</html>

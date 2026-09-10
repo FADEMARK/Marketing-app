@@ -40,6 +40,63 @@
       </div>
     </div>
 
+    <!-- Datos del vehículo (primero, para que al abrir un vehículo lo primero
+    que se vea sea su información — no las fotos) -->
+    <% if (canCompras) { %>
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Datos del vehículo</h3>
+      <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/update" class="card-form">
+        <div class="two-col">
+          <label>Marca
+            <input type="text" name="brand" required value="<%= vehicle.brand %>" />
+          </label>
+          <label>Modelo
+            <input type="text" name="model" required value="<%= vehicle.model %>" />
+          </label>
+        </div>
+        <div class="two-col">
+          <label>Año
+            <input type="number" name="year" value="<%= vehicle.year || '' %>" />
+          </label>
+          <label>Color
+            <input type="text" name="color" value="<%= vehicle.color || '' %>" />
+          </label>
+        </div>
+        <div class="two-col">
+          <label>VIN
+            <input type="text" name="vin" value="<%= vehicle.vin || '' %>" />
+          </label>
+          <label>Placa
+            <input type="text" name="plate" value="<%= vehicle.plate || '' %>" />
+          </label>
+        </div>
+        <div class="two-col">
+          <label>Precio de compra
+            <input type="number" name="purchase_price" step="0.01" min="0" required value="<%= vehicle.purchase_price %>" />
+          </label>
+          <label>Fecha de compra
+            <input type="date" name="purchase_date" value="<%= vehicle.purchase_date ? new Date(vehicle.purchase_date).toISOString().slice(0,10) : '' %>" />
+          </label>
+        </div>
+        <label>Notas
+          <textarea name="notes" rows="3"><%= vehicle.notes || '' %></textarea>
+        </label>
+        <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+      </form>
+
+      <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/toggle-status" style="margin-top:12px;">
+        <button type="submit" class="btn-secondary full-width">
+          <%= vehicle.status === 'agotado' ? 'Reactivar (marcar en stock)' : 'Marcar como Agotado (dar de baja)' %>
+        </button>
+      </form>
+
+      <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/delete" style="margin-top:12px;"
+            onsubmit="return confirm('¿Borrar este vehículo y sus piezas? No se puede deshacer.');">
+        <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar vehículo</button>
+      </form>
+    </div>
+    <% } %>
+
     <!-- Fotos -->
     <div class="detail-box" style="margin-top:20px;">
       <h3>Fotos</h3>
@@ -99,62 +156,6 @@
           <button type="submit" class="btn-primary full-width" style="margin-top:12px;">Enviar seleccionadas a inventario</button>
         </form>
       </div>
-    <% } %>
-
-    <!-- Datos del vehículo -->
-    <% if (canCompras) { %>
-    <div class="detail-box" style="margin-top:20px;">
-      <h3>Datos del vehículo</h3>
-      <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/update" class="card-form">
-        <div class="two-col">
-          <label>Marca
-            <input type="text" name="brand" required value="<%= vehicle.brand %>" />
-          </label>
-          <label>Modelo
-            <input type="text" name="model" required value="<%= vehicle.model %>" />
-          </label>
-        </div>
-        <div class="two-col">
-          <label>Año
-            <input type="number" name="year" value="<%= vehicle.year || '' %>" />
-          </label>
-          <label>Color
-            <input type="text" name="color" value="<%= vehicle.color || '' %>" />
-          </label>
-        </div>
-        <div class="two-col">
-          <label>VIN
-            <input type="text" name="vin" value="<%= vehicle.vin || '' %>" />
-          </label>
-          <label>Placa
-            <input type="text" name="plate" value="<%= vehicle.plate || '' %>" />
-          </label>
-        </div>
-        <div class="two-col">
-          <label>Precio de compra
-            <input type="number" name="purchase_price" step="0.01" min="0" required value="<%= vehicle.purchase_price %>" />
-          </label>
-          <label>Fecha de compra
-            <input type="date" name="purchase_date" value="<%= vehicle.purchase_date ? new Date(vehicle.purchase_date).toISOString().slice(0,10) : '' %>" />
-          </label>
-        </div>
-        <label>Notas
-          <textarea name="notes" rows="3"><%= vehicle.notes || '' %></textarea>
-        </label>
-        <button type="submit" class="btn-primary full-width">Guardar cambios</button>
-      </form>
-
-      <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/toggle-status" style="margin-top:12px;">
-        <button type="submit" class="btn-secondary full-width">
-          <%= vehicle.status === 'agotado' ? 'Reactivar (marcar en stock)' : 'Marcar como Agotado (dar de baja)' %>
-        </button>
-      </form>
-
-      <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/delete" style="margin-top:12px;"
-            onsubmit="return confirm('¿Borrar este vehículo y sus piezas? No se puede deshacer.');">
-        <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar vehículo</button>
-      </form>
-    </div>
     <% } %>
 
     <!-- Piezas -->
@@ -264,7 +265,12 @@
     <!-- Ventas -->
     <% if (canVentas) { %>
     <div class="detail-box" style="margin-top:20px;">
-      <h3>Registrar venta</h3>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0;">Registrar venta</h3>
+        <% if (availableParts.length > 0) { %>
+          <a href="/erp/cotizaciones/new?vehicle_id=<%= vehicle.id %>" class="btn-secondary">📝 Cotizar en vez de vender</a>
+        <% } %>
+      </div>
       <% if (availableParts.length === 0) { %>
         <p class="muted small">No hay piezas disponibles para vender (agrégalas arriba, o ya se vendieron todas).</p>
       <% } else { %>
@@ -300,7 +306,7 @@
         <% sales.forEach(function(sale) { %>
           <div class="note-item">
             <p style="margin:0 0 4px; display:flex; justify-content:space-between; gap:8px;">
-              <strong><%= sale.buyer_name || 'Sin nombre de comprador' %></strong>
+              <strong><%= sale.folio ? sale.folio + ' — ' : '' %><%= sale.buyer_name || 'Sin nombre de comprador' %></strong>
               <span>$<%= Number(sale.sale_total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
             </p>
             <p class="muted small" style="margin:0 0 4px;">

@@ -1,14 +1,24 @@
 <%
 // Header propio de YonkSuite: logo + color de marca del negocio (capturados
-// en "Mi negocio" dentro de MarketingHub) y un menú horizontal simple con
-// las secciones a las que ese actor (dueño o empleado) tiene acceso — estilo
-// barra de una app de escritorio (NetSuite, etc.), separado a propósito de
-// la barra de MarketingHub (ver services/middleware.js: req.erpActor).
+// en Configuración > Empresa) y un menú horizontal simple con las secciones
+// a las que ese actor (dueño o empleado) tiene acceso — estilo barra de una
+// app de escritorio (NetSuite, etc.), separado a propósito de la barra de
+// MarketingHub (ver services/middleware.js: req.erpActor).
+//
+// "Ventas" e "Inventario" son dropdowns (Nueva venta/Ver ventas/Cotizaciones
+// y Meter auto/Visualizar inventario, respectivamente) para que abrir
+// cualquiera de esas acciones sea un clic desde CUALQUIER pantalla, no solo
+// desde dentro de un vehículo — pedido explícito del negocio. El link
+// "padre" de cada dropdown también navega directo a la vista de lista, así
+// que en móvil (donde no hay hover) igual se llega a algo útil con un solo
+// tap, aunque no se vea el desplegable.
 //
 // currentSection lo manda cada vista para resaltar la pestaña activa: uno de
-// "dashboard" | "vehiculos" | "empleados" | "reportes" | null.
+// "dashboard" | "ventas" | "cotizaciones" | "vehiculos" | "clientes" |
+// "empleados" | "reportes" | "configuracion" | null.
 const _section = typeof currentSection !== "undefined" ? currentSection : null;
 const _erpActor = typeof erpActor !== "undefined" ? erpActor : null;
+const _searchQ = typeof searchGlobalQuery !== "undefined" ? searchGlobalQuery : "";
 const _roleLabels = { owner: "Dueño", admin: "Admin", ventas: "Ventas", compras: "Compras", ventas_admin: "Ventas / Admin" };
 %>
   <header class="erp-topbar" style="--erp-color: <%= (_erpActor && _erpActor.brandColorPrimary) || '#1B2A4A' %>;">
@@ -25,14 +35,43 @@ const _roleLabels = { owner: "Dueño", admin: "Admin", ventas: "Ventas", compras
     </a>
     <nav class="erp-topnav">
       <a href="/erp" class="<%= _section === 'dashboard' ? 'active' : '' %>">Dashboard</a>
-      <a href="/erp/vehiculos" class="<%= _section === 'vehiculos' ? 'active' : '' %>">Vehículos</a>
+
+      <div class="erp-nav-item">
+        <a href="/erp/ventas" class="<%= (_section === 'ventas' || _section === 'cotizaciones') ? 'active' : '' %>">Ventas ▾</a>
+        <div class="erp-nav-dropdown">
+          <% if (_erpActor && _erpActor.canVentas) { %>
+            <a href="/erp/ventas/new">🧾 Nueva venta</a>
+          <% } %>
+          <a href="/erp/ventas">Ver ventas</a>
+          <a href="/erp/cotizaciones">Cotizaciones</a>
+        </div>
+      </div>
+
+      <div class="erp-nav-item">
+        <a href="/erp/vehiculos" class="<%= _section === 'vehiculos' ? 'active' : '' %>">Inventario ▾</a>
+        <div class="erp-nav-dropdown">
+          <% if (_erpActor && _erpActor.canCompras) { %>
+            <a href="/erp/vehicles/new">🚗 Meter auto</a>
+          <% } %>
+          <a href="/erp/vehiculos">Visualizar inventario</a>
+        </div>
+      </div>
+
+      <a href="/erp/clientes" class="<%= _section === 'clientes' ? 'active' : '' %>">Clientes</a>
       <% if (_erpActor && _erpActor.erpPlan === 'plus' && _erpActor.canManageEmployees) { %>
         <a href="/erp/empleados" class="<%= _section === 'empleados' ? 'active' : '' %>">Empleados</a>
       <% } %>
       <% if (_erpActor && _erpActor.canManageEmployees) { %>
         <a href="/erp/reportes" class="<%= _section === 'reportes' ? 'active' : '' %>">Reportes</a>
+        <a href="/erp/configuracion" class="<%= _section === 'configuracion' ? 'active' : '' %>">Configuración</a>
       <% } %>
     </nav>
+
+    <form method="GET" action="/erp/buscar" class="erp-search">
+      <input type="text" name="q" value="<%= _searchQ %>" placeholder="Buscar inventario, clientes, cotizaciones, ventas..." />
+      <button type="submit" title="Buscar">🔎</button>
+    </form>
+
     <div class="erp-topbar-user">
       <% if (_erpActor) { %>
         <span><%= _erpActor.name %></span>

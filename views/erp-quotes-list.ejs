@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Cotizaciones — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <a href="/erp/ventas" class="back-link">&larr; Volver a Ventas</a>
+    <div class="page-header">
+      <h1>Cotizaciones</h1>
+      <% if (canVentas) { %>
+        <a href="/erp/cotizaciones/new" class="btn-primary">+ Nueva cotización</a>
+      <% } %>
+    </div>
+    <p class="subtitle">Cotiza piezas de un vehículo para un cliente; conviértela en venta cuando la acepte.</p>
+
+    <div class="crm-filters">
+      <a href="/erp/cotizaciones" class="<%= statusFilter === '' ? 'active' : '' %>">Todas</a>
+      <a href="/erp/cotizaciones?status=abierta" class="<%= statusFilter === 'abierta' ? 'active' : '' %>">Abiertas</a>
+      <a href="/erp/cotizaciones?status=convertida" class="<%= statusFilter === 'convertida' ? 'active' : '' %>">Convertidas</a>
+      <a href="/erp/cotizaciones?status=rechazada" class="<%= statusFilter === 'rechazada' ? 'active' : '' %>">Rechazadas</a>
+    </div>
+
+    <% if (quotes.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no tienes cotizaciones<%= statusFilter ? ' con este estado' : '' %>.</p>
+        <% if (canVentas) { %>
+          <a href="/erp/cotizaciones/new" class="btn-primary">Crear mi primera cotización</a>
+        <% } %>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Vehículo</th>
+            <th>Cliente</th>
+            <th>Total</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% quotes.forEach(function(q) { %>
+            <tr onclick="window.location='/erp/cotizaciones/<%= q.id %>'" style="cursor:pointer;">
+              <td><strong><%= q.folio %></strong></td>
+              <td class="muted"><%= q.brand %> <%= q.model %> <%= q.year || '' %></td>
+              <td class="muted"><%= q.client_name || '—' %></td>
+              <td>$<%= Number(q.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+              <td><span class="status-badge status-<%= q.status %>"><%= q.status %></span></td>
+              <td class="muted small"><%= q.created_at %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

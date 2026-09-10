@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Configuración — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
+    <h1>Configuración</h1>
+    <p class="subtitle">Ajustes generales de este YonkSuite.</p>
+
+    <div class="campaign-grid">
+      <a href="/erp/configuracion/empresa" class="campaign-card">
+        <h3>🏢 Empresa</h3>
+        <p class="muted small">Nombre, dirección, teléfono, logo, colores y datos fiscales para tus documentos.</p>
+      </a>
+      <a href="/erp/configuracion/transacciones" class="campaign-card">
+        <h3>🔢 Configuración de transacciones</h3>
+        <p class="muted small">Prefijo y número consecutivo para Clientes, Cotizaciones y Ventas.</p>
+      </a>
+      <a href="/erp/configuracion/categorias" class="campaign-card">
+        <h3>🏷️ Categorías de piezas</h3>
+        <p class="muted small">Personaliza las categorías que aparecen al dar de alta una pieza.</p>
+      </a>
+    </div>
+  </main>
+</body>
+</html>

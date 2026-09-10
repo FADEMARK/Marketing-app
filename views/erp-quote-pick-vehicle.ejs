@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nueva cotización — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'cotizaciones' }) %>
+
+  <main class="page">
+    <a href="/erp/cotizaciones" class="back-link">&larr; Volver a Cotizaciones</a>
+    <h1>Nueva cotización</h1>
+    <p class="subtitle">Primero elige de qué vehículo vas a cotizar piezas.</p>
+
+    <form method="GET" action="/erp/cotizaciones/new" class="card-form" style="margin-bottom:16px;">
+      <label>Buscar vehículo
+        <input type="text" name="q" value="<%= searchQuery %>" placeholder="Marca, modelo, año..." />
+      </label>
+      <button type="submit" class="btn-primary full-width">🔎 Buscar</button>
+    </form>
+
+    <% if (vehicles.length === 0) { %>
+      <div class="empty-state"><p>No encontramos vehículos<%= searchQuery ? ' que coincidan con la búsqueda' : '' %>.</p></div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead><tr><th>Vehículo</th><th>Piezas disponibles</th><th></th></tr></thead>
+        <tbody>
+          <% vehicles.forEach(function(v) { %>
+            <tr>
+              <td><strong><%= v.brand %> <%= v.model %> <%= v.year || '' %></strong></td>
+              <td class="muted"><%= v.available_count %></td>
+              <td>
+                <% if (v.available_count > 0) { %>
+                  <a href="/erp/cotizaciones/new?vehicle_id=<%= v.id %>" class="btn-secondary">Cotizar</a>
+                <% } else { %>
+                  <span class="muted small">Sin piezas disponibles</span>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

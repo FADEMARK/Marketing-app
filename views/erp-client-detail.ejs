@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= erpClient.name %> — Clientes YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'clientes' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/clientes" class="back-link">&larr; Volver a Clientes</a>
+
+    <div class="page-header">
+      <h1><%= erpClient.name %></h1>
+      <span class="muted small"><%= erpClient.folio %></span>
+    </div>
+    <p class="muted small">Cliente registrado el <%= erpClient.created_at %></p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+
+    <% if (canEdit) { %>
+    <div class="detail-box">
+      <h3>Datos del cliente</h3>
+      <form method="POST" action="/erp/clientes/<%= erpClient.id %>/update" class="card-form">
+        <label>Nombre
+          <input type="text" name="name" required value="<%= erpClient.name %>" />
+        </label>
+
+        <div class="two-col">
+          <label>Teléfono
+            <input type="text" name="phone" value="<%= erpClient.phone || '' %>" />
+          </label>
+          <label>Correo
+            <input type="email" name="email" value="<%= erpClient.email || '' %>" />
+          </label>
+        </div>
+
+        <label>Dirección
+          <input type="text" name="address" value="<%= erpClient.address || '' %>" />
+        </label>
+
+        <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+          <p class="muted small" style="margin-top:0;">Datos fiscales (opcional):</p>
+          <div class="two-col">
+            <label>RFC
+              <input type="text" name="tax_id" value="<%= erpClient.tax_id || '' %>" />
+            </label>
+            <label>Razón social
+              <input type="text" name="tax_legal_name" value="<%= erpClient.tax_legal_name || '' %>" />
+            </label>
+          </div>
+        </div>
+
+        <label>Notas
+          <textarea name="notes" rows="3"><%= erpClient.notes || '' %></textarea>
+        </label>
+
+        <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+      </form>
+
+      <form method="POST" action="/erp/clientes/<%= erpClient.id %>/delete" style="margin-top:12px;"
+            onsubmit="return confirm('¿Borrar este cliente? No se puede deshacer.');">
+        <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar cliente</button>
+      </form>
+    </div>
+    <% } %>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Cotizaciones</h3>
+      <% if (quotes.length === 0) { %>
+        <p class="muted small">Este cliente todavía no tiene cotizaciones.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Folio</th><th>Estado</th><th>Fecha</th></tr></thead>
+          <tbody>
+            <% quotes.forEach(function(q) { %>
+              <tr onclick="window.location='/erp/cotizaciones/<%= q.id %>'" style="cursor:pointer;">
+                <td><strong><%= q.folio %></strong></td>
+                <td><span class="status-badge status-<%= q.status %>"><%= q.status %></span></td>
+                <td class="muted small"><%= q.created_at %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Ventas</h3>
+      <% if (sales.length === 0) { %>
+        <p class="muted small">Este cliente todavía no tiene ventas.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Folio</th><th>Total</th><th>Fecha</th></tr></thead>
+          <tbody>
+            <% sales.forEach(function(s) { %>
+              <tr onclick="window.location='/erp/vehicles/<%= s.vehicle_id %>'" style="cursor:pointer;">
+                <td><strong><%= s.folio || ('#' + s.id) %></strong></td>
+                <td>$<%= Number(s.sale_total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+                <td class="muted small"><%= s.sale_date %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

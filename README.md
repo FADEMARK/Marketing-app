@@ -263,20 +263,34 @@ Independiente del check "Módulo ERP" (que solo prende/apaga el acceso), cada ne
 
   Cada cuenta de empleado también tiene sesión única (si el mismo empleado entra desde otro dispositivo, la sesión vieja de ESE empleado se cierra). Si el negocio baja de Plus a Standard, las cuentas de empleado pierden acceso al instante (no necesitan cerrar sesión, se les corta como al resto de módulos).
 
-### La barra de YonkSuite: logo y color del propio negocio
+### La barra de YonkSuite: menú con desplegables, búsqueda global y marca propia
 
-Una vez adentro, YonkSuite se ve con la identidad del negocio, no con el logo genérico de MarketingHub: la barra superior usa el **logo** y el **color de marca** (`brand_color_primary`) que el negocio ya haya capturado en "Mi negocio" — si no capturó ninguno, cae a un azul oscuro por default. El menú horizontal es simple a propósito (Dashboard, Vehículos, Empleados si el plan es Plus, Reportes si el rol tiene acceso), inspirado en la barra de apps tipo NetSuite: el logo a la izquierda, las secciones al centro, el usuario y "Cerrar sesión" a la derecha.
+Una vez adentro, YonkSuite se ve con la identidad del negocio, no con el logo genérico de MarketingHub: la barra superior usa el **logo** y el **color de marca** que el negocio capturó en **Configuración → Empresa** (dentro del propio YonkSuite — así un empleado con rol Admin puede mantenerlo sin necesitar acceso a MarketingHub) — si no capturó ninguno, cae a un azul oscuro por default.
+
+El menú horizontal (Dashboard, Ventas, Inventario, Clientes, Empleados si el plan es Plus, Reportes y Configuración si el rol tiene acceso) está inspirado en la barra de apps tipo NetSuite:
+
+- **Ventas** e **Inventario** son desplegables (al pasar el mouse, o con un tap directo en móvil que lleva a la lista): Ventas abre a "Nueva venta" / "Ver ventas" / "Cotizaciones"; Inventario abre a "Meter auto" / "Visualizar inventario". Cada opción del desplegable solo aparece si el rol de quien está conectado tiene permiso para esa acción.
+- **Búsqueda global**: el cuadro de la barra (`/erp/buscar`) busca al mismo tiempo en Inventario, Clientes, Cotizaciones y Ventas — escribe una placa, un nombre de cliente o un folio y aparece agrupado por sección, sin importar en cuál de las cuatro está.
 
 ### El flujo del día a día
 
-1. **Alta del vehículo** (`/erp/vehicles/new`, requiere permiso de Compras): marca, modelo, año, VIN, placa, color, precio de compra, fecha de compra, notas, y hasta 8 fotos (se comprimen automáticamente a JPEG al subirlas).
-2. **Búsqueda de stock**: tanto el dashboard (`/erp`) como el inventario (`/erp/vehiculos`) tienen un buscador de texto libre — escribe algo como "camioneta Ford 2016" y encuentra coincidencias sin importar el orden de las palabras ni en qué campo estén (marca, modelo, año, VIN o placa).
-3. **Piezas**: desde el detalle del vehículo se registran las piezas que salen de él (motor, transmisión, suspensión y dirección, frenos, eléctrico, carrocería, interior, llantas y rines, u otro), cada una con un precio sugerido opcional y un **estado físico** (Bueno / Deteriorado / Malo) que ayuda a decidir a qué precio venderla.
-4. **Venta** (requiere permiso de Ventas): se registra en el detalle de ESE vehículo — seleccionas qué piezas se vendieron y confirmas el precio real de cada una. La venta queda ligada a quién la registró (el nombre de la sesión de YonkSuite activa en ese momento — dueño o empleado), y esto se muestra como "Vendido por" en el historial. Las piezas vendidas quedan marcadas como tal y ya no se pueden editar ni borrar (es un registro financiero). Las ventas se pueden **cancelar** si se registraron por error: las piezas regresan a "Disponible".
-5. **Estado de cuenta por vehículo**: precio de compra, cuánto se ha vendido de él hasta ahora, y la ganancia o pérdida resultante — sin necesitar que el vehículo esté completamente vendido para verlo.
-6. **Dar de baja el stock**: cuando ya no queda nada que vender de un vehículo, se marca manualmente como "Agotado" (botón "Marcar como Agotado" en el detalle del vehículo, se puede reactivar si hace falta). Un vehículo con ventas registradas no se puede borrar —por ser un registro financiero—, solo marcarse como agotado. Cada pieza también se puede marcar como "Desechada" si resultó dañada/sin valor de venta.
+1. **Alta del vehículo** (`/erp/vehicles/new`, vía "Inventario → Meter auto", requiere permiso de Compras): marca, modelo, año, VIN, placa, color, precio de compra, fecha de compra, notas, y hasta 8 fotos (se comprimen automáticamente a JPEG al subirlas).
+2. **Búsqueda de stock**: tanto el dashboard (`/erp`) como el inventario (`/erp/vehiculos`) tienen un buscador de texto libre — escribe algo como "camioneta Ford 2016" y encuentra coincidencias sin importar el orden de las palabras ni en qué campo estén (marca, modelo, año, VIN o placa). La búsqueda global de la barra superior hace lo mismo pero cruzando también Clientes/Cotizaciones/Ventas.
+3. **Piezas**: desde el detalle del vehículo se registran las piezas que salen de él, cada una con categoría (las categorías se pueden personalizar desde Configuración, ver abajo), precio sugerido opcional y un **estado físico** (Bueno / Deteriorado / Malo) que ayuda a decidir a qué precio venderla.
+4. **Cotizar o vender** (requiere permiso de Ventas): desde "Ventas → Nueva venta" o "Ventas → Cotizaciones" (o los accesos directos dentro del detalle del vehículo) eliges un vehículo, marcas qué piezas y a qué precio, y capturas el cliente — que se autocompleta si ya existe (por nombre o teléfono) o se da de alta al vuelo si es nuevo, sin salir del formulario. Una **cotización** solo reserva las piezas (quedan en "Reservada", no se pueden vender a alguien más mientras tanto) y genera su propio folio (ej. `COT-0001`); un botón **"Convertir en venta"** la vuelve una venta real con un clic, sin volver a capturar nada, generando el folio de venta (ej. `VTA-0001`). Si el cliente no la acepta, "Rechazar" regresa las piezas a "Disponible". Una **venta directa** (sin pasar por cotización) genera su folio de una vez. En ambos casos la venta queda ligada a quién la hizo (el nombre de la sesión de YonkSuite activa — dueño o empleado), visible como "Vendido por" en el historial del vehículo y en los reportes.
+5. **Clientes**: un CRM propio de YonkSuite (`/erp/clientes`, separado del CRM de Marketing) con folio consecutivo por cliente, datos fiscales opcionales, y el historial de cotizaciones/ventas de cada uno.
+6. **Estado de cuenta por vehículo**: precio de compra, cuánto se ha vendido de él hasta ahora, y la ganancia o pérdida resultante — sin necesitar que el vehículo esté completamente vendido para verlo.
+7. **Dar de baja el stock**: cuando ya no queda nada que vender de un vehículo, se marca manualmente como "Agotado" (botón "Marcar como Agotado" en el detalle del vehículo, se puede reactivar si hace falta). Un vehículo con ventas registradas no se puede borrar —por ser un registro financiero—, solo marcarse como agotado. Cada pieza también se puede marcar como "Desechada" si resultó dañada/sin valor de venta.
 
-Todo queda aislado por negocio y todo el flujo de venta corre dentro de una transacción de base de datos, para que una venta a medio registrar nunca deje piezas en un estado inconsistente.
+Todo queda aislado por negocio y todo el flujo de venta/cotización corre dentro de una transacción de base de datos, para que una operación a medio registrar nunca deje piezas en un estado inconsistente ni repita un folio.
+
+### Configuración (`/erp/configuracion`)
+
+Gateada igual que Reportes (el dueño siempre entra; de los roles de empleado, solo Admin), porque son ajustes de todo el negocio, no de una venta o vehículo en particular:
+
+- **Empresa**: nombre, dirección, teléfono, logo, colores de marca (los que usa la barra de YonkSuite) y datos fiscales (RFC/razón social) propios de YonkSuite para tus cotizaciones y ventas.
+- **Configuración de transacciones**: el prefijo y el siguiente número consecutivo de Clientes, Cotizaciones y Ventas (ej. cambiar de `VTA-0001` a `FAC-0100`) — cambiarlo solo afecta a los folios nuevos, nunca reescribe los que ya existen.
+- **Categorías de piezas**: la lista de categorías que aparece al dar de alta una pieza viene con un default (Motor, Transmisión, Frenos, etc.), pero cada negocio puede reemplazarla por la suya — en cuanto agrega una categoría propia, esa lista sustituye por completo a la de default para ese negocio (ver `services/erpPartCategories.js`).
 
 ### Reportes (`/erp/reportes`)
 
@@ -311,11 +325,12 @@ Dado que la idea es venderlo como producto aparte (estilo NetSuite, pero mucho m
 
 ### Próximos pasos sugeridos para YonkSuite
 
+- **Cotizaciones/ventas con piezas de varios vehículos en un mismo ticket**: hoy una cotización o venta queda ligada a UN solo vehículo (igual que ya funcionaba el registro de ventas) — cubre el caso normal de un yonke, pero si un cliente quiere piezas de dos autos distintos en la misma nota, hoy son dos documentos separados. Ampliar esto requeriría permitir que `erp_sale_items`/`erp_quote_items` referencien piezas de distintos vehículos bajo un mismo folio.
 - **Tienda en línea**: el modelo de datos ya quedó listo para esto (las piezas ya tienen categoría, precio, estado físico y el vehículo ya tiene fotos) — el siguiente paso natural sería una página pública de catálogo por yonke (sin necesitar login) mostrando las piezas "Disponibles", para que el público las vea y contacte o compre. Vale la pena definir aparte si el pago se procesa en línea (Stripe/Mercado Pago) o solo se usa como escaparate para generar el contacto.
 - **Fotos por pieza** (hoy las fotos son del vehículo completo) — importante si se construye la tienda en línea, ya que el comprador de una pieza específica quiere verla a ella, no solo el auto completo.
-- **Reportes**: un dashboard con ganancia acumulada por periodo, piezas más vendidas por categoría, etc. — con los datos ya estructurados como quedaron (erp_sales/erp_sale_items), son consultas SQL directas, no requiere cambiar el modelo de datos.
-- **Historial de auditoría por empleado**: hoy se sabe qué rol tiene cada empleado, pero no queda un registro de "quién exactamente dio de alta esta pieza o esta venta" — útil si el yonke crece y quiere rastrear responsabilidad por captura.
-- **Facturación electrónica real (CFDI)** si en algún momento se vuelve un requisito — se dejó la puerta abierta guardando los datos fiscales del cliente en el CRM, pero conectar un PAC (proveedor autorizado del SAT) es un desarrollo aparte, con costo recurrente propio del PAC.
+- **PDF de cotización/venta**: hoy folio, cliente y piezas quedan en pantalla; imprimirlos como PDF con el logo/color de la empresa (reutilizando `services/pdfBuilder.js`, ya usado en Documentos) sería el siguiente paso natural para entregarle algo al cliente.
+- **Historial de auditoría por empleado**: hoy se sabe qué rol tiene cada empleado, pero no queda un registro de "quién exactamente dio de alta esta pieza" (sí queda para ventas, con "Vendido por") — útil si el yonke crece y quiere rastrear responsabilidad por captura.
+- **Facturación electrónica real (CFDI)** si en algún momento se vuelve un requisito — se dejó la puerta abierta guardando los datos fiscales del cliente/negocio, pero conectar un PAC (proveedor autorizado del SAT) es un desarrollo aparte, con costo recurrente propio del PAC.
 
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 
@@ -340,6 +355,8 @@ marketing-app/
 │   ├── backgroundRemoval.js # quitar fondo de imágenes (self-hosted, sin licencia AGPL)
 │   ├── canva.js             # genera el diseño vía Canva Connect API
 │   ├── erpStatus.js         # constantes de YonkSuite (estados, planes, roles/permisos)
+│   ├── erpNumbering.js      # folios consecutivos de YonkSuite (Cliente/Cotización/Venta)
+│   ├── erpPartCategories.js # categorías de piezas configurables por negocio
 │   ├── facebook.js          # publica en Facebook vía Meta Graph API
 │   ├── middleware.js        # protección de rutas (negocio / admin / ERP por rol)
 │   └── status.js            # estados posibles de una campaña

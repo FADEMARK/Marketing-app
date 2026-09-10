@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Clientes — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
+    <div class="page-header">
+      <h1>Clientes</h1>
+      <a href="/erp/clientes/new" class="btn-primary">+ Nuevo cliente</a>
+    </div>
+    <p class="subtitle">CRM propio de YonkSuite. Se llenan solos al capturar una cotización o venta nueva.</p>
+
+    <form method="GET" action="/erp/clientes" class="card-form" style="margin-bottom:16px;">
+      <label>Buscar
+        <input type="text" name="q" value="<%= searchQuery %>" placeholder="Nombre, teléfono, correo o folio..." />
+      </label>
+      <button type="submit" class="btn-primary full-width">🔎 Buscar</button>
+    </form>
+
+    <% if (clients.length === 0) { %>
+      <div class="empty-state">
+        <p>
+          <% if (searchQuery) { %>
+            No encontramos clientes que coincidan con "<%= searchQuery %>".
+          <% } else { %>
+            Todavía no tienes clientes registrados.
+          <% } %>
+        </p>
+        <a href="/erp/clientes/new" class="btn-primary">Agregar mi primer cliente</a>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Correo</th>
+            <th>Registrado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% clients.forEach(function(c) { %>
+            <tr onclick="window.location='/erp/clientes/<%= c.id %>'" style="cursor:pointer;">
+              <td class="muted small"><%= c.folio || '—' %></td>
+              <td><strong><%= c.name %></strong></td>
+              <td class="muted"><%= c.phone || '—' %></td>
+              <td class="muted"><%= c.email || '—' %></td>
+              <td class="muted small"><%= c.created_at %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

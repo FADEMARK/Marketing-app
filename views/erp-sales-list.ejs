@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Ventas — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
+    <div class="page-header">
+      <h1>Ventas</h1>
+      <% if (canVentas) { %>
+        <a href="/erp/ventas/new" class="btn-primary">+ Nueva venta</a>
+      <% } %>
+    </div>
+    <p class="subtitle">
+      Todas las ventas registradas, con folio, cliente y quién la hizo.
+      <a href="/erp/cotizaciones">Ver cotizaciones →</a>
+    </p>
+
+    <% if (sales.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no tienes ventas registradas.</p>
+        <% if (canVentas) { %>
+          <a href="/erp/ventas/new" class="btn-primary">Registrar mi primera venta</a>
+        <% } %>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Vehículo</th>
+            <th>Cliente</th>
+            <th>Total</th>
+            <th>Vendió</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% sales.forEach(function(s) { %>
+            <tr onclick="window.location='/erp/vehicles/<%= s.vehicle_id %>'" style="cursor:pointer;">
+              <td><strong><%= s.folio || ('#' + s.id) %></strong></td>
+              <td class="muted"><%= s.brand %> <%= s.model %> <%= s.year || '' %></td>
+              <td class="muted"><%= s.client_name || s.buyer_name || '—' %></td>
+              <td>$<%= Number(s.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+              <td class="muted small"><%= s.sold_by_name || '—' %></td>
+              <td class="muted small"><%= s.sale_date %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

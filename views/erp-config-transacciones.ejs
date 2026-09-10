@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Configuración de transacciones — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="form-page">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Configuración de transacciones</h1>
+    <p class="muted small">
+      Define el prefijo y el siguiente número consecutivo para identificar cada Cliente, Cotización y Venta
+      (por ejemplo, VTA-0001, VTA-0002...). Cambiar el número solo afecta a los folios nuevos.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/erp/configuracion/transacciones" class="card-form">
+      <div style="border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+        <h3 style="margin-top:0;">Clientes</h3>
+        <div class="two-col">
+          <label>Prefijo
+            <input type="text" name="erp_client_prefix" value="<%= business.erp_client_prefix %>" maxlength="10" />
+          </label>
+          <label>Siguiente número
+            <input type="number" name="erp_client_next_number" min="1" value="<%= business.erp_client_next_number %>" />
+          </label>
+        </div>
+      </div>
+
+      <div style="border-bottom: 1px solid var(--border); padding-bottom: 12px; padding-top: 4px;">
+        <h3 style="margin-top:0;">Cotizaciones</h3>
+        <div class="two-col">
+          <label>Prefijo
+            <input type="text" name="erp_quote_prefix" value="<%= business.erp_quote_prefix %>" maxlength="10" />
+          </label>
+          <label>Siguiente número
+            <input type="number" name="erp_quote_next_number" min="1" value="<%= business.erp_quote_next_number %>" />
+          </label>
+        </div>
+      </div>
+
+      <div style="padding-top: 4px;">
+        <h3 style="margin-top:0;">Ventas</h3>
+        <div class="two-col">
+          <label>Prefijo
+            <input type="text" name="erp_sale_prefix" value="<%= business.erp_sale_prefix %>" maxlength="10" />
+          </label>
+          <label>Siguiente número
+            <input type="number" name="erp_sale_next_number" min="1" value="<%= business.erp_sale_next_number %>" />
+          </label>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+    </form>
+  </main>
+</body>
+</html>

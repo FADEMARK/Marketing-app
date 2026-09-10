@@ -185,4 +185,18 @@ function requirePermission(permission) {
   };
 }
 
-module.exports = { requireBusinessAuth, requireAdminAuth, requireErpAuth, requirePermission };
+// Uso: requireAnyPermission("compras", "ventas") — pasa si el actor tiene
+// AL MENOS UNO de los permisos listados. Útil para pantallas compartidas
+// (como Clientes) que necesita cualquiera que atienda mostrador, sea de
+// compras o de ventas, a diferencia de requirePermission() que exige uno
+// específico.
+function requireAnyPermission(...permissions) {
+  return function (req, res, next) {
+    if (!req.erpActor) return res.status(500).send("Falta requireErpAuth antes de requireAnyPermission.");
+    if (req.erpActor.type === "owner") return next();
+    if (permissions.some((p) => roleHasPermission(req.erpActor.role, p))) return next();
+    return res.status(403).render("erp-forbidden", { erpActor: req.erpActor, permission: permissions.join(" o ") });
+  };
+}
+
+module.exports = { requireBusinessAuth, requireAdminAuth, requireErpAuth, requirePermission, requireAnyPermission };

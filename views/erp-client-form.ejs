@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nuevo cliente — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'clientes' }) %>
+
+  <main class="form-page">
+    <a href="/erp/clientes" class="back-link">&larr; Volver a Clientes</a>
+    <h1>Nuevo cliente</h1>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/erp/clientes" class="card-form">
+      <label>Nombre
+        <input type="text" name="name" required value="<%= form.name || '' %>" />
+      </label>
+
+      <div class="two-col">
+        <label>Teléfono
+          <input type="text" name="phone" value="<%= form.phone || '' %>" />
+        </label>
+        <label>Correo
+          <input type="email" name="email" value="<%= form.email || '' %>" />
+        </label>
+      </div>
+
+      <label>Dirección
+        <input type="text" name="address" value="<%= form.address || '' %>" />
+      </label>
+
+      <div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px;">
+        <p class="muted small" style="margin-top:0;">
+          Datos fiscales (opcional, para cotizaciones/ventas — no se factura ante el SAT desde aquí):
+        </p>
+        <div class="two-col">
+          <label>RFC
+            <input type="text" name="tax_id" value="<%= form.tax_id || '' %>" />
+          </label>
+          <label>Razón social
+            <input type="text" name="tax_legal_name" value="<%= form.tax_legal_name || '' %>" />
+          </label>
+        </div>
+      </div>
+
+      <label>Notas
+        <textarea name="notes" rows="3"><%= form.notes || '' %></textarea>
+      </label>
+
+      <button type="submit" class="btn-primary full-width">Guardar cliente</button>
+    </form>
+  </main>
+</body>
+</html>
