@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= transaction.folio %> — <%= title %></title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page narrow">
+    <a href="/erp/core/<%= flow %>/<%= docType %>" class="back-link">&larr; Volver a <%= title %></a>
+
+    <div class="page-header">
+      <h1><%= title %> <%= transaction.folio %></h1>
+      <span class="status-badge status-<%= transaction.status %>"><%= transaction.status %></span>
+    </div>
+    <p class="muted small">
+      <%= flow === 'ventas' ? 'Cliente' : 'Proveedor' %>:
+      <strong><%= transaction.client_name || transaction.vendor_name || transaction.entity_name_snapshot || '—' %></strong>
+      · Creado el <%= transaction.created_at %>
+      <% if (transaction.location_name) { %> · Ubicación: <%= transaction.location_name %><% } %>
+      <% if (transaction.currency_code) { %> · Moneda: <%= transaction.currency_code %> (tipo de cambio <%= transaction.exchange_rate %>)<% } %>
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <% if (transaction.related_transaction_id) { %>
+      <p class="muted small">
+        Generado a partir de <a href="/erp/core/<%= flow %>/<%= transaction.related_doc_type %>/<%= transaction.related_transaction_id %>"><%= transaction.related_folio %></a>.
+      </p>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Líneas</h3>
+      <table class="admin-table">
+        <thead><tr><th>Artículo</th><th>Cantidad</th><th>Precio</th><th>Impuesto</th><th>Importe</th></tr></thead>
+        <tbody>
+          <% lines.forEach(function(l) { %>
+            <tr>
+              <td><%= l.item_name || l.description || '—' %> <span class="muted small"><%= l.item_sku ? '(' + l.item_sku + ')' : '' %></span></td>
+              <td><%= l.quantity %> <%= l.item_unit || '' %></td>
+              <td>$<%= Number(l.unit_price).toFixed(2) %></td>
+              <td class="muted small"><%= Number(l.tax_rate).toString() %>% ($<%= Number(l.tax_amount).toFixed(2) %>)</td>
+              <td>$<%= Number(l.amount).toFixed(2) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+      <div style="text-align:right; margin-top:10px;">
+        <p class="muted small" style="margin:2px 0;">Subtotal: $<%= Number(transaction.subtotal).toLocaleString('es-MX', {minimumFractionDigits:2}) %></p>
+        <p class="muted small" style="margin:2px 0;">Impuestos: $<%= Number(transaction.tax_total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></p>
+        <p style="margin:2px 0;"><strong>Total: $<%= Number(transaction.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></p>
+      </div>
+    </div>
+
+    <% if (transaction.notes) { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <h3>Notas</h3>
+        <p class="muted small"><%= transaction.notes %></p>
+      </div>
+    <% } %>
+
+    <% if (derived.length > 0) { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <h3>Documentos generados a partir de este</h3>
+        <table class="admin-table">
+          <thead><tr><th>Folio</th><th>Tipo</th><th>Total</th><th>Estado</th></tr></thead>
+          <tbody>
+            <% derived.forEach(function(d) { %>
+              <tr onclick="window.location='/erp/core/<%= flow %>/<%= d.doc_type %>/<%= d.id %>'" style="cursor:pointer;">
+                <td><strong><%= d.folio %></strong></td>
+                <td class="muted small"><%= d.doc_type %></td>
+                <td>$<%= Number(d.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+                <td><span class="status-badge status-<%= d.status %>"><%= d.status %></span></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      </div>
+    <% } %>
+
+    <% if (canEdit && transaction.status === 'abierta') { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <% if (nextDocType) { %>
+          <h3>Convertir a <%= nextTitle %></h3>
+          <form method="POST" action="/erp/core/<%= flow %>/<%= docType %>/<%= transaction.id %>/convertir" class="card-form">
+            <% if (nextIsExecution) { %>
+              <label>Ubicación (obligatoria para ejecutar el pedido)
+                <select name="location_id" required>
+                  <option value="">— Elige una ubicación —</option>
+                  <% locations.forEach(function(loc) { %>
+                    <option value="<%= loc.id %>" <%= transaction.location_id === loc.id ? 'selected' : '' %>><%= loc.name %></option>
+                  <% }); %>
+                </select>
+              </label>
+              <p class="muted small">
+                <%= flow === 'ventas' ? 'Al ejecutar, la existencia de los artículos inventariables baja en esta ubicación.' : 'Al ejecutar, la existencia de los artículos inventariables sube en esta ubicación.' %>
+              </p>
+            <% } %>
+            <button type="submit" class="btn-primary full-width">Convertir a <%= nextTitle %></button>
+          </form>
+        <% } else { %>
+          <p class="muted small">Este es el último documento de la cadena.</p>
+        <% } %>
+        <form method="POST" action="/erp/core/<%= flow %>/<%= docType %>/<%= transaction.id %>/cancelar" style="margin-top:12px;"
+              onsubmit="return confirm('¿Cancelar este documento? No se puede deshacer.');">
+          <button type="submit" class="link-button" style="color:#B3261E;">Cancelar documento</button>
+        </form>
+      </div>
+    <% } %>
+  </main>
+</body>
+</html>

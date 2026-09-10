@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Estado de cuenta — <%= erpClient.name %></title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'clientes' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/clientes/<%= erpClient.id %>" class="back-link">&larr; Volver a <%= erpClient.name %></a>
+    <h1>Estado de cuenta</h1>
+    <p class="muted small"><%= erpClient.name %> · <%= erpClient.folio %></p>
+
+    <div class="stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:20px;">
+      <div class="stat-box">
+        <span class="stat-label">Total facturado</span>
+        <span class="stat-value">$<%= totalInvoiced.toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Total pagado</span>
+        <span class="stat-value">$<%= totalPaid.toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-label">Saldo pendiente</span>
+        <span class="stat-value" style="<%= balance > 0 ? 'color:#B3261E;' : 'color:#1E7A34;' %>">
+          $<%= balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %>
+        </span>
+      </div>
+    </div>
+
+    <div class="detail-box">
+      <h3>Movimientos</h3>
+      <% if (movements.length === 0) { %>
+        <p class="muted small">Este cliente todavía no tiene facturas ni pagos.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Fecha</th><th>Tipo</th><th>Referencia</th><th>Cargo</th><th>Abono</th><th>Saldo</th></tr></thead>
+          <tbody>
+            <% movements.forEach(function(m) { %>
+              <tr>
+                <td class="muted small"><%= new Date(m.date).toLocaleDateString('es-MX') %></td>
+                <td class="muted small"><%= m.type === 'factura' ? 'Factura' : 'Pago' %></td>
+                <td><%= m.label %></td>
+                <td><%= m.amount > 0 ? '$' + m.amount.toLocaleString('es-MX', {minimumFractionDigits:2}) : '—' %></td>
+                <td><%= m.amount < 0 ? '$' + Math.abs(m.amount).toLocaleString('es-MX', {minimumFractionDigits:2}) : '—' %></td>
+                <td><strong>$<%= m.balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %></strong></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

@@ -19,6 +19,103 @@
     <% if (saved) { %>
       <div class="alert alert-success">Cambios guardados.</div>
     <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <div class="detail-box" style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <h3 style="margin:0;">Saldo pendiente</h3>
+        <p class="muted small" style="margin:2px 0 0;">Facturado $<%= totalInvoiced.toLocaleString('es-MX', {minimumFractionDigits:2}) %> · Pagado $<%= totalPaid.toLocaleString('es-MX', {minimumFractionDigits:2}) %></p>
+      </div>
+      <div style="text-align:right;">
+        <span style="font-size:1.4rem; font-weight:600; <%= balance > 0 ? 'color:#B3261E;' : 'color:#1E7A34;' %>">
+          $<%= balance.toLocaleString('es-MX', {minimumFractionDigits:2}) %>
+        </span>
+        <p class="muted small" style="margin:2px 0 0;"><a href="/erp/clientes/<%= erpClient.id %>/estado-cuenta">Ver estado de cuenta &rarr;</a></p>
+      </div>
+    </div>
+
+    <% if (canEdit) { %>
+    <div class="detail-box" style="margin-bottom:20px;">
+      <h3>Aceptar pago</h3>
+      <form method="POST" action="/erp/clientes/<%= erpClient.id %>/pagos" class="card-form">
+        <div class="two-col">
+          <label>Monto
+            <input type="number" name="amount" step="0.01" min="0.01" required />
+          </label>
+          <label>Fecha
+            <input type="date" name="payment_date" />
+          </label>
+        </div>
+        <div class="two-col">
+          <label>Método
+            <select name="method">
+              <option value="efectivo">Efectivo</option>
+              <option value="transferencia">Transferencia</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="cheque">Cheque</option>
+              <option value="otro">Otro</option>
+            </select>
+          </label>
+          <label>Aplicar a factura (opcional)
+            <select name="applied_to_transaction_id">
+              <option value="">— Pago en cuenta (sin factura específica) —</option>
+              <% openInvoices.forEach(function(inv) { %>
+                <option value="<%= inv.id %>"><%= inv.folio %> — $<%= Number(inv.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></option>
+              <% }); %>
+            </select>
+          </label>
+        </div>
+        <label>Notas
+          <input type="text" name="notes" placeholder="Referencia, número de cheque, etc." />
+        </label>
+        <button type="submit" class="btn-primary full-width">Registrar pago</button>
+      </form>
+    </div>
+    <% } %>
+
+    <div class="detail-box" style="margin-bottom:20px;">
+      <h3>Documentos de Ventas (core)</h3>
+      <% if (coreTransactions.length === 0) { %>
+        <p class="muted small">Este cliente todavía no tiene cotizaciones/órdenes/facturas del core de Ventas.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Folio</th><th>Tipo</th><th>Total</th><th>Estado</th></tr></thead>
+          <tbody>
+            <% coreTransactions.forEach(function(t) { %>
+              <tr onclick="window.location='/erp/core/ventas/<%= t.doc_type %>/<%= t.id %>'" style="cursor:pointer;">
+                <td><strong><%= t.folio %></strong></td>
+                <td class="muted small"><%= DOC_TYPE_TITLES[t.doc_type] %></td>
+                <td>$<%= Number(t.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+                <td><span class="status-badge status-<%= t.status %>"><%= t.status %></span></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="detail-box" style="margin-bottom:20px;">
+      <h3>Pagos recibidos</h3>
+      <% if (payments.length === 0) { %>
+        <p class="muted small">Este cliente todavía no tiene pagos registrados.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Fecha</th><th>Monto</th><th>Método</th><th>Notas</th></tr></thead>
+          <tbody>
+            <% payments.forEach(function(p) { %>
+              <tr>
+                <td class="muted small"><%= p.payment_date %></td>
+                <td>$<%= Number(p.amount).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+                <td class="muted small"><%= p.method %></td>
+                <td class="muted small"><%= p.notes || '—' %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
 
     <% if (canEdit) { %>
     <div class="detail-box">

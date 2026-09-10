@@ -14,14 +14,20 @@
 // tap, aunque no se vea el desplegable.
 //
 // currentSection lo manda cada vista para resaltar la pestaña activa: uno de
-// "dashboard" | "ventas" | "cotizaciones" | "vehiculos" | "inventario" |
-// "clientes" | "proveedores" | "empleados" | "reportes" | "configuracion" | null.
+// "dashboard" | "core-ventas" | "core-compras" | "ventas" | "cotizaciones" |
+// "vehiculos" | "inventario" | "clientes" | "proveedores" | "empleados" |
+// "reportes" | "configuracion" | null.
 //
-// "Vehículos" (Meter auto/Visualizar inventario de vehículos) es del módulo
-// YonkSuite y solo aparece si moduleYonksuiteEnabled. "Inventario" (Artículos/
-// Ajuste/Visualizar/Ubicaciones) es del core genérico y SIEMPRE aparece,
-// tenga o no el negocio el módulo de vehículos — son catálogos distintos
-// (erp_items vs erp_vehicles/erp_parts) a propósito.
+// "Ventas ▾"/"Compras ▾" (core-ventas/core-compras) son el motor genérico de
+// erpTransactions (Cotización→Orden→Ejecución→Factura→Nota de crédito) y
+// SIEMPRE aparecen, tenga o no el negocio el módulo de vehículos. "Vehículos"
+// (Meter auto/Ventas de vehículos/Cotizaciones de vehículos) es del módulo
+// YonkSuite y solo aparece si moduleYonksuiteEnabled — es una cadena
+// completamente aparte (erp_vehicles/erp_parts/erp_sales/erp_quotes, NO
+// erp_transactions) porque nació antes del core genérico y sigue viva para
+// los negocios que sí son yonkes. "Inventario" (Artículos/Ajuste/Visualizar/
+// Ubicaciones) es del core genérico y también SIEMPRE aparece — son
+// catálogos distintos (erp_items vs erp_vehicles/erp_parts) a propósito.
 const _section = typeof currentSection !== "undefined" ? currentSection : null;
 const _erpActor = typeof erpActor !== "undefined" ? erpActor : null;
 const _searchQ = typeof searchGlobalQuery !== "undefined" ? searchGlobalQuery : "";
@@ -42,28 +48,28 @@ const _roleLabels = { owner: "Dueño", admin: "Admin", ventas: "Ventas", compras
     <nav class="erp-topnav">
       <a href="/erp" class="<%= _section === 'dashboard' ? 'active' : '' %>">Dashboard</a>
 
-      <% if (_erpActor && _erpActor.moduleYonksuiteEnabled) { %>
-        <div class="erp-nav-item">
-          <a href="/erp/ventas" class="<%= (_section === 'ventas' || _section === 'cotizaciones') ? 'active' : '' %>">Ventas ▾</a>
-          <div class="erp-nav-dropdown">
-            <% if (_erpActor.canVentas) { %>
-              <a href="/erp/ventas/new">🧾 Nueva venta</a>
-            <% } %>
-            <a href="/erp/ventas">Ver ventas</a>
-            <a href="/erp/cotizaciones">Cotizaciones</a>
-          </div>
+      <div class="erp-nav-item">
+        <a href="/erp/core/ventas" class="<%= _section === 'core-ventas' ? 'active' : '' %>">Ventas ▾</a>
+        <div class="erp-nav-dropdown">
+          <a href="/erp/core/ventas">Ver todo</a>
+          <a href="/erp/core/ventas/cotizacion">Cotizaciones</a>
+          <a href="/erp/core/ventas/orden_venta">Órdenes de venta</a>
+          <a href="/erp/core/ventas/ejecucion_venta">Ejecuciones de pedido</a>
+          <a href="/erp/core/ventas/factura_venta">Facturas</a>
+          <a href="/erp/core/ventas/nota_credito_venta">Notas de crédito</a>
         </div>
+      </div>
 
-        <div class="erp-nav-item">
-          <a href="/erp/vehiculos" class="<%= _section === 'vehiculos' ? 'active' : '' %>">Vehículos ▾</a>
-          <div class="erp-nav-dropdown">
-            <% if (_erpActor.canCompras) { %>
-              <a href="/erp/vehicles/new">🚗 Meter auto</a>
-            <% } %>
-            <a href="/erp/vehiculos">Visualizar inventario de vehículos</a>
-          </div>
+      <div class="erp-nav-item">
+        <a href="/erp/core/compras" class="<%= _section === 'core-compras' ? 'active' : '' %>">Compras ▾</a>
+        <div class="erp-nav-dropdown">
+          <a href="/erp/core/compras">Ver todo</a>
+          <a href="/erp/core/compras/orden_compra">Órdenes de compra</a>
+          <a href="/erp/core/compras/ejecucion_compra">Ejecuciones de pedido</a>
+          <a href="/erp/core/compras/factura_compra">Facturas</a>
+          <a href="/erp/core/compras/nota_credito_compra">Notas de crédito</a>
         </div>
-      <% } %>
+      </div>
 
       <div class="erp-nav-item">
         <a href="/erp/inventario" class="<%= _section === 'inventario' ? 'active' : '' %>">Inventario ▾</a>
@@ -76,6 +82,23 @@ const _roleLabels = { owner: "Dueño", admin: "Admin", ventas: "Ventas", compras
           <% } %>
         </div>
       </div>
+
+      <% if (_erpActor && _erpActor.moduleYonksuiteEnabled) { %>
+        <div class="erp-nav-item">
+          <a href="/erp/vehiculos" class="<%= (_section === 'vehiculos' || _section === 'ventas' || _section === 'cotizaciones') ? 'active' : '' %>">Vehículos ▾</a>
+          <div class="erp-nav-dropdown">
+            <% if (_erpActor.canCompras) { %>
+              <a href="/erp/vehicles/new">🚗 Meter auto</a>
+            <% } %>
+            <a href="/erp/vehiculos">Visualizar inventario de vehículos</a>
+            <% if (_erpActor.canVentas) { %>
+              <a href="/erp/ventas/new">🧾 Nueva venta de vehículo</a>
+            <% } %>
+            <a href="/erp/ventas">Ventas de vehículos</a>
+            <a href="/erp/cotizaciones">Cotizaciones de vehículos</a>
+          </div>
+        </div>
+      <% } %>
 
       <a href="/erp/clientes" class="<%= _section === 'clientes' ? 'active' : '' %>">Clientes</a>
       <a href="/erp/proveedores" class="<%= _section === 'proveedores' ? 'active' : '' %>">Proveedores</a>

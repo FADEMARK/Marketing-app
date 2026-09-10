@@ -11,6 +11,7 @@ Probado end-to-end: registro, login, creación de brief, generación automática
 - **Generación de copy**: por reglas (funciona sin configuración) o con IA vía OpenAI si defines `OPENAI_API_KEY`.
 - **Generación de diseño**: integración lista para Canva Connect API (autofill de una plantilla de marca). Si no está configurada, el brief simplemente queda en "En diseño" para que tu diseñador lo haga a mano y suba el resultado.
 - **Publicación en Facebook**: estructura lista para Meta Graph API, pero **sin configurar todavía** (ver guía abajo). Mientras tanto el flujo es manual: tu equipo publica y pega el link del post en el panel.
+- **ERP core** (`/erp`, módulo opcional): Ventas, Compras, Inventario, Clientes y Proveedores genéricos — sirve para cualquier giro de negocio, no solo yonkes. **YonkSuite** (control de vehículos siniestrados/piezas) es un add-on aparte sobre este core, para negocios que sí son yonkes. Ver la sección "ERP core" más abajo para el detalle completo.
 
 ## Requisitos
 
@@ -222,13 +223,15 @@ Costo: igual de bajo que las otras ayudas de Claude — un documento típico (~2
 
 Ojo con el costo cuando el reintento automático entra en acción: cada intento repite la generación con Gemini/OpenAI (que tiene su propio costo aparte) más una llamada de enriquecer + revisar con Claude, así que en el peor caso (3 intentos seguidos fallidos) el gasto de esa publicación se multiplica hasta por 3. En la práctica es poco frecuente que agote los 3 intentos. Puedes bajar `AI_IMAGE_MAX_ATTEMPTS` a 1 o 2 si prefieres priorizar costo sobre insistencia.
 
-## Módulos por negocio: cómo activar/desactivar CRM y ERP
+## Módulos por negocio: cómo activar/desactivar CRM, ERP y YonkSuite
 
-A partir de esta versión, MarketingHub deja de ser solo "marketing" — es una plataforma con **módulos opcionales** que se activan por negocio, pensada para revenderse por partes. Marketing (crear publicaciones, generar copy/imagen, publicar en Facebook) es el producto base y siempre está disponible. CRM y ERP-Yonkes son módulos aparte que tu equipo activa o desactiva desde `/admin/businesses` con un check por negocio — el negocio mismo no se puede autoactivar un módulo nuevo, así queda claro qué le vendiste a cada cliente.
+A partir de esta versión, MarketingHub deja de ser solo "marketing" — es una plataforma con **módulos opcionales** que se activan por negocio, pensada para revenderse por partes. Marketing (crear publicaciones, generar copy/imagen, publicar en Facebook) es el producto base y siempre está disponible. CRM, ERP (el core de Ventas/Compras/Inventario/Clientes, ver más abajo) y YonkSuite (Vehículos/Partes/IA, un add-on **sobre** el ERP) son módulos aparte que tu equipo activa o desactiva desde `/admin/businesses` con un check por negocio — el negocio mismo no se puede autoactivar un módulo nuevo, así queda claro qué le vendiste a cada cliente.
 
-Si un negocio no tiene un módulo activo, al intentar entrar a `/crm` o `/erp` ve una pantalla explicando que ese módulo no está activo (y el link ni siquiera aparece en su menú). Apagar un módulo corta el acceso al instante, sin que el negocio tenga que cerrar sesión — útil si alguien deja de pagar ese módulo en particular.
+Importante: YonkSuite depende de que el ERP esté activo (no tiene sentido vender el módulo de vehículos sin el core que lo sostiene), pero el ERP **no** depende de YonkSuite — la mayoría de los negocios nuevos van a querer el ERP core solo, sin el módulo de vehículos.
 
-Técnicamente: `businesses.module_crm_enabled` y `businesses.module_erp_enabled` (booleanos), validados en cada request por `services/modules.js` → `requireModule()`, el mismo patrón que ya se usaba para revisar que el negocio esté activo (`is_active`). Agregar un módulo nuevo en el futuro (por ejemplo, la tienda en línea) es: una columna booleana más, un middleware `requireModule("nombre")` en sus rutas, y un check más en el panel admin.
+Si un negocio no tiene un módulo activo, al intentar entrar a la sección correspondiente ve una pantalla explicando que ese módulo no está activo (y el link ni siquiera aparece en su menú). Apagar un módulo corta el acceso al instante, sin que el negocio tenga que cerrar sesión — útil si alguien deja de pagar ese módulo en particular.
+
+Técnicamente: `businesses.module_crm_enabled`, `businesses.module_erp_enabled` y `businesses.module_yonksuite_enabled` (booleanos). Los dos primeros se validan con `services/modules.js` → `requireModule()` (rutas de Marketing/CRM); el de YonkSuite se valida con `services/middleware.js` → `requireYonksuiteModule()` (rutas del ERP, porque ahí el actor autenticado es `req.erpActor`, no `req.session.businessId`) — mismo patrón de fondo, dos JOIN points distintos porque Marketing y el ERP tienen sesiones separadas (ver la sección de YonkSuite más abajo). Agregar un módulo nuevo en el futuro es: una columna booleana más, un middleware que la revise en sus rutas, y un check más en el panel admin.
 
 ## CRM: contactos y leads por negocio
 
@@ -240,9 +243,53 @@ Cada contacto guarda, además de nombre/teléfono/correo: **dirección**, y **da
 
 Si borras un campo personalizado desde el panel admin, los valores que ya se habían guardado en contactos existentes no se pierden, pero el campo deja de mostrarse (por si luego lo vuelves a crear con el mismo nombre).
 
-## YonkSuite (ERP Yonkes): control de autos siniestrados y venta de piezas
+## ERP core: Ventas, Compras, Inventario, Clientes y Proveedores (para cualquier negocio)
 
-Módulo opcional (`/erp`, requiere `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. YonkSuite se siente como una aplicación aparte de MarketingHub, no una pestaña más: tiene su propio acceso, su propio login, su propia barra superior con la marca del negocio, y sus propios reportes.
+Esto es lo que cambió más a fondo en esta versión: el ERP dejó de ser "YonkSuite" (vehículos/piezas) y pasó a tener un **core genérico** que sirve para cualquier giro de negocio — YonkSuite ahora es un módulo aparte que se activa *encima* de este core, solo para negocios que de verdad compran/desarman/venden vehículos (ver la sección de YonkSuite más abajo). Se entra por la misma puerta (`/erp`, mismo login, misma barra superior con la marca del negocio) — lo que cambia es qué aparece en el menú según qué módulos tenga activos ese negocio.
+
+### El motor genérico de transacciones (`services/erpTransactions.js`)
+
+En vez de programar Ventas y Compras como dos features separadas, ambas corren sobre **un solo motor**: una tabla `erp_transactions` (con `doc_type` diciendo cuál de los 9 documentos es) + `erp_transaction_lines` para las líneas, en vez de una tabla por tipo de documento — el mismo patrón que usa NetSuite internamente. Esto significa que agregar un tipo de documento nuevo el día de mañana no es programar una feature desde cero, es agregarlo a una lista.
+
+Las dos cadenas que arma este motor, calcadas de lo que se pidió originalmente:
+
+- **Ventas**: Cotización → Orden de venta → Ejecución de pedido → Factura → Nota de crédito.
+- **Compras**: Orden de compra → Ejecución de pedido → Factura → Nota de crédito (de proveedor).
+
+Cada documento se genera **"convirtiendo"** el anterior con un botón — el cliente/proveedor, la moneda y las líneas pasan solas al siguiente, sin volver a capturar nada (`erpTransactions.convertTransaction`). `related_transaction_id` deja la cadena completa navegable en ambos sentidos: desde una cotización ves a qué orden se convirtió, y desde cualquier documento ves de cuál viene. También se puede crear cualquier documento **desde cero** (por ejemplo, una orden de venta sin cotizar antes) si el negocio no siempre sigue el flujo completo.
+
+**"Ejecución de pedido" es donde se mueve inventario de verdad** — exactamente lo que se pidió ("los artículos mandan a dónde se deben de ir: si se compra a inventario, si se vende al costo"): al ejecutar una orden de venta, la existencia baja en la ubicación elegida; al ejecutar una orden de compra, sube. El resto de la cadena (cotización, orden, factura, nota de crédito) es papeleo que no toca existencias — evita que el inventario se mueva dos veces o en el momento equivocado. Solo los artículos tipo "Inventario" (no "Servicio" ni "No inventariable") mueven existencia.
+
+Cada línea calcula su propio impuesto a partir del impuesto asignado al artículo en su momento (snapshot al capturar, no una referencia viva — si luego cambias la tasa del impuesto, los documentos ya emitidos no se alteran). El tipo de cambio es manual por transacción (ver "Multi-moneda" abajo), y cada documento tiene su propio folio consecutivo configurable (ver Configuración → Transacciones).
+
+Se llega por el menú **Ventas ▾** / **Compras ▾** (siempre visibles, no dependen de ningún módulo), o directo en `/erp/core/ventas` y `/erp/core/compras`.
+
+### Inventario (`/erp/inventario`)
+
+- **Artículos**: el catálogo (`erp_items`) — nombre, SKU, tipo (Inventario / Servicio / No inventariable), unidad, costo, precio e impuesto. Es lo que se elige al capturar cualquier documento de Ventas o Compras.
+- **Visualizar inventario**: una tabla artículo × ubicación con la existencia actual de cada uno.
+- **Ajuste de inventario**: corrige la existencia manualmente (conteo físico, merma, error de captura) — NO es una compra ni una venta, y queda una bitácora auditable (`erp_inventory_adjustments`) con quién, cuándo, cuánto había antes/después y por qué.
+- **Ubicaciones**: bodegas o sucursales (vive en Configuración porque es más una decisión de estructura del negocio que del día a día) — cada artículo puede tener existencia distinta en cada una.
+
+### Clientes y Proveedores
+
+- **Clientes** (`/erp/clientes`) ya existía para Cotizaciones/Ventas de YonkSuite; ahora también alimenta el core de Ventas (el mismo cliente se reutiliza en ambas cadenas). Se le agregó:
+  - **Aceptar pago**: registra un pago (monto, fecha, método, moneda/tipo de cambio) aplicado a una factura específica o "en cuenta" si el cliente paga por adelantado.
+  - **Estado de cuenta** (`/erp/clientes/:id/estado-cuenta`): todas las facturas del cliente menos todos sus pagos, con saldo corriendo — la cuenta corriente que cualquier negocio necesita para saber cuánto le debe cada cliente. (Esto no es un módulo de Contabilidad con pólizas/cuentas contables — eso es Fase 2, ver el roadmap al final.)
+- **Proveedores** (`/erp/proveedores`, nuevo) — mismo patrón que Clientes pero para Compras: folio propio (`PROV-0001`), datos fiscales opcionales, autocompletado al capturar una orden de compra.
+
+### Configuración del core (`/erp/configuracion`)
+
+Ajustes nuevos, además de Empresa/Transacciones/Categorías que ya existían:
+
+- **Ubicaciones**: bodegas/sucursales para Inventario (ver arriba).
+- **Monedas**: catálogo de monedas en las que el negocio transacciona (una es la "base", normalmente MXN). **Multi-moneda con tipo de cambio manual**: cada transacción en moneda extranjera captura su propio tipo de cambio (por ejemplo, pegando el valor del día del DOF si el negocio es mexicano) — no hay integración automática a un servicio de tipo de cambio en esta fase; ver el roadmap.
+- **Impuestos**: catálogo de impuestos aplicables a los artículos. Trae un botón "Sembrar impuestos usuales del SAT" que da de alta de un clic los más comunes en México: IVA 16%, IVA 8% (frontera), IVA 0%, Exento, Honorarios (retención ISR 10%) y RESICO — después se pueden editar o agregar los propios.
+- **Localización mexicana**: régimen fiscal (catálogo `c_RegimenFiscal` del SAT) y proveedor de timbrado (PAC) — **por ahora es solo configuración**, no timbra CFDIs de verdad todavía (ver el roadmap, es exactamente lo que se pidió dejar listo "para que se configure fácil" en un upgrade posterior).
+
+### YonkSuite (ERP Yonkes): control de autos siniestrados y venta de piezas
+
+Módulo opcional **sobre el ERP core** (`/erp/vehiculos` y relacionados, requiere `module_yonksuite_enabled` además de `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. Es una cadena de datos completamente aparte del motor genérico de arriba (`erp_vehicles`/`erp_parts`/`erp_quotes`/`erp_sales`, NO `erp_transactions`) porque nació antes del core genérico y se mantuvo intacta para no arriesgar a los negocios que ya la usan — un yonke real tiene AMBOS módulos activos y ve tanto "Vehículos ▾" (esto) como "Ventas ▾"/"Compras ▾"/"Inventario ▾" (el core) en su menú, y puede usar el que le convenga para cada caso.
 
 ### Cómo se entra a YonkSuite
 
@@ -267,17 +314,17 @@ Independiente del check "Módulo ERP" (que solo prende/apaga el acceso), cada ne
 
 Una vez adentro, YonkSuite se ve con la identidad del negocio, no con el logo genérico de MarketingHub: la barra superior usa el **logo** y el **color de marca** que el negocio capturó en **Configuración → Empresa** (dentro del propio YonkSuite — así un empleado con rol Admin puede mantenerlo sin necesitar acceso a MarketingHub) — si no capturó ninguno, cae a un azul oscuro por default.
 
-El menú horizontal (Dashboard, Ventas, Inventario, Clientes, Empleados si el plan es Plus, Reportes y Configuración si el rol tiene acceso) está inspirado en la barra de apps tipo NetSuite:
+El menú horizontal (Dashboard, Ventas ▾, Compras ▾, Inventario ▾, Vehículos ▾ si el módulo está activo, Clientes, Proveedores, Empleados si el plan es Plus, Reportes y Configuración si el rol tiene acceso) está inspirado en la barra de apps tipo NetSuite:
 
-- **Ventas** e **Inventario** son desplegables (al pasar el mouse, o con un tap directo en móvil que lleva a la lista): Ventas abre a "Nueva venta" / "Ver ventas" / "Cotizaciones"; Inventario abre a "Meter auto" / "Visualizar inventario". Cada opción del desplegable solo aparece si el rol de quien está conectado tiene permiso para esa acción.
-- **Búsqueda global**: el cuadro de la barra (`/erp/buscar`) busca al mismo tiempo en Inventario, Clientes, Cotizaciones y Ventas — escribe una placa, un nombre de cliente o un folio y aparece agrupado por sección, sin importar en cuál de las cuatro está.
+- **Ventas ▾**, **Compras ▾** e **Inventario ▾** son del core genérico (ver la sección de arriba) y siempre aparecen, tenga o no el negocio el módulo YonkSuite. **Vehículos ▾** es específicamente de YonkSuite (Meter auto / Visualizar inventario de vehículos / Ventas y Cotizaciones de vehículos) y solo aparece si el módulo está activo. Cada opción de cada desplegable solo aparece si el rol de quien está conectado tiene permiso para esa acción.
+- **Búsqueda global**: el cuadro de la barra (`/erp/buscar`) busca al mismo tiempo en Inventario de vehículos, Clientes, Cotizaciones y Ventas de YonkSuite — escribe una placa, un nombre de cliente o un folio y aparece agrupado por sección. (Todavía no incluye los documentos del core genérico — Cotización/Orden/Factura de Ventas y Compras —, eso queda para una siguiente iteración de la búsqueda.)
 
 ### El flujo del día a día
 
 1. **Alta del vehículo** (`/erp/vehicles/new`, vía "Inventario → Meter auto", requiere permiso de Compras): marca, modelo, año, VIN, placa, color, precio de compra, fecha de compra, notas, y hasta 8 fotos (se comprimen automáticamente a JPEG al subirlas).
 2. **Búsqueda de stock**: tanto el dashboard (`/erp`) como el inventario (`/erp/vehiculos`) tienen un buscador de texto libre — escribe algo como "camioneta Ford 2016" y encuentra coincidencias sin importar el orden de las palabras ni en qué campo estén (marca, modelo, año, VIN o placa). La búsqueda global de la barra superior hace lo mismo pero cruzando también Clientes/Cotizaciones/Ventas.
 3. **Piezas**: desde el detalle del vehículo se registran las piezas que salen de él, cada una con categoría (las categorías se pueden personalizar desde Configuración, ver abajo), precio sugerido opcional y un **estado físico** (Bueno / Deteriorado / Malo) que ayuda a decidir a qué precio venderla.
-4. **Cotizar o vender** (requiere permiso de Ventas): desde "Ventas → Nueva venta" o "Ventas → Cotizaciones" (o los accesos directos dentro del detalle del vehículo) eliges un vehículo, marcas qué piezas y a qué precio, y capturas el cliente — que se autocompleta si ya existe (por nombre o teléfono) o se da de alta al vuelo si es nuevo, sin salir del formulario. Una **cotización** solo reserva las piezas (quedan en "Reservada", no se pueden vender a alguien más mientras tanto) y genera su propio folio (ej. `COT-0001`); un botón **"Convertir en venta"** la vuelve una venta real con un clic, sin volver a capturar nada, generando el folio de venta (ej. `VTA-0001`). Si el cliente no la acepta, "Rechazar" regresa las piezas a "Disponible". Una **venta directa** (sin pasar por cotización) genera su folio de una vez. En ambos casos la venta queda ligada a quién la hizo (el nombre de la sesión de YonkSuite activa — dueño o empleado), visible como "Vendido por" en el historial del vehículo y en los reportes.
+4. **Cotizar o vender** (requiere permiso de Ventas): desde "Vehículos → Nueva venta de vehículo" o "Vehículos → Cotizaciones de vehículos" (o los accesos directos dentro del detalle del vehículo) eliges un vehículo, marcas qué piezas y a qué precio, y capturas el cliente — que se autocompleta si ya existe (por nombre o teléfono) o se da de alta al vuelo si es nuevo, sin salir del formulario. Una **cotización** solo reserva las piezas (quedan en "Reservada", no se pueden vender a alguien más mientras tanto) y genera su propio folio (ej. `COT-0001`); un botón **"Convertir en venta"** la vuelve una venta real con un clic, sin volver a capturar nada, generando el folio de venta (ej. `VTA-0001`). Si el cliente no la acepta, "Rechazar" regresa las piezas a "Disponible". Una **venta directa** (sin pasar por cotización) genera su folio de una vez. En ambos casos la venta queda ligada a quién la hizo (el nombre de la sesión de YonkSuite activa — dueño o empleado), visible como "Vendido por" en el historial del vehículo y en los reportes.
 5. **Clientes**: un CRM propio de YonkSuite (`/erp/clientes`, separado del CRM de Marketing) con folio consecutivo por cliente, datos fiscales opcionales, y el historial de cotizaciones/ventas de cada uno.
 6. **Estado de cuenta por vehículo**: precio de compra, cuánto se ha vendido de él hasta ahora, y la ganancia o pérdida resultante — sin necesitar que el vehículo esté completamente vendido para verlo.
 7. **Dar de baja el stock**: cuando ya no queda nada que vender de un vehículo, se marca manualmente como "Agotado" (botón "Marcar como Agotado" en el detalle del vehículo, se puede reactivar si hace falta). Un vehículo con ventas registradas no se puede borrar —por ser un registro financiero—, solo marcarse como agotado. Cada pieza también se puede marcar como "Desechada" si resultó dañada/sin valor de venta.
@@ -286,11 +333,11 @@ Todo queda aislado por negocio y todo el flujo de venta/cotización corre dentro
 
 ### Configuración (`/erp/configuracion`)
 
-Gateada igual que Reportes (el dueño siempre entra; de los roles de empleado, solo Admin), porque son ajustes de todo el negocio, no de una venta o vehículo en particular:
+Gateada igual que Reportes (el dueño siempre entra; de los roles de empleado, solo Admin), porque son ajustes de todo el negocio, no de una venta o vehículo en particular. Empresa, Transacciones, Ubicaciones, Monedas, Impuestos y Localización mexicana son compartidas con el core (ver la sección de arriba); lo único específico de YonkSuite aquí es:
 
-- **Empresa**: nombre, dirección, teléfono, logo, colores de marca (los que usa la barra de YonkSuite) y datos fiscales (RFC/razón social) propios de YonkSuite para tus cotizaciones y ventas.
-- **Configuración de transacciones**: el prefijo y el siguiente número consecutivo de Clientes, Cotizaciones y Ventas (ej. cambiar de `VTA-0001` a `FAC-0100`) — cambiarlo solo afecta a los folios nuevos, nunca reescribe los que ya existen.
-- **Categorías de piezas**: la lista de categorías que aparece al dar de alta una pieza viene con un default (Motor, Transmisión, Frenos, etc.), pero cada negocio puede reemplazarla por la suya — en cuanto agrega una categoría propia, esa lista sustituye por completo a la de default para ese negocio (ver `services/erpPartCategories.js`).
+- **Categorías de piezas**: la lista de categorías que aparece al dar de alta una pieza viene con un default (Motor, Transmisión, Frenos, etc.), pero cada negocio puede reemplazarla por la suya — en cuanto agrega una categoría propia, esa lista sustituye por completo a la de default para ese negocio (ver `services/erpPartCategories.js`). Esta tarjeta solo aparece en el hub de Configuración si el módulo YonkSuite está activo.
+
+La **Configuración de transacciones** ahora lista los 13 tipos de documento agrupados (YonkSuite: Clientes/Cotización/Venta de vehículo; Ventas: Cotización/Orden/Ejecución/Factura/Nota de crédito; Compras: Proveedores/Orden/Ejecución/Factura/Nota de crédito) en vez de solo 3 — cada uno con su propio prefijo y consecutivo, guardados en una tabla `erp_doc_numbering` en vez de columnas sueltas en `businesses` (así agregar un tipo de documento nuevo no requiere una migración de columnas).
 
 ### Reportes (`/erp/reportes`)
 
@@ -332,6 +379,17 @@ Dado que la idea es venderlo como producto aparte (estilo NetSuite, pero mucho m
 - **Historial de auditoría por empleado**: hoy se sabe qué rol tiene cada empleado, pero no queda un registro de "quién exactamente dio de alta esta pieza" (sí queda para ventas, con "Vendido por") — útil si el yonke crece y quiere rastrear responsabilidad por captura.
 - **Facturación electrónica real (CFDI)** si en algún momento se vuelve un requisito — se dejó la puerta abierta guardando los datos fiscales del cliente/negocio, pero conectar un PAC (proveedor autorizado del SAT) es un desarrollo aparte, con costo recurrente propio del PAC.
 
+## Fase 2 (roadmap): Contabilidad, Customización y automatizaciones
+
+Cuando se definió el alcance de este ERP core se decidió construir primero el "core transaccional" (todo lo de arriba: Ventas/Compras/Inventario/Clientes/Proveedores + YonkSuite como módulo) y dejar documentado, pero **sin construir todavía**, lo siguiente — son piezas grandes que vale la pena priorizar según qué tan seguido las pida el negocio real que las vaya a usar:
+
+- **Contabilidad** (Pólizas de diario, Cuentas contables): cada transacción de Ventas/Compras ya calcula subtotal/impuesto/total y mueve inventario, pero todavía no genera una póliza contable (cargo/abono a cuentas específicas). El siguiente paso sería un catálogo de cuentas contables configurable (poblado con las más usuales según el SAT) y, al capturar cada tipo de documento, una regla de qué cuenta se carga y cuál se abona (ej. una venta carga Clientes/Bancos y abona Ingresos + IVA por pagar; una compra de inventario carga Inventario y abona Proveedores). Vale la pena investigar a fondo antes de construirlo — es la parte que un usuario sin formación contable encuentra más intimidante, así que el objetivo es una UI que se sienta como llenar un formulario, no como un asiento contable de libro de texto.
+- **Multi-moneda automática**: hoy el tipo de cambio se captura a mano por transacción (decisión explícita para esta fase, ver la sección de Monedas arriba). Un upgrade natural sería traer automáticamente el tipo de cambio del DOF (Banco de México publica un API) para negocios mexicanos, y sugerir uno razonable para otros países — dejando siempre la opción de sobreescribirlo a mano.
+- **Localización mexicana real (timbrado CFDI)**: la pantalla de Configuración → Localización mexicana ya guarda régimen fiscal y qué PAC usaría el negocio (ver arriba) — conectar la API real de ese PAC para timbrar automáticamente al generar una Factura es el siguiente paso, con su propio costo recurrente del PAC.
+- **Customización** (Crear listas y campos, Workflows de aprobación): campos personalizados por negocio para Artículos/Ventas/Compras/Empleados/Pólizas (ya existe un patrón parecido para CRM en `/admin/businesses/:id/crm-fields`, se podría extender) y un motor de workflows de aprobación estilo NetSuite (por ejemplo, una orden de compra arriba de cierto monto necesita aprobación de un supervisor antes de poder ejecutarse). La versión más simple de esto — un toggle "requiere aprobación" por tipo de documento con un aprobador asignado — es más rápida de construir que un editor visual de workflows con condiciones; conviene empezar por ahí y crecer según la demanda real.
+- **Búsqueda global sobre el core**: `/erp/buscar` hoy solo indexa Inventario/Clientes/Cotizaciones/Ventas de YonkSuite — agregarle los documentos del motor genérico (`erp_transactions`) para que una búsqueda encuentre también una factura o una orden de compra por folio o por cliente/proveedor.
+- **PDF de documentos de Ventas/Compras**: igual que el "Próximo paso" ya anotado para YonkSuite, los documentos del core (cotización, orden, factura, nota de crédito) también se beneficiarían de un PDF con el logo/color de marca del negocio, reutilizando `services/pdfBuilder.js`.
+
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
 
 `services/canva.js` ya tiene la llamada real a la API de autofill de Canva. Para activarla:
@@ -354,11 +412,13 @@ marketing-app/
 │   ├── aiParts.js           # YonkSuite: sugerir piezas por foto, precio sugerido, compatibilidad
 │   ├── backgroundRemoval.js # quitar fondo de imágenes (self-hosted, sin licencia AGPL)
 │   ├── canva.js             # genera el diseño vía Canva Connect API
-│   ├── erpStatus.js         # constantes de YonkSuite (estados, planes, roles/permisos)
-│   ├── erpNumbering.js      # folios consecutivos de YonkSuite (Cliente/Cotización/Venta)
-│   ├── erpPartCategories.js # categorías de piezas configurables por negocio
+│   ├── erpStatus.js         # constantes del ERP (estados, planes, roles/permisos, catálogos MX)
+│   ├── erpNumbering.js      # folios consecutivos de los 13 tipos de documento del ERP
+│   ├── erpTransactions.js   # motor genérico de Ventas/Compras (cotización→orden→ejecución→factura→NC)
+│   ├── erpPartCategories.js # categorías de piezas configurables por negocio (YonkSuite)
+│   ├── modules.js           # activar/desactivar módulos (CRM/ERP) por negocio, lado Marketing
 │   ├── facebook.js          # publica en Facebook vía Meta Graph API
-│   ├── middleware.js        # protección de rutas (negocio / admin / ERP por rol)
+│   ├── middleware.js        # protección de rutas (negocio / admin / ERP por rol / módulo YonkSuite)
 │   └── status.js            # estados posibles de una campaña
 ├── views/                  # plantillas EJS (sitio cliente + panel admin)
 ├── public/css/style.css     # estilos

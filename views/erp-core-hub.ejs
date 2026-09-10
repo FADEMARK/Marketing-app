@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= flow === 'ventas' ? 'Ventas' : 'Compras' %></title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <h1><%= flow === 'ventas' ? '🧾 Ventas' : '📦 Compras' %></h1>
+    <p class="muted small">
+      <% if (flow === 'ventas') { %>
+        Cotización → Orden de venta → Ejecución de pedido → Factura → Nota de crédito.
+      <% } else { %>
+        Orden de compra → Ejecución de pedido → Factura → Nota de crédito.
+      <% } %>
+      Cada documento se genera "convirtiendo" el anterior — las líneas y el cliente/proveedor pasan solos.
+    </p>
+
+    <div class="campaign-grid">
+      <% docTypes.forEach(function(dt) { %>
+        <a href="/erp/core/<%= flow %>/<%= dt %>" class="campaign-card">
+          <h3><%= DOC_TYPE_TITLES[dt] %></h3>
+          <p class="muted small">
+            <%= countByType[dt].abiertas %> abierta<%= countByType[dt].abiertas === 1 ? '' : 's' %>
+            · <%= countByType[dt].total %> en total
+          </p>
+        </a>
+      <% }); %>
+    </div>
+
+    <div class="detail-box" style="margin-top:24px;">
+      <h3>Últimos movimientos</h3>
+      <% if (recent.length === 0) { %>
+        <p class="muted small">Todavía no hay documentos en esta sección.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Folio</th><th>Tipo</th><th><%= flow === 'ventas' ? 'Cliente' : 'Proveedor' %></th><th>Total</th><th>Estado</th></tr></thead>
+          <tbody>
+            <% recent.forEach(function(t) { %>
+              <tr onclick="window.location='/erp/core/<%= flow %>/<%= t.doc_type %>/<%= t.id %>'" style="cursor:pointer;">
+                <td><strong><%= t.folio %></strong></td>
+                <td class="muted small"><%= DOC_TYPE_TITLES[t.doc_type] %></td>
+                <td><%= t.client_name || t.vendor_name || t.entity_name_snapshot || '—' %></td>
+                <td>$<%= Number(t.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+                <td><span class="status-badge status-<%= t.status %>"><%= t.status %></span></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

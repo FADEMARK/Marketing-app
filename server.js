@@ -33,6 +33,7 @@ const promptSettings = require("./services/promptSettings");
 const scheduler = require("./services/scheduler");
 const erpNumbering = require("./services/erpNumbering");
 const erpPartCategories = require("./services/erpPartCategories");
+const erpTransactions = require("./services/erpTransactions");
 const {
   requireBusinessAuth,
   requireAdminAuth,
@@ -1348,6 +1349,35 @@ async function findOrCreateClient(businessId, { client_id, client_name, client_p
   return created[0];
 }
 
+// Proveedores: mismo "se llena solo" que findOrCreateClient, pero para el
+// lado de Compras. Ver esa función para el porqué del parámetro db.
+async function findOrCreateVendor(businessId, { vendor_id, vendor_name, vendor_phone, vendor_email } = {}, db = pool) {
+  if (vendor_id) {
+    const { rows } = await db.query(
+      "SELECT * FROM erp_vendors WHERE id = $1 AND business_id = $2",
+      [vendor_id, businessId]
+    );
+    if (rows[0]) return rows[0];
+  }
+
+  const name = (vendor_name || "").trim();
+  if (!name) return null;
+
+  const { rows: existing } = await db.query(
+    "SELECT * FROM erp_vendors WHERE business_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1",
+    [businessId, name]
+  );
+  if (existing[0]) return existing[0];
+
+  const folio = await erpNumbering.nextFolio(businessId, "vendor", db);
+  const { rows: created } = await db.query(
+    `INSERT INTO erp_vendors (business_id, folio, name, phone, email)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [businessId, folio, name, (vendor_phone || "").trim() || null, (vendor_email || "").trim() || null]
+  );
+  return created[0];
+}
+
 // Página de inicio del ERP: un dashboard con lo esencial de un vistazo
 // (vehículos en stock, piezas disponibles, ventas del mes) más la barra de
 // búsqueda rápida de stock y accesos directos — el listado completo de
@@ -1355,36 +1385,6 @@ async function findOrCreateClient(businessId, { client_id, client_name, client_p
 app.get("/erp", requireErpAuth, async (req, res, next) => {
   try {
     const businessId = req.erpActor.businessId;
-    const { rows: vehicleStats } = await pool.query(
-      `SELECT
-        COUNT(*)::int AS total_vehicles,
-        COUNT(*) FILTER (WHERE status = 'en_stock')::int AS en_stock,
-        COUNT(*) FILTER (WHERE status = 'agotado')::int AS agotados
-       FROM erp_vehicles WHERE business_id = $1`,
-      [businessId]
-    );
-    const { rows: partStats } = await pool.query(
-      `SELECT
-        COUNT(*) FILTER (WHERE status = 'disponible')::int AS disponibles,
-        COUNT(*) FILTER (WHERE status = 'vendida')::int AS vendidas
-       FROM erp_parts WHERE business_id = $1`,
-      [businessId]
-    );
-    const { rows: monthStats } = await pool.query(
-      `SELECT COALESCE(SUM(erp_sale_items.price), 0)::numeric AS total_mes, COUNT(*)::int AS ventas_mes
-       FROM erp_sale_items
-       JOIN erp_sales ON erp_sales.id = erp_sale_items.sale_id
-       WHERE erp_sales.business_id = $1
-         AND date_trunc('month', erp_sales.sale_date) = date_trunc('month', CURRENT_DATE)`,
-      [businessId]
-    );
-    const { rows: recentVehicles } = await pool.query(
-      `SELECT id, brand, model, year, status,
-        (SELECT photo_data FROM erp_vehicle_photos WHERE vehicle_id = erp_vehicles.id ORDER BY display_order ASC, id ASC LIMIT 1) AS cover_photo
-       FROM erp_vehicles WHERE business_id = $1 ORDER BY created_at DESC LIMIT 5`,
-      [businessId]
-    );
-
     const { rows: businessRows } = await pool.query("SELECT erp_plan FROM businesses WHERE id = $1", [
       businessId,
     ]);
@@ -1392,6 +1392,54 @@ app.get("/erp", requireErpAuth, async (req, res, next) => {
 
     const can = (permission) =>
       req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, permission);
+
+    // Las estadísticas de Vehículos/Piezas son del módulo YonkSuite — un
+    // negocio sin el módulo no tiene ni una fila en erp_vehicles/erp_parts,
+    // así que ni vale la pena consultarlas (y la vista tampoco debe mostrar
+    // "0 vehículos en stock" como si esto fuera un yonke).
+    let stats = null;
+    let recentVehicles = [];
+    if (req.erpActor.moduleYonksuiteEnabled) {
+      const { rows: vehicleStats } = await pool.query(
+        `SELECT
+          COUNT(*)::int AS total_vehicles,
+          COUNT(*) FILTER (WHERE status = 'en_stock')::int AS en_stock,
+          COUNT(*) FILTER (WHERE status = 'agotado')::int AS agotados
+         FROM erp_vehicles WHERE business_id = $1`,
+        [businessId]
+      );
+      const { rows: partStats } = await pool.query(
+        `SELECT
+          COUNT(*) FILTER (WHERE status = 'disponible')::int AS disponibles,
+          COUNT(*) FILTER (WHERE status = 'vendida')::int AS vendidas
+         FROM erp_parts WHERE business_id = $1`,
+        [businessId]
+      );
+      const { rows: monthStats } = await pool.query(
+        `SELECT COALESCE(SUM(erp_sale_items.price), 0)::numeric AS total_mes, COUNT(*)::int AS ventas_mes
+         FROM erp_sale_items
+         JOIN erp_sales ON erp_sales.id = erp_sale_items.sale_id
+         WHERE erp_sales.business_id = $1
+           AND date_trunc('month', erp_sales.sale_date) = date_trunc('month', CURRENT_DATE)`,
+        [businessId]
+      );
+      const { rows: recentVehiclesRows } = await pool.query(
+        `SELECT id, brand, model, year, status,
+          (SELECT photo_data FROM erp_vehicle_photos WHERE vehicle_id = erp_vehicles.id ORDER BY display_order ASC, id ASC LIMIT 1) AS cover_photo
+         FROM erp_vehicles WHERE business_id = $1 ORDER BY created_at DESC LIMIT 5`,
+        [businessId]
+      );
+      recentVehicles = recentVehiclesRows;
+      stats = {
+        totalVehicles: vehicleStats[0].total_vehicles,
+        enStock: vehicleStats[0].en_stock,
+        agotados: vehicleStats[0].agotados,
+        partsDisponibles: partStats[0].disponibles,
+        partsVendidas: partStats[0].vendidas,
+        totalMes: Number(monthStats[0].total_mes),
+        ventasMes: monthStats[0].ventas_mes,
+      };
+    }
 
     res.render("erp-dashboard", {
       currentSection: "dashboard",
@@ -1402,15 +1450,7 @@ app.get("/erp", requireErpAuth, async (req, res, next) => {
       canManageEmployees: can("manage_employees"),
       ERP_PLAN_LABELS: erpStatus.ERP_PLAN_LABELS,
       ERP_ROLE_LABELS: erpStatus.ERP_ROLE_LABELS,
-      stats: {
-        totalVehicles: vehicleStats[0].total_vehicles,
-        enStock: vehicleStats[0].en_stock,
-        agotados: vehicleStats[0].agotados,
-        partsDisponibles: partStats[0].disponibles,
-        partsVendidas: partStats[0].vendidas,
-        totalMes: Number(monthStats[0].total_mes),
-        ventasMes: monthStats[0].ventas_mes,
-      },
+      stats,
       recentVehicles,
     });
   } catch (err) {
@@ -2159,6 +2199,29 @@ app.get("/erp/clientes/:id", requireErpAuth, async (req, res, next) => {
       [erpClient.id]
     );
 
+    // Documentos del motor genérico (core Ventas) ligados a este cliente —
+    // distinto de "quotes"/"sales" de arriba, que son del módulo YonkSuite
+    // (vehículos). Un cliente puede tener de los dos si el negocio usa ambos.
+    const { rows: coreTransactions } = await pool.query(
+      `SELECT id, doc_type, folio, status, total, created_at FROM erp_transactions
+       WHERE business_id = $1 AND client_id = $2 ORDER BY created_at DESC`,
+      [req.erpActor.businessId, erpClient.id]
+    );
+    const { rows: payments } = await pool.query(
+      `SELECT * FROM erp_customer_payments WHERE business_id = $1 AND client_id = $2 ORDER BY payment_date DESC, id DESC`,
+      [req.erpActor.businessId, erpClient.id]
+    );
+    const { rows: openInvoices } = await pool.query(
+      `SELECT id, folio, total FROM erp_transactions
+       WHERE business_id = $1 AND client_id = $2 AND doc_type = 'factura_venta' AND status != 'cancelada'
+       ORDER BY created_at DESC`,
+      [req.erpActor.businessId, erpClient.id]
+    );
+    const totalInvoiced = coreTransactions
+      .filter((t) => t.doc_type === "factura_venta" && t.status !== "cancelada")
+      .reduce((sum, t) => sum + Number(t.total), 0);
+    const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+
     res.render("erp-client-detail", {
       currentSection: "clientes",
       erpActor: req.erpActor,
@@ -2166,8 +2229,16 @@ app.get("/erp/clientes/:id", requireErpAuth, async (req, res, next) => {
       erpClient,
       quotes,
       sales,
+      coreTransactions,
+      payments,
+      openInvoices,
+      totalInvoiced,
+      totalPaid,
+      balance: totalInvoiced - totalPaid,
+      DOC_TYPE_TITLES: erpTransactions.DOC_TYPE_TITLES,
       canEdit: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, "compras") || erpStatus.roleHasPermission(req.erpActor.role, "ventas"),
       saved: req.query.saved === "1",
+      error: req.query.error || null,
     });
   } catch (err) {
     next(err);
@@ -2222,6 +2293,120 @@ app.post(
     }
   }
 );
+
+// --- Clientes: aceptar pago y estado de cuenta ---------------------------
+// Un pago se puede aplicar a una factura específica (applied_to_transaction_id)
+// o quedar "en cuenta" (NULL) si el cliente paga por adelantado o de forma
+// genérica. El estado de cuenta es sencillo: todas las facturas del cliente
+// menos todos sus pagos = saldo pendiente. No es un módulo de Contabilidad
+// (eso es Fase 2, con pólizas/cuentas contables) — es la cuenta corriente
+// que cualquier negocio necesita para saber cuánto le debe cada cliente.
+app.post(
+  "/erp/clientes/:id/pagos",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    try {
+      const { rows: clientRows } = await pool.query(
+        "SELECT id FROM erp_clients WHERE id = $1 AND business_id = $2",
+        [req.params.id, req.erpActor.businessId]
+      );
+      if (!clientRows[0]) return res.status(404).send("Cliente no encontrado.");
+
+      const amount = parseFloat(req.body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.redirect(
+          `/erp/clientes/${req.params.id}?error=` + encodeURIComponent("Escribe un monto de pago válido.")
+        );
+      }
+
+      let appliedToTransactionId = req.body.applied_to_transaction_id || null;
+      if (appliedToTransactionId) {
+        const { rows: txCheck } = await pool.query(
+          "SELECT id FROM erp_transactions WHERE id = $1 AND business_id = $2 AND client_id = $3",
+          [appliedToTransactionId, req.erpActor.businessId, req.params.id]
+        );
+        if (!txCheck[0]) appliedToTransactionId = null;
+      }
+
+      await pool.query(
+        `INSERT INTO erp_customer_payments
+           (business_id, client_id, amount, currency_code, exchange_rate, payment_date, method,
+            applied_to_transaction_id, notes, created_by_actor_type, created_by_employee_id, created_by_name)
+         VALUES ($1,$2,$3,$4,$5,COALESCE($6, CURRENT_DATE),$7,$8,$9,$10,$11,$12)`,
+        [
+          req.erpActor.businessId,
+          req.params.id,
+          amount,
+          (req.body.currency_code || "").trim() || null,
+          parseFloat(req.body.exchange_rate) || 1,
+          req.body.payment_date || null,
+          (req.body.method || "efectivo").trim(),
+          appliedToTransactionId,
+          (req.body.notes || "").trim() || null,
+          req.erpActor.type,
+          req.erpActor.employeeId,
+          req.erpActor.name,
+        ]
+      );
+      res.redirect(`/erp/clientes/${req.params.id}?saved=1`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get("/erp/clientes/:id/estado-cuenta", requireErpAuth, async (req, res, next) => {
+  try {
+    const { rows: clientRows } = await pool.query(
+      "SELECT * FROM erp_clients WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.erpActor.businessId]
+    );
+    const erpClient = clientRows[0];
+    if (!erpClient) return res.status(404).send("Cliente no encontrado.");
+
+    const { rows: invoices } = await pool.query(
+      `SELECT id, folio, total, status, created_at FROM erp_transactions
+       WHERE business_id = $1 AND client_id = $2 AND doc_type = 'factura_venta'
+       ORDER BY created_at ASC`,
+      [req.erpActor.businessId, req.params.id]
+    );
+    const { rows: payments } = await pool.query(
+      `SELECT * FROM erp_customer_payments WHERE business_id = $1 AND client_id = $2 ORDER BY payment_date ASC, id ASC`,
+      [req.erpActor.businessId, req.params.id]
+    );
+
+    // Movimientos en orden cronológico con saldo corriendo — cargo (factura)
+    // suma, abono (pago) resta, igual que un estado de cuenta de verdad.
+    const movements = [
+      ...invoices
+        .filter((inv) => inv.status !== "cancelada")
+        .map((inv) => ({ date: inv.created_at, type: "factura", label: inv.folio, amount: Number(inv.total) })),
+      ...payments.map((p) => ({ date: p.payment_date, type: "pago", label: p.method, amount: -Number(p.amount) })),
+    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let balance = 0;
+    movements.forEach((m) => {
+      balance += m.amount;
+      m.balance = balance;
+    });
+
+    const totalInvoiced = invoices.filter((i) => i.status !== "cancelada").reduce((s, i) => s + Number(i.total), 0);
+    const totalPaid = payments.reduce((s, p) => s + Number(p.amount), 0);
+
+    res.render("erp-client-statement", {
+      currentSection: "clientes",
+      erpActor: req.erpActor,
+      erpClient,
+      movements,
+      totalInvoiced,
+      totalPaid,
+      balance,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // --- Proveedores (core genérico, para Compras) --------------------------
 // Mismo patrón que Clientes (erp_clients) pero para el otro lado del
@@ -2377,6 +2562,303 @@ app.post(
         req.erpActor.businessId,
       ]);
       res.redirect("/erp/proveedores");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Motor genérico de Ventas/Compras (core, cualquier negocio) ----------
+// UNA familia de rutas parametrizada por :flow ("ventas" | "compras") y
+// :docType (uno de los 9 tipos de erpTransactions.FLOW_SEQUENCES), en vez de
+// 9 rutas casi idénticas — así agregar un tipo de documento nuevo el día de
+// mañana es agregarlo a esa lista, no escribir otra ruta. NO depende del
+// módulo YonkSuite: es lo que cualquier negocio necesita para vender/comprar
+// artículos de su catálogo (erp_items).
+
+function requireFlowDocType(req, res, next) {
+  const { flow, docType } = req.params;
+  if (!erpTransactions.FLOW_SEQUENCES[flow]) return res.status(404).send("Sección inválida.");
+  if (docType && !erpTransactions.FLOW_SEQUENCES[flow].includes(docType)) {
+    return res.status(404).send("Tipo de documento inválido para esta sección.");
+  }
+  next();
+}
+
+function requireFlowPermission(req, res, next) {
+  const permission = req.params.flow === "compras" ? "compras" : "ventas";
+  if (req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, permission)) return next();
+  return res.status(403).render("erp-forbidden", { erpActor: req.erpActor, permission });
+}
+
+// Hub de la sección: cuántos documentos hay en cada etapa de la cadena +
+// los últimos movimientos, para no aterrizar en una lista vacía y sin
+// contexto de qué sigue.
+app.get("/erp/core/:flow", requireErpAuth, requireFlowDocType, async (req, res, next) => {
+  try {
+    const flow = req.params.flow;
+    const docTypes = erpTransactions.FLOW_SEQUENCES[flow];
+    const { rows: counts } = await pool.query(
+      `SELECT doc_type, COUNT(*) FILTER (WHERE status = 'abierta')::int AS abiertas, COUNT(*)::int AS total
+       FROM erp_transactions WHERE business_id = $1 AND doc_type = ANY($2::text[]) GROUP BY doc_type`,
+      [req.erpActor.businessId, docTypes]
+    );
+    const countByType = {};
+    counts.forEach((c) => { countByType[c.doc_type] = { abiertas: c.abiertas, total: c.total }; });
+    docTypes.forEach((dt) => { if (!countByType[dt]) countByType[dt] = { abiertas: 0, total: 0 }; });
+
+    const recent = await erpTransactions.listTransactions(req.erpActor.businessId, null, { flow });
+
+    res.render("erp-core-hub", {
+      currentSection: flow === "ventas" ? "core-ventas" : "core-compras",
+      erpActor: req.erpActor,
+      flow,
+      docTypes,
+      countByType,
+      DOC_TYPE_TITLES: erpTransactions.DOC_TYPE_TITLES,
+      recent: recent.slice(0, 10),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/core/:flow/:docType", requireErpAuth, requireFlowDocType, async (req, res, next) => {
+  try {
+    const { flow, docType } = req.params;
+    const transactions = await erpTransactions.listTransactions(req.erpActor.businessId, docType);
+    res.render("erp-core-list", {
+      currentSection: flow === "ventas" ? "core-ventas" : "core-compras",
+      erpActor: req.erpActor,
+      flow,
+      docType,
+      title: erpTransactions.DOC_TYPE_TITLES[docType],
+      transactions,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get(
+  "/erp/core/:flow/:docType/new",
+  requireErpAuth,
+  requireFlowDocType,
+  requireFlowPermission,
+  async (req, res, next) => {
+    try {
+      const { flow, docType } = req.params;
+      const businessId = req.erpActor.businessId;
+      const { rows: items } = await pool.query(
+        `SELECT erp_items.*, erp_taxes.rate AS tax_rate, erp_taxes.name AS tax_name
+         FROM erp_items LEFT JOIN erp_taxes ON erp_taxes.id = erp_items.tax_id
+         WHERE erp_items.business_id = $1 AND erp_items.active = TRUE ORDER BY erp_items.name ASC`,
+        [businessId]
+      );
+      const { rows: currencies } = await pool.query(
+        "SELECT * FROM erp_currencies WHERE business_id = $1 AND active = TRUE ORDER BY is_base DESC, code ASC",
+        [businessId]
+      );
+      const { rows: locations } = await pool.query(
+        "SELECT * FROM erp_locations WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
+        [businessId]
+      );
+      res.render("erp-core-transaction-form", {
+        currentSection: flow === "ventas" ? "core-ventas" : "core-compras",
+        erpActor: req.erpActor,
+        flow,
+        docType,
+        title: erpTransactions.DOC_TYPE_TITLES[docType],
+        isExecution: Boolean(erpTransactions.EXECUTION_DOC_TYPES[docType]),
+        items,
+        currencies,
+        locations,
+        error: null,
+        form: {},
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/core/:flow/:docType",
+  requireErpAuth,
+  requireFlowDocType,
+  requireFlowPermission,
+  async (req, res, next) => {
+    const { flow, docType } = req.params;
+    const businessId = req.erpActor.businessId;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const rawItemIds = req.body.item_ids;
+      const itemIds = Array.isArray(rawItemIds) ? rawItemIds : rawItemIds ? [rawItemIds] : [];
+      if (itemIds.length === 0) {
+        await client.query("ROLLBACK");
+        return res.redirect(
+          `/erp/core/${flow}/${docType}/new?error=` + encodeURIComponent("Elige al menos un artículo.")
+        );
+      }
+      if (erpTransactions.EXECUTION_DOC_TYPES[docType] && !req.body.location_id) {
+        await client.query("ROLLBACK");
+        return res.redirect(
+          `/erp/core/${flow}/${docType}/new?error=` + encodeURIComponent("Elige una ubicación para ejecutar el pedido.")
+        );
+      }
+
+      const { rows: itemRows } = await client.query(
+        `SELECT erp_items.*, erp_taxes.rate AS tax_rate
+         FROM erp_items LEFT JOIN erp_taxes ON erp_taxes.id = erp_items.tax_id
+         WHERE erp_items.id = ANY($1::int[]) AND erp_items.business_id = $2`,
+        [itemIds, businessId]
+      );
+      const lines = itemRows.map((item) => ({
+        item_id: item.id,
+        description: item.name,
+        quantity: parseFloat(req.body["qty_" + item.id]) || 1,
+        unit_price:
+          parseFloat(req.body["price_" + item.id]) || Number(flow === "ventas" ? item.price : item.cost),
+        tax_rate: Number(item.tax_rate) || 0,
+      }));
+
+      let clientId = null;
+      let vendorId = null;
+      let entityNameSnapshot = null;
+      if (flow === "ventas") {
+        const erpClient = await findOrCreateClient(
+          businessId,
+          {
+            client_id: req.body.client_id,
+            client_name: req.body.client_name,
+            client_phone: req.body.client_phone,
+            client_email: req.body.client_email,
+          },
+          client
+        );
+        clientId = erpClient ? erpClient.id : null;
+        entityNameSnapshot = erpClient ? erpClient.name : (req.body.client_name || "").trim() || null;
+      } else {
+        const erpVendor = await findOrCreateVendor(
+          businessId,
+          {
+            vendor_id: req.body.vendor_id,
+            vendor_name: req.body.vendor_name,
+            vendor_phone: req.body.vendor_phone,
+            vendor_email: req.body.vendor_email,
+          },
+          client
+        );
+        vendorId = erpVendor ? erpVendor.id : null;
+        entityNameSnapshot = erpVendor ? erpVendor.name : (req.body.vendor_name || "").trim() || null;
+      }
+
+      const transaction = await erpTransactions.createTransaction(
+        {
+          businessId,
+          docType,
+          clientId,
+          vendorId,
+          entityNameSnapshot,
+          currencyCode: req.body.currency_code || null,
+          exchangeRate: parseFloat(req.body.exchange_rate) || 1,
+          notes: req.body.notes || null,
+          locationId: req.body.location_id || null,
+          lines,
+          actor: req.erpActor,
+        },
+        client
+      );
+
+      await client.query("COMMIT");
+      res.redirect(`/erp/core/${flow}/${docType}/${transaction.id}?saved=1`);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      next(err);
+    } finally {
+      client.release();
+    }
+  }
+);
+
+app.get("/erp/core/:flow/:docType/:id", requireErpAuth, requireFlowDocType, async (req, res, next) => {
+  try {
+    const { flow, docType } = req.params;
+    const result = await erpTransactions.getTransaction(req.erpActor.businessId, req.params.id);
+    if (!result || result.transaction.doc_type !== docType) {
+      return res.status(404).send("Documento no encontrado.");
+    }
+    const { rows: locations } = await pool.query(
+      "SELECT * FROM erp_locations WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
+      [req.erpActor.businessId]
+    );
+    const nextDocType = erpTransactions.nextDocType(docType);
+    res.render("erp-core-transaction-detail", {
+      currentSection: flow === "ventas" ? "core-ventas" : "core-compras",
+      erpActor: req.erpActor,
+      flow,
+      docType,
+      title: erpTransactions.DOC_TYPE_TITLES[docType],
+      transaction: result.transaction,
+      lines: result.lines,
+      derived: result.derived,
+      locations,
+      nextDocType,
+      nextIsExecution: Boolean(nextDocType && erpTransactions.EXECUTION_DOC_TYPES[nextDocType]),
+      nextTitle: nextDocType ? erpTransactions.DOC_TYPE_TITLES[nextDocType] : null,
+      canEdit: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, flow === "compras" ? "compras" : "ventas"),
+      saved: req.query.saved === "1",
+      error: req.query.error || null,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  "/erp/core/:flow/:docType/:id/convertir",
+  requireErpAuth,
+  requireFlowDocType,
+  requireFlowPermission,
+  async (req, res, next) => {
+    const { flow, docType } = req.params;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const created = await erpTransactions.convertTransaction(
+        {
+          businessId: req.erpActor.businessId,
+          sourceId: req.params.id,
+          locationId: req.body.location_id || null,
+          actor: req.erpActor,
+        },
+        client
+      );
+      await client.query("COMMIT");
+      res.redirect(`/erp/core/${flow}/${created.doc_type}/${created.id}?saved=1`);
+    } catch (err) {
+      await client.query("ROLLBACK");
+      res.redirect(
+        `/erp/core/${flow}/${docType}/${req.params.id}?error=` + encodeURIComponent(err.message)
+      );
+    } finally {
+      client.release();
+    }
+  }
+);
+
+app.post(
+  "/erp/core/:flow/:docType/:id/cancelar",
+  requireErpAuth,
+  requireFlowDocType,
+  requireFlowPermission,
+  async (req, res, next) => {
+    try {
+      const { flow, docType } = req.params;
+      await erpTransactions.cancelTransaction(req.erpActor.businessId, req.params.id);
+      res.redirect(`/erp/core/${flow}/${docType}/${req.params.id}?saved=1`);
     } catch (err) {
       next(err);
     }

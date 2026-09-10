@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= title %> — <%= flow === 'ventas' ? 'Ventas' : 'Compras' %></title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <a href="/erp/core/<%= flow %>" class="back-link">&larr; Volver a <%= flow === 'ventas' ? 'Ventas' : 'Compras' %></a>
+    <div class="page-header">
+      <h1><%= title %></h1>
+      <a href="/erp/core/<%= flow %>/<%= docType %>/new" class="btn-primary">+ Nuevo</a>
+    </div>
+
+    <% if (transactions.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no hay documentos de este tipo.</p>
+        <a href="/erp/core/<%= flow %>/<%= docType %>/new" class="btn-primary">+ Nuevo</a>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th><%= flow === 'ventas' ? 'Cliente' : 'Proveedor' %></th>
+            <th>Total</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% transactions.forEach(function(t) { %>
+            <tr onclick="window.location='/erp/core/<%= flow %>/<%= docType %>/<%= t.id %>'" style="cursor:pointer;">
+              <td><strong><%= t.folio %></strong></td>
+              <td><%= t.client_name || t.vendor_name || t.entity_name_snapshot || '—' %></td>
+              <td>$<%= Number(t.total).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+              <td><span class="status-badge status-<%= t.status %>"><%= t.status %></span></td>
+              <td class="muted small"><%= t.created_at %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

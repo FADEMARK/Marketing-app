@@ -18,64 +18,83 @@
       </p>
     </div>
 
-    <form method="GET" action="/erp/vehiculos" class="card-form" style="margin-bottom:24px;">
-      <label>Buscar en el stock (ej. "camioneta Ford 2016")
-        <input type="text" name="q" placeholder="Marca, modelo, año, VIN, placa..." autofocus />
-      </label>
-      <button type="submit" class="btn-primary full-width">🔎 Buscar</button>
-    </form>
+    <% if (erpActor.moduleYonksuiteEnabled) { %>
+      <form method="GET" action="/erp/vehiculos" class="card-form" style="margin-bottom:24px;">
+        <label>Buscar en el stock (ej. "camioneta Ford 2016")
+          <input type="text" name="q" placeholder="Marca, modelo, año, VIN, placa..." autofocus />
+        </label>
+        <button type="submit" class="btn-primary full-width">🔎 Buscar</button>
+      </form>
 
-    <div class="stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:24px;">
-      <div class="stat-box">
-        <span class="stat-label">Vehículos en stock</span>
-        <span class="stat-value"><%= stats.enStock %></span>
+      <div class="stats-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:24px;">
+        <div class="stat-box">
+          <span class="stat-label">Vehículos en stock</span>
+          <span class="stat-value"><%= stats.enStock %></span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Vehículos agotados</span>
+          <span class="stat-value"><%= stats.agotados %></span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Piezas disponibles</span>
+          <span class="stat-value"><%= stats.partsDisponibles %></span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Ventas este mes</span>
+          <span class="stat-value"><%= stats.ventasMes %></span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">Vendido este mes</span>
+          <span class="stat-value">$<%= stats.totalMes.toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
+        </div>
       </div>
-      <div class="stat-box">
-        <span class="stat-label">Vehículos agotados</span>
-        <span class="stat-value"><%= stats.agotados %></span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label">Piezas disponibles</span>
-        <span class="stat-value"><%= stats.partsDisponibles %></span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label">Ventas este mes</span>
-        <span class="stat-value"><%= stats.ventasMes %></span>
-      </div>
-      <div class="stat-box">
-        <span class="stat-label">Vendido este mes</span>
-        <span class="stat-value">$<%= stats.totalMes.toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
-      </div>
-    </div>
 
-    <div class="tool-group" style="margin-bottom:24px;">
-      <a href="/erp/vehiculos" class="btn-secondary">📋 Ver inventario completo</a>
-      <% if (canCompras) { %>
-        <a href="/erp/vehicles/new" class="btn-secondary">+ Agregar vehículo</a>
-      <% } %>
-      <% if (canVentas) { %>
-        <a href="/erp/ventas/new" class="btn-secondary">🧾 Nueva venta</a>
-      <% } %>
-      <a href="/erp/clientes" class="btn-secondary">👤 Clientes</a>
-      <% if (canManageEmployees) { %>
-        <a href="/erp/empleados" class="btn-secondary">👥 Empleados</a>
-      <% } %>
-    </div>
+      <div class="tool-group" style="margin-bottom:24px;">
+        <a href="/erp/vehiculos" class="btn-secondary">📋 Ver inventario de vehículos</a>
+        <% if (canCompras) { %>
+          <a href="/erp/vehicles/new" class="btn-secondary">+ Agregar vehículo</a>
+        <% } %>
+        <% if (canVentas) { %>
+          <a href="/erp/ventas/new" class="btn-secondary">🧾 Nueva venta</a>
+        <% } %>
+        <a href="/erp/clientes" class="btn-secondary">👤 Clientes</a>
+        <a href="/erp/proveedores" class="btn-secondary">🏷️ Proveedores</a>
+        <% if (canManageEmployees) { %>
+          <a href="/erp/empleados" class="btn-secondary">👥 Empleados</a>
+        <% } %>
+      </div>
 
-    <h3>Últimos vehículos agregados</h3>
-    <% if (recentVehicles.length === 0) { %>
-      <div class="empty-state"><p>Todavía no has agregado ningún vehículo.</p></div>
+      <h3>Últimos vehículos agregados</h3>
+      <% if (recentVehicles.length === 0) { %>
+        <div class="empty-state"><p>Todavía no has agregado ningún vehículo.</p></div>
+      <% } else { %>
+        <div class="photo-grid">
+          <% recentVehicles.forEach(function(v) { %>
+            <a href="/erp/vehicles/<%= v.id %>" style="text-decoration:none; color:inherit;">
+              <% if (v.cover_photo) { %>
+                <img src="<%= v.cover_photo %>" alt="" style="width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px;" />
+              <% } %>
+              <p class="small" style="margin:4px 0 0;"><%= v.brand %> <%= v.model %> <%= v.year || '' %></p>
+              <span class="status-badge status-<%= v.status %>"><%= v.status === 'en_stock' ? 'En stock' : 'Agotado' %></span>
+            </a>
+          <% }); %>
+        </div>
+      <% } %>
     <% } else { %>
-      <div class="photo-grid">
-        <% recentVehicles.forEach(function(v) { %>
-          <a href="/erp/vehicles/<%= v.id %>" style="text-decoration:none; color:inherit;">
-            <% if (v.cover_photo) { %>
-              <img src="<%= v.cover_photo %>" alt="" style="width:100%; aspect-ratio:1; object-fit:cover; border-radius:8px;" />
-            <% } %>
-            <p class="small" style="margin:4px 0 0;"><%= v.brand %> <%= v.model %> <%= v.year || '' %></p>
-            <span class="status-badge status-<%= v.status %>"><%= v.status === 'en_stock' ? 'En stock' : 'Agotado' %></span>
-          </a>
-        <% }); %>
+      <div class="tool-group" style="margin-bottom:24px;">
+        <a href="/erp/inventario" class="btn-secondary">📦 Ver inventario</a>
+        <a href="/erp/inventario/articulos/new" class="btn-secondary">+ Nuevo artículo</a>
+        <a href="/erp/clientes" class="btn-secondary">👤 Clientes</a>
+        <a href="/erp/proveedores" class="btn-secondary">🏷️ Proveedores</a>
+        <% if (canManageEmployees) { %>
+          <a href="/erp/empleados" class="btn-secondary">👥 Empleados</a>
+        <% } %>
+      </div>
+      <div class="empty-state">
+        <p class="muted small">
+          Este negocio usa el core de MarketingHub ERP (Inventario, Clientes, Proveedores).
+          El módulo de Vehículos/Partes (YonkSuite) no está activo — pídelo a tu equipo si lo necesitas.
+        </p>
       </div>
     <% } %>
   </main>
