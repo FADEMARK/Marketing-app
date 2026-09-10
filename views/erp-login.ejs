@@ -4,12 +4,17 @@
   <title>Iniciar sesión — YonkSuite</title>
   <%- include('partials/head') %>
 </head>
-<body>
-  <%- include('partials/nav') %>
+<body class="erp-shell">
+  <header class="erp-topbar" style="--erp-color: #1B2A4A; justify-content:center;">
+    <span class="erp-brand" style="border-right:none; padding-right:0;">
+      <span class="erp-brand-fallback">🔧</span>
+      <span class="erp-brand-text"><strong>YonkSuite</strong><span>ERP para yonkes</span></span>
+    </span>
+  </header>
 
   <main class="form-page narrow">
-    <h1>🔧 YonkSuite</h1>
-    <p class="muted">Inicia sesión con tu cuenta del negocio o con tu cuenta de empleado (YonkSuite Plus).</p>
+    <h1>🔧 Iniciar sesión en YonkSuite</h1>
+    <p class="muted">Esta es una sesión aparte de MarketingHub: inicia sesión aquí aunque ya tengas abierta tu cuenta en otra pestaña. Usa tu cuenta del negocio (dueño) o tu cuenta de empleado (YonkSuite Plus).</p>
 
     <% if (error) { %>
       <div class="alert alert-error"><%= error %></div>

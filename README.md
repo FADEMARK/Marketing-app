@@ -242,13 +242,19 @@ Si borras un campo personalizado desde el panel admin, los valores que ya se hab
 
 ## YonkSuite (ERP Yonkes): control de autos siniestrados y venta de piezas
 
-Módulo opcional (`/erp`, requiere `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. Vive en su propia sección de la plataforma, con su propio dashboard (`/erp`), su propio login para empleados (`/erp/login`) y su propia barra de navegación reducida cuando entra un empleado.
+Módulo opcional (`/erp`, requiere `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. YonkSuite se siente como una aplicación aparte de MarketingHub, no una pestaña más: tiene su propio acceso, su propio login, su propia barra superior con la marca del negocio, y sus propios reportes.
+
+### Cómo se entra a YonkSuite
+
+Desde el menú de MarketingHub, el link "ERP Yonkes ↗" **abre YonkSuite en una pestaña/ventana nueva** y siempre lleva a `/erp/login` — un formulario de usuario y contraseña. Esto aplica **incluso si esa misma persona ya tiene su sesión de MarketingHub abierta**: YonkSuite nunca "hereda" el login de Marketing automáticamente. Es una decisión a propósito, pensada para una computadora de mostrador que varias personas comparten (el dueño en la mañana, un vendedor en la tarde, etc.) — así nadie entra a operar el inventario o registrar una venta sin identificarse, lo cual además es la base de los reportes de desempeño por vendedor (ver más abajo).
+
+Técnicamente, esto vive en la MISMA cookie de sesión que Marketing/CRM, pero en campos separados (`erpOwnerBusinessId` / `erpEmployeeId`, distintos de `businessId`) que solo se llenan al loguearse en `/erp/login` — nunca con solo tener sesión de Marketing. Cerrar sesión de YonkSuite (o que la sesión de YonkSuite se invalide por sesión única) tampoco cierra la sesión de Marketing, y viceversa: son dos identidades independientes que conviven en el mismo navegador.
 
 ### Planes: YonkSuite Standard vs YonkSuite Plus
 
 Independiente del check "Módulo ERP" (que solo prende/apaga el acceso), cada negocio tiene un **plan ERP** que tu equipo controla desde `/admin/businesses` (columna "Plan ERP"):
 
-- **YonkSuite Standard**: solo la cuenta dueña del negocio puede entrar al ERP. Es una sola sesión activa a la vez en **toda la plataforma** (Marketing, CRM y ERP) — si el mismo usuario inicia sesión desde otra computadora o navegador, la sesión anterior se cierra sola en cuanto esa persona vuelve a interactuar con la app (no hace falta que la cierre manualmente).
+- **YonkSuite Standard**: solo la cuenta dueña del negocio puede entrar al ERP. Es una sola sesión de YonkSuite a la vez — si el dueño inicia sesión en YonkSuite desde otra computadora, la sesión anterior DENTRO DEL ERP se cierra sola (su sesión de Marketing, si la tenía abierta en paralelo, no se ve afectada).
 - **YonkSuite Plus**: agrega hasta **3 cuentas de empleado** (`/erp/empleados`, gestionado por el dueño o por un empleado con rol Admin) con acceso por rol:
   - **Admin**: puede crear/editar/desactivar/borrar empleados y sus roles, y además tiene acceso completo a compras y ventas.
   - **Ventas**: solo puede registrar y cancelar ventas de piezas ya en inventario. No puede dar de alta vehículos, subir fotos, agregar piezas ni editar datos del vehículo.
@@ -257,16 +263,30 @@ Independiente del check "Módulo ERP" (que solo prende/apaga el acceso), cada ne
 
   Cada cuenta de empleado también tiene sesión única (si el mismo empleado entra desde otro dispositivo, la sesión vieja de ESE empleado se cierra). Si el negocio baja de Plus a Standard, las cuentas de empleado pierden acceso al instante (no necesitan cerrar sesión, se les corta como al resto de módulos).
 
+### La barra de YonkSuite: logo y color del propio negocio
+
+Una vez adentro, YonkSuite se ve con la identidad del negocio, no con el logo genérico de MarketingHub: la barra superior usa el **logo** y el **color de marca** (`brand_color_primary`) que el negocio ya haya capturado en "Mi negocio" — si no capturó ninguno, cae a un azul oscuro por default. El menú horizontal es simple a propósito (Dashboard, Vehículos, Empleados si el plan es Plus, Reportes si el rol tiene acceso), inspirado en la barra de apps tipo NetSuite: el logo a la izquierda, las secciones al centro, el usuario y "Cerrar sesión" a la derecha.
+
 ### El flujo del día a día
 
 1. **Alta del vehículo** (`/erp/vehicles/new`, requiere permiso de Compras): marca, modelo, año, VIN, placa, color, precio de compra, fecha de compra, notas, y hasta 8 fotos (se comprimen automáticamente a JPEG al subirlas).
 2. **Búsqueda de stock**: tanto el dashboard (`/erp`) como el inventario (`/erp/vehiculos`) tienen un buscador de texto libre — escribe algo como "camioneta Ford 2016" y encuentra coincidencias sin importar el orden de las palabras ni en qué campo estén (marca, modelo, año, VIN o placa).
 3. **Piezas**: desde el detalle del vehículo se registran las piezas que salen de él (motor, transmisión, suspensión y dirección, frenos, eléctrico, carrocería, interior, llantas y rines, u otro), cada una con un precio sugerido opcional y un **estado físico** (Bueno / Deteriorado / Malo) que ayuda a decidir a qué precio venderla.
-4. **Venta** (requiere permiso de Ventas): se registra en el detalle de ESE vehículo — seleccionas qué piezas se vendieron y confirmas el precio real de cada una. Las piezas vendidas quedan marcadas como tal y ya no se pueden editar ni borrar (es un registro financiero). Las ventas se pueden **cancelar** si se registraron por error: las piezas regresan a "Disponible".
+4. **Venta** (requiere permiso de Ventas): se registra en el detalle de ESE vehículo — seleccionas qué piezas se vendieron y confirmas el precio real de cada una. La venta queda ligada a quién la registró (el nombre de la sesión de YonkSuite activa en ese momento — dueño o empleado), y esto se muestra como "Vendido por" en el historial. Las piezas vendidas quedan marcadas como tal y ya no se pueden editar ni borrar (es un registro financiero). Las ventas se pueden **cancelar** si se registraron por error: las piezas regresan a "Disponible".
 5. **Estado de cuenta por vehículo**: precio de compra, cuánto se ha vendido de él hasta ahora, y la ganancia o pérdida resultante — sin necesitar que el vehículo esté completamente vendido para verlo.
 6. **Dar de baja el stock**: cuando ya no queda nada que vender de un vehículo, se marca manualmente como "Agotado" (botón "Marcar como Agotado" en el detalle del vehículo, se puede reactivar si hace falta). Un vehículo con ventas registradas no se puede borrar —por ser un registro financiero—, solo marcarse como agotado. Cada pieza también se puede marcar como "Desechada" si resultó dañada/sin valor de venta.
 
 Todo queda aislado por negocio y todo el flujo de venta corre dentro de una transacción de base de datos, para que una venta a medio registrar nunca deje piezas en un estado inconsistente.
+
+### Reportes (`/erp/reportes`)
+
+Gateado a "manage_employees" (el dueño siempre entra; de los roles de empleado, solo Admin) porque mezcla información financiera con evaluación de desempeño individual — no es algo que un vendedor deba ver de sus compañeros. Tiene un filtro de rango de fechas (por default, los últimos 30 días) y muestra, todo en pantalla (sin exportar por ahora):
+
+- **Resumen del periodo**: ventas registradas, total vendido, total comprado (vehículos dados de alta en ese rango).
+- **Balance general acumulado**: invertido en vehículos vs. vendido, de TODO el historial del negocio (no solo el periodo elegido) — la foto real de ganancia/pérdida.
+- **Ventas por vendedor**: quién vendió qué y cuánto en el periodo, con una barra comparativa — pensado exactamente para evaluar el desempeño de cada vendedor.
+- **Artículos vendidos por categoría**: qué se está moviendo más (motor, carrocería, eléctrico, etc.) y cuánto genera cada categoría.
+- **Inventario actual**: piezas por estado (disponible/reservada/vendida/desechada), piezas disponibles por categoría, y vehículos por estado — una foto de hoy, no depende del rango de fechas.
 
 ### Funciones de IA (solo se disparan con un clic, nunca automáticas)
 

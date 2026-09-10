@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Reportes — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <div class="page-header">
+      <h1>📊 Reportes</h1>
+    </div>
+
+    <form method="GET" action="/erp/reportes" class="report-filters">
+      <label>Desde
+        <input type="date" name="from" value="<%= from %>" />
+      </label>
+      <label>Hasta
+        <input type="date" name="to" value="<%= to %>" />
+      </label>
+      <button type="submit" class="btn-primary">Aplicar</button>
+    </form>
+
+    <div class="report-section">
+      <h3>Resumen del periodo (<%= from %> a <%= to %>)</h3>
+      <div class="stat-box">
+        <div>
+          <span class="stat-label">Ventas registradas</span>
+          <span class="stat-value"><%= summary.num_ventas %></span>
+        </div>
+        <div>
+          <span class="stat-label">Vendido en el periodo</span>
+          <span class="stat-value">$<%= Number(summary.total_vendido).toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
+        </div>
+        <div>
+          <span class="stat-label">Comprado en el periodo</span>
+          <span class="stat-value">$<%= Number(purchased.total_comprado).toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
+        </div>
+        <div>
+          <span class="stat-label">Vehículos comprados</span>
+          <span class="stat-value"><%= purchased.num_vehiculos %></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="report-section">
+      <h3>Balance general (acumulado, desde siempre)</h3>
+      <p class="muted small" style="margin-top:-4px;">A diferencia del resumen de arriba (que es solo del periodo elegido), esto suma TODO el historial del negocio — cuánto se ha invertido en vehículos contra cuánto se ha vendido de sus piezas en total.</p>
+      <div class="stat-box">
+        <div>
+          <span class="stat-label">Invertido en vehículos (total)</span>
+          <span class="stat-value">$<%= Number(allTime.total_invertido).toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
+        </div>
+        <div>
+          <span class="stat-label">Vendido (total histórico)</span>
+          <span class="stat-value">$<%= Number(allTime.total_vendido_historico).toLocaleString('es-MX', {minimumFractionDigits:2}) %></span>
+        </div>
+        <div>
+          <span class="stat-label">Ganancia / pérdida acumulada</span>
+          <% const ganancia = Number(allTime.total_vendido_historico) - Number(allTime.total_invertido); %>
+          <span class="stat-value <%= ganancia >= 0 ? 'positive' : 'negative' %>">
+            <%= ganancia >= 0 ? '+' : '-' %>$<%= Math.abs(ganancia).toLocaleString('es-MX', {minimumFractionDigits:2}) %>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="report-section">
+      <h3>Ventas por vendedor (evaluar desempeño)</h3>
+      <% if (bySeller.length === 0) { %>
+        <p class="muted small">No hay ventas registradas en este periodo.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Vendedor</th><th>Ventas</th><th>Total vendido</th><th></th></tr>
+          </thead>
+          <tbody>
+            <% bySeller.forEach(function(s) { %>
+              <tr>
+                <td>
+                  <%= s.seller_name %>
+                  <% if (s.actor_type === 'owner') { %><span class="muted small">(dueño)</span><% } %>
+                </td>
+                <td class="muted"><%= s.num_ventas %></td>
+                <td class="muted">$<%= Number(s.total_vendido).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+                <td style="min-width:120px;">
+                  <div class="rank-bar-track">
+                    <div class="rank-bar-fill" style="width: <%= Math.round((Number(s.total_vendido) / maxSellerTotal) * 100) %>%;"></div>
+                  </div>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="report-section">
+      <h3>Artículos vendidos por categoría (periodo)</h3>
+      <% if (byCategory.length === 0) { %>
+        <p class="muted small">No hay piezas vendidas en este periodo.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead>
+            <tr><th>Categoría</th><th>Piezas vendidas</th><th>Total vendido</th></tr>
+          </thead>
+          <tbody>
+            <% byCategory.forEach(function(c) { %>
+              <tr>
+                <td><%= PART_CATEGORY_LABELS[c.category] || c.category %></td>
+                <td class="muted"><%= c.piezas_vendidas %></td>
+                <td class="muted">$<%= Number(c.total_vendido).toLocaleString('es-MX', {minimumFractionDigits:2}) %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+
+    <div class="report-section">
+      <h3>Inventario actual (foto de hoy)</h3>
+      <div class="two-col" style="align-items:flex-start;">
+        <div>
+          <h4 class="muted small" style="text-transform:uppercase; letter-spacing:0.02em;">Piezas por estado</h4>
+          <table class="admin-table">
+            <tbody>
+              <% inventoryByStatus.forEach(function(row) { %>
+                <tr>
+                  <td><%= PART_STATUS_LABELS[row.status] || row.status %></td>
+                  <td class="muted"><%= row.n %></td>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h4 class="muted small" style="text-transform:uppercase; letter-spacing:0.02em;">Disponibles por categoría</h4>
+          <% if (inventoryByCategory.length === 0) { %>
+            <p class="muted small">No hay piezas disponibles ahora mismo.</p>
+          <% } else { %>
+            <table class="admin-table">
+              <tbody>
+                <% inventoryByCategory.forEach(function(row) { %>
+                  <tr>
+                    <td><%= PART_CATEGORY_LABELS[row.category] || row.category %></td>
+                    <td class="muted"><%= row.n %></td>
+                  </tr>
+                <% }); %>
+              </tbody>
+            </table>
+          <% } %>
+        </div>
+      </div>
+      <h4 class="muted small" style="text-transform:uppercase; letter-spacing:0.02em; margin-top:16px;">Vehículos por estado</h4>
+      <table class="admin-table">
+        <tbody>
+          <% vehiclesByStatus.forEach(function(row) { %>
+            <tr>
+              <td><%= VEHICLE_STATUS_LABELS[row.status] || row.status %></td>
+              <td class="muted"><%= row.n %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

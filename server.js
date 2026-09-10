@@ -74,6 +74,23 @@ app.use(
   })
 );
 
+// --- YonkSuite (ERP): identidad SEPARADA de la de Marketing/CRM, aunque
+// viva en la misma cookie de sesión ---
+//
+// Probamos primero con una segunda cookie de sesión aparte para /erp/*, pero
+// express-session no soporta bien dos middlewares de sesión apilados en la
+// misma request (el segundo pisa a req.session, pero al guardar la respuesta
+// solo se manda el Set-Cookie del PRIMERO — la sesión "nueva" nunca llega al
+// navegador). Por eso usamos una sola cookie/sesión para toda la app, pero
+// con campos EXCLUSIVOS del ERP (erpOwnerBusinessId / erpEmployeeId /
+// erpSessionToken) que nunca se llenan solo por tener sesión de Marketing
+// (businessId) — solo se llenan al loguearse explícitamente en /erp/login.
+// Así, entrar a YonkSuite siempre pide usuario/contraseña, aunque ya haya
+// sesión de Marketing abierta en el mismo navegador (clave para una
+// computadora de mostrador compartida entre varias personas), y cerrar
+// sesión del ERP (ver /erp/logout) no cierra la sesión de Marketing porque
+// solo se limpian los campos del ERP, no el resto de la sesión.
+
 // Hace disponibles helpers/datos comunes en todas las vistas EJS.
 app.use((req, res, next) => {
   res.locals.STATUS_LABELS = STATUS_LABELS;
@@ -982,15 +999,30 @@ app.post("/erp/login", async (req, res, next) => {
           error: "Tu negocio no tiene el módulo ERP-Yonkes activo. Contacta a nuestro equipo.",
         });
       }
+      // OJO: esto actualiza erp_owner_active_session_id (sesión única DENTRO
+      // del ERP), NO active_session_id (esa es la de Marketing/CRM) — son
+      // independientes a propósito, ver el comentario en server.js sobre la
+      // identidad aparte del ERP dentro de la misma cookie de sesión.
       const sessionToken = crypto.randomBytes(24).toString("hex");
-      await pool.query("UPDATE businesses SET active_session_id = $1 WHERE id = $2", [
+      await pool.query("UPDATE businesses SET erp_owner_active_session_id = $1 WHERE id = $2", [
         sessionToken,
         business.id,
       ]);
+      // Antes de regenerate() (que crea una sesión en blanco, para evitar
+      // fijación de sesión) guardamos lo que YA hubiera de Marketing/Admin en
+      // esta misma cookie, para no cerrarle la sesión de Marketing a alguien
+      // que entra al ERP desde una pestaña nueva del mismo navegador.
+      const preserved = {
+        businessId: req.session.businessId,
+        sessionToken: req.session.sessionToken,
+        adminId: req.session.adminId,
+      };
       return req.session.regenerate((err) => {
         if (err) return next(err);
-        req.session.businessId = business.id;
-        req.session.sessionToken = sessionToken;
+        Object.assign(req.session, preserved);
+        req.session.erpOwnerBusinessId = business.id;
+        req.session.erpEmployeeId = null; // por si esta misma cookie tenía otra identidad de ERP antes
+        req.session.erpSessionToken = sessionToken;
         res.redirect("/erp");
       });
     }
@@ -1019,10 +1051,17 @@ app.post("/erp/login", async (req, res, next) => {
       sessionToken,
       employee.id,
     ]);
+    const preserved = {
+      businessId: req.session.businessId,
+      sessionToken: req.session.sessionToken,
+      adminId: req.session.adminId,
+    };
     req.session.regenerate((err) => {
       if (err) return next(err);
+      Object.assign(req.session, preserved);
       req.session.erpEmployeeId = employee.id;
-      req.session.sessionToken = sessionToken;
+      req.session.erpOwnerBusinessId = null;
+      req.session.erpSessionToken = sessionToken;
       res.redirect("/erp");
     });
   } catch (err) {
@@ -1030,8 +1069,16 @@ app.post("/erp/login", async (req, res, next) => {
   }
 });
 
+// OJO: a propósito NO se hace req.session.destroy() aquí — eso borraría
+// TODA la sesión, incluida una posible sesión de Marketing abierta en la
+// misma cookie (si el dueño entró al ERP desde otra pestaña del navegador
+// donde ya tenía sesión). Cerrar sesión del ERP solo debe limpiar la
+// identidad del ERP, no la de Marketing/CRM.
 app.post("/erp/logout", (req, res) => {
-  req.session.destroy(() => res.redirect("/erp/login"));
+  req.session.erpOwnerBusinessId = null;
+  req.session.erpEmployeeId = null;
+  req.session.erpSessionToken = null;
+  res.redirect("/erp/login");
 });
 
 // Gestión de empleados (solo plan Plus, y solo dueño del negocio o un
@@ -1050,6 +1097,7 @@ app.get(
 
       if (erpPlan !== erpStatus.ERP_PLANS.PLUS) {
         return res.render("erp-empleados", {
+          currentSection: "empleados",
           erpPlan,
           employees: [],
           erpActor: req.erpActor,
@@ -1068,6 +1116,7 @@ app.get(
       );
 
       res.render("erp-empleados", {
+        currentSection: "empleados",
         erpPlan,
         employees,
         erpActor: req.erpActor,
@@ -1300,6 +1349,7 @@ app.get("/erp", requireErpAuth, async (req, res, next) => {
       req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, permission);
 
     res.render("erp-dashboard", {
+      currentSection: "dashboard",
       erpActor: req.erpActor,
       erpPlan,
       canCompras: can("compras"),
@@ -1358,6 +1408,7 @@ app.get("/erp/vehiculos", requireErpAuth, async (req, res, next) => {
 
     const { rows: vehicles } = await pool.query(query, params);
     res.render("erp-list", {
+      currentSection: "vehiculos",
       vehicles,
       statusFilter,
       searchQuery,
@@ -1372,7 +1423,12 @@ app.get("/erp/vehiculos", requireErpAuth, async (req, res, next) => {
 });
 
 app.get("/erp/vehicles/new", requireErpAuth, requirePermission("compras"), (req, res) => {
-  res.render("erp-vehicle-new", { error: null, form: {} });
+  res.render("erp-vehicle-new", {
+    currentSection: "vehiculos",
+    erpActor: req.erpActor,
+    error: null,
+    form: {},
+  });
 });
 
 app.post(
@@ -1387,6 +1443,8 @@ app.post(
 
       if (!brand || !brand.trim() || !model || !model.trim()) {
         return res.render("erp-vehicle-new", {
+          currentSection: "vehiculos",
+          erpActor: req.erpActor,
           error: "Marca y modelo son obligatorios.",
           form: req.body,
         });
@@ -1395,6 +1453,8 @@ app.post(
       const price = parseFloat(purchase_price);
       if (isNaN(price) || price < 0) {
         return res.render("erp-vehicle-new", {
+          currentSection: "vehiculos",
+          erpActor: req.erpActor,
           error: "El precio de compra debe ser un número válido.",
           form: req.body,
         });
@@ -1809,14 +1869,23 @@ app.post(
       }
 
       const { rows: saleRows } = await client.query(
-        `INSERT INTO erp_sales (vehicle_id, business_id, buyer_name, sale_date, notes)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        `INSERT INTO erp_sales
+           (vehicle_id, business_id, buyer_name, sale_date, notes,
+            sold_by_actor_type, sold_by_employee_id, sold_by_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
         [
           vehicle.id,
           req.erpActor.businessId,
           (req.body.buyer_name || "").trim() || null,
           req.body.sale_date || new Date().toISOString().slice(0, 10),
           (req.body.notes || "").trim() || null,
+          // Quién hizo la venta, para el reporte de desempeño por vendedor
+          // (ver /erp/reportes). Se guarda el nombre "congelado" al momento
+          // de vender, no solo el id, para que el reporte histórico no se
+          // rompa si luego se borra o renombra esa cuenta de empleado.
+          req.erpActor.type,
+          req.erpActor.employeeId || null,
+          req.erpActor.name,
         ]
       );
       const saleId = saleRows[0].id;
@@ -1880,6 +1949,126 @@ app.post("/erp/sales/:id/delete", requireErpAuth, requirePermission("ventas"), a
     client.release();
   }
 });
+
+// --- Reportes ---
+//
+// Gateado a "manage_employees" (el dueño siempre pasa; de los roles de
+// empleado, solo Admin) porque mezcla información financiera (balance,
+// ganancia) con evaluación de desempeño por vendedor — no es algo que un
+// empleado de Ventas o Compras deba poder ver de sus compañeros.
+app.get(
+  "/erp/reportes",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const businessId = req.erpActor.businessId;
+
+      // Rango de fechas: por default, los últimos 30 días.
+      const today = new Date().toISOString().slice(0, 10);
+      const thirtyDaysAgo = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      const from = /^\d{4}-\d{2}-\d{2}$/.test(req.query.from || "") ? req.query.from : thirtyDaysAgo;
+      const to = /^\d{4}-\d{2}-\d{2}$/.test(req.query.to || "") ? req.query.to : today;
+
+      // 1) Resumen de ventas del periodo.
+      const { rows: summaryRows } = await pool.query(
+        `SELECT COUNT(DISTINCT erp_sales.id)::int AS num_ventas,
+                COALESCE(SUM(erp_sale_items.price), 0)::numeric AS total_vendido
+         FROM erp_sales
+         JOIN erp_sale_items ON erp_sale_items.sale_id = erp_sales.id
+         WHERE erp_sales.business_id = $1 AND erp_sales.sale_date BETWEEN $2 AND $3`,
+        [businessId, from, to]
+      );
+      const summary = summaryRows[0];
+
+      // 2) Comprado en el periodo (para el balance simple del periodo).
+      const { rows: purchasedRows } = await pool.query(
+        `SELECT COALESCE(SUM(purchase_price), 0)::numeric AS total_comprado, COUNT(*)::int AS num_vehiculos
+         FROM erp_vehicles WHERE business_id = $1 AND purchase_date BETWEEN $2 AND $3`,
+        [businessId, from, to]
+      );
+      const purchased = purchasedRows[0];
+
+      // 3) Balance general acumulado (desde siempre, no solo el periodo) —
+      // da una foto real de ganancia/pérdida del negocio completo.
+      const { rows: allTimeRows } = await pool.query(
+        `SELECT
+          (SELECT COALESCE(SUM(purchase_price), 0) FROM erp_vehicles WHERE business_id = $1)::numeric AS total_invertido,
+          (SELECT COALESCE(SUM(erp_sale_items.price), 0)
+             FROM erp_sale_items JOIN erp_sales ON erp_sales.id = erp_sale_items.sale_id
+             WHERE erp_sales.business_id = $1)::numeric AS total_vendido_historico`,
+        [businessId]
+      );
+      const allTime = allTimeRows[0];
+
+      // 4) Ventas por vendedor (evaluar desempeño) — quién vendió qué en el periodo.
+      const { rows: bySeller } = await pool.query(
+        `SELECT
+          COALESCE(erp_sales.sold_by_name, 'Sin registrar') AS seller_name,
+          COALESCE(erp_sales.sold_by_actor_type, '') AS actor_type,
+          COUNT(DISTINCT erp_sales.id)::int AS num_ventas,
+          COALESCE(SUM(erp_sale_items.price), 0)::numeric AS total_vendido
+         FROM erp_sales
+         JOIN erp_sale_items ON erp_sale_items.sale_id = erp_sales.id
+         WHERE erp_sales.business_id = $1 AND erp_sales.sale_date BETWEEN $2 AND $3
+         GROUP BY erp_sales.sold_by_name, erp_sales.sold_by_actor_type
+         ORDER BY total_vendido DESC`,
+        [businessId, from, to]
+      );
+      const maxSellerTotal = bySeller.reduce((max, s) => Math.max(max, Number(s.total_vendido)), 0) || 1;
+
+      // 5) Artículos vendidos por categoría en el periodo.
+      const { rows: byCategory } = await pool.query(
+        `SELECT erp_parts.category,
+                COUNT(*)::int AS piezas_vendidas,
+                COALESCE(SUM(erp_sale_items.price), 0)::numeric AS total_vendido
+         FROM erp_sale_items
+         JOIN erp_sales ON erp_sales.id = erp_sale_items.sale_id
+         JOIN erp_parts ON erp_parts.id = erp_sale_items.part_id
+         WHERE erp_sales.business_id = $1 AND erp_sales.sale_date BETWEEN $2 AND $3
+         GROUP BY erp_parts.category
+         ORDER BY total_vendido DESC`,
+        [businessId, from, to]
+      );
+
+      // 6) Inventario actual (foto de hoy, no depende del rango de fechas).
+      const { rows: inventoryByStatus } = await pool.query(
+        `SELECT status, COUNT(*)::int AS n FROM erp_parts WHERE business_id = $1 GROUP BY status`,
+        [businessId]
+      );
+      const { rows: inventoryByCategory } = await pool.query(
+        `SELECT category, COUNT(*)::int AS n FROM erp_parts
+         WHERE business_id = $1 AND status = 'disponible' GROUP BY category ORDER BY n DESC`,
+        [businessId]
+      );
+      const { rows: vehiclesByStatus } = await pool.query(
+        `SELECT status, COUNT(*)::int AS n FROM erp_vehicles WHERE business_id = $1 GROUP BY status`,
+        [businessId]
+      );
+
+      res.render("erp-reportes", {
+        currentSection: "reportes",
+        erpActor: req.erpActor,
+        from,
+        to,
+        summary,
+        purchased,
+        allTime,
+        bySeller,
+        maxSellerTotal,
+        byCategory,
+        inventoryByStatus,
+        inventoryByCategory,
+        vehiclesByStatus,
+        PART_CATEGORY_LABELS: erpStatus.PART_CATEGORY_LABELS,
+        PART_STATUS_LABELS: erpStatus.PART_STATUS_LABELS,
+        VEHICLE_STATUS_LABELS: erpStatus.VEHICLE_STATUS_LABELS,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 // --- IA: sugerir piezas vendibles a partir de las fotos ya subidas ---
 // Se dispara solo con el botón explícito "Analizar con IA" (nunca

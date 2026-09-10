@@ -4,8 +4,8 @@
   <title><%= vehicle.brand %> <%= vehicle.model %> — ERP Yonkes</title>
   <%- include('partials/head') %>
 </head>
-<body>
-  <%- include('partials/nav') %>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'vehiculos' }) %>
 
   <main class="page narrow">
     <a href="/erp/vehiculos" class="back-link">&larr; Volver al inventario</a>
@@ -307,6 +307,9 @@
               <%= sale.sale_date %> —
               <%= sale.items.map(function(i){ return i.part_name + ' ($' + Number(i.price).toLocaleString('es-MX', {minimumFractionDigits:2}) + ')'; }).join(', ') %>
             </p>
+            <% if (sale.sold_by_name) { %>
+              <p class="muted small" style="margin:0 0 4px;">Vendido por: <strong><%= sale.sold_by_name %></strong></p>
+            <% } %>
             <% if (sale.notes) { %><p class="muted small" style="margin:0 0 4px;"><%= sale.notes %></p><% } %>
             <form method="POST" action="/erp/sales/<%= sale.id %>/delete"
                   onsubmit="return confirm('¿Cancelar esta venta? Las piezas regresarán a Disponible.');">

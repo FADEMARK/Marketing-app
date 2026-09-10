@@ -57,34 +57,70 @@ function requireAdminAuth(req, res, next) {
 // existen en el plan Plus y tienen un rol con permisos limitados — ver
 // services/erpStatus.js (ERP_ROLE_PERMISSIONS).
 //
+// IMPORTANTE: YonkSuite usa campos EXCLUSIVOS dentro de la MISMA cookie de
+// sesión (erpOwnerBusinessId / erpEmployeeId / erpSessionToken) — nunca se
+// revisa req.session.businessId (eso es de Marketing) aquí. El dueño necesita
+// loguearse en /erp/login igual que un empleado; esa identidad vive en
+// req.session.erpOwnerBusinessId, independiente de si ya hay o no una sesión
+// de Marketing en esa misma cookie. Esto es intencional: entrar a YonkSuite
+// siempre debe pedir usuario/contraseña, pensado para una computadora de
+// mostrador compartida entre varias personas (dueño, vendedor, compras).
+//
+// Al cerrar sesión de ERP o detectar un problema (cuenta inactiva, otra
+// sesión de ERP más nueva, etc.) solo se limpian los campos del ERP, NUNCA
+// req.session.destroy() completo — así no se cierra de rebote una sesión de
+// Marketing que compartiera la misma cookie.
+//
 // req.erpActor queda disponible en todas las rutas/vistas del ERP con la
-// forma { type: "owner" | "employee", businessId, role, employeeId, name }.
+// forma { type: "owner" | "employee", businessId, role, employeeId, name,
+// logoData, brandColorPrimary, brandColorSecondary }.
+function clearErpSession(req) {
+  req.session.erpOwnerBusinessId = null;
+  req.session.erpEmployeeId = null;
+  req.session.erpSessionToken = null;
+}
+
 async function requireErpAuth(req, res, next) {
   try {
-    if (req.session.businessId) {
+    if (req.session.erpOwnerBusinessId) {
       const { rows } = await pool.query(
-        "SELECT is_active, module_erp_enabled, erp_plan, active_session_id, name FROM businesses WHERE id = $1",
-        [req.session.businessId]
+        `SELECT is_active, module_erp_enabled, erp_plan, erp_owner_active_session_id, name,
+                logo_data, brand_color_primary, brand_color_secondary
+         FROM businesses WHERE id = $1`,
+        [req.session.erpOwnerBusinessId]
       );
       const business = rows[0];
       if (!business || !business.is_active) {
-        return req.session.destroy(() => res.redirect("/login?inactive=1"));
+        clearErpSession(req);
+        return res.redirect("/erp/login?inactive=1");
       }
-      if (business.active_session_id && business.active_session_id !== req.session.sessionToken) {
-        return req.session.destroy(() => res.redirect("/login?otra_sesion=1"));
+      if (
+        business.erp_owner_active_session_id &&
+        business.erp_owner_active_session_id !== req.session.erpSessionToken
+      ) {
+        clearErpSession(req);
+        return res.redirect("/erp/login?otra_sesion=1");
       }
       if (!business.module_erp_enabled) {
         return res.render("module-upsell", { moduleLabel: "ERP Yonkes" });
       }
-      res.locals.businessModules = { module_crm_enabled: true, module_erp_enabled: true };
       req.erpActor = {
         type: "owner",
-        businessId: req.session.businessId,
+        businessId: req.session.erpOwnerBusinessId,
         businessName: business.name,
         erpPlan: business.erp_plan,
         role: "owner",
         employeeId: null,
         name: business.name,
+        logoData: business.logo_data,
+        brandColorPrimary: business.brand_color_primary,
+        brandColorSecondary: business.brand_color_secondary,
+        // El dueño siempre pasa cualquier permiso — se calculan aquí una sola
+        // vez para que las vistas (empezando por el header propio de
+        // YonkSuite) no tengan que repetir roleHasPermission().
+        canCompras: true,
+        canVentas: true,
+        canManageEmployees: true,
       };
       return next();
     }
@@ -92,7 +128,8 @@ async function requireErpAuth(req, res, next) {
     if (req.session.erpEmployeeId) {
       const { rows } = await pool.query(
         `SELECT e.id, e.name, e.role, e.active, e.active_session_id, e.business_id,
-                b.is_active AS business_active, b.module_erp_enabled, b.erp_plan
+                b.is_active AS business_active, b.module_erp_enabled, b.erp_plan, b.name AS business_name,
+                b.logo_data, b.brand_color_primary, b.brand_color_secondary
          FROM erp_employees e
          JOIN businesses b ON b.id = e.business_id
          WHERE e.id = $1`,
@@ -100,23 +137,33 @@ async function requireErpAuth(req, res, next) {
       );
       const employee = rows[0];
       if (!employee || !employee.active || !employee.business_active) {
-        return req.session.destroy(() => res.redirect("/erp/login?inactive=1"));
+        clearErpSession(req);
+        return res.redirect("/erp/login?inactive=1");
       }
-      if (employee.active_session_id && employee.active_session_id !== req.session.sessionToken) {
-        return req.session.destroy(() => res.redirect("/erp/login?otra_sesion=1"));
+      if (employee.active_session_id && employee.active_session_id !== req.session.erpSessionToken) {
+        clearErpSession(req);
+        return res.redirect("/erp/login?otra_sesion=1");
       }
       if (!employee.module_erp_enabled || employee.erp_plan !== ERP_PLANS.PLUS) {
         // Si el negocio bajó de plan Plus a Standard (o le quitaron el
         // módulo), las cuentas de empleado dejan de poder entrar de inmediato.
-        return req.session.destroy(() => res.redirect("/erp/login?sin_acceso=1"));
+        clearErpSession(req);
+        return res.redirect("/erp/login?sin_acceso=1");
       }
       req.erpActor = {
         type: "employee",
         businessId: employee.business_id,
+        businessName: employee.business_name,
         erpPlan: employee.erp_plan,
         role: employee.role,
         employeeId: employee.id,
         name: employee.name,
+        logoData: employee.logo_data,
+        brandColorPrimary: employee.brand_color_primary,
+        brandColorSecondary: employee.brand_color_secondary,
+        canCompras: roleHasPermission(employee.role, "compras"),
+        canVentas: roleHasPermission(employee.role, "ventas"),
+        canManageEmployees: roleHasPermission(employee.role, "manage_employees"),
       };
       return next();
     }

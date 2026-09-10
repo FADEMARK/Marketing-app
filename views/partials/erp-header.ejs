@@ -1,0 +1,45 @@
+<%
+// Header propio de YonkSuite: logo + color de marca del negocio (capturados
+// en "Mi negocio" dentro de MarketingHub) y un menú horizontal simple con
+// las secciones a las que ese actor (dueño o empleado) tiene acceso — estilo
+// barra de una app de escritorio (NetSuite, etc.), separado a propósito de
+// la barra de MarketingHub (ver services/middleware.js: req.erpActor).
+//
+// currentSection lo manda cada vista para resaltar la pestaña activa: uno de
+// "dashboard" | "vehiculos" | "empleados" | "reportes" | null.
+const _section = typeof currentSection !== "undefined" ? currentSection : null;
+const _erpActor = typeof erpActor !== "undefined" ? erpActor : null;
+const _roleLabels = { owner: "Dueño", admin: "Admin", ventas: "Ventas", compras: "Compras", ventas_admin: "Ventas / Admin" };
+%>
+  <header class="erp-topbar" style="--erp-color: <%= (_erpActor && _erpActor.brandColorPrimary) || '#1B2A4A' %>;">
+    <a href="/erp" class="erp-brand">
+      <% if (_erpActor && _erpActor.logoData) { %>
+        <img src="<%= _erpActor.logoData %>" alt="" class="erp-brand-logo" />
+      <% } else { %>
+        <span class="erp-brand-fallback">🔧</span>
+      <% } %>
+      <span class="erp-brand-text">
+        <strong>YonkSuite</strong>
+        <span><%= (_erpActor && _erpActor.businessName) || "" %></span>
+      </span>
+    </a>
+    <nav class="erp-topnav">
+      <a href="/erp" class="<%= _section === 'dashboard' ? 'active' : '' %>">Dashboard</a>
+      <a href="/erp/vehiculos" class="<%= _section === 'vehiculos' ? 'active' : '' %>">Vehículos</a>
+      <% if (_erpActor && _erpActor.erpPlan === 'plus' && _erpActor.canManageEmployees) { %>
+        <a href="/erp/empleados" class="<%= _section === 'empleados' ? 'active' : '' %>">Empleados</a>
+      <% } %>
+      <% if (_erpActor && _erpActor.canManageEmployees) { %>
+        <a href="/erp/reportes" class="<%= _section === 'reportes' ? 'active' : '' %>">Reportes</a>
+      <% } %>
+    </nav>
+    <div class="erp-topbar-user">
+      <% if (_erpActor) { %>
+        <span><%= _erpActor.name %></span>
+        <span class="erp-role-pill"><%= _roleLabels[_erpActor.role] || _erpActor.role %></span>
+      <% } %>
+      <form method="POST" action="/erp/logout" class="inline-form">
+        <button type="submit">Cerrar sesión</button>
+      </form>
+    </div>
+  </header>

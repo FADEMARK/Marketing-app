@@ -10,16 +10,15 @@
         <a href="/crm">CRM</a>
       <% } %>
       <% if (businessModules.module_erp_enabled) { %>
-        <a href="/erp">ERP Yonkes</a>
+        <a href="/erp/login" target="_blank" rel="noopener" title="Abre YonkSuite en una ventana aparte — pide iniciar sesión ahí, aunque ya estés dentro de MarketingHub">ERP Yonkes ↗</a>
       <% } %>
       <a href="/documents">Documentos</a>
       <a href="/profile">Mi negocio</a>
       <form action="/logout" method="POST" class="inline-form">
         <button type="submit" class="link-button">Cerrar sesión</button>
       </form>
-      <a href="/admin/login" class="muted small" style="text-decoration:none;" title="Panel interno (equipo)">🔧 Panel interno</a>
     <% } else if (typeof isErpEmployeeLoggedIn !== 'undefined' && isErpEmployeeLoggedIn) { %>
-      <a href="/erp">ERP Yonkes</a>
+      <a href="/erp/login" target="_blank" rel="noopener">ERP Yonkes ↗</a>
       <form action="/erp/logout" method="POST" class="inline-form">
         <button type="submit" class="link-button">Cerrar sesión</button>
       </form>

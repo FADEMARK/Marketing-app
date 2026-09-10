@@ -515,3 +515,96 @@ main.hero p { color: var(--muted); font-size: 1.1rem; max-width: 650px; margin: 
 @media (max-width: 700px) {
   .calendar-day { min-height: 60px; font-size: 0.7rem; }
 }
+
+/* --- YonkSuite (ERP): header propio, separado de la barra de MarketingHub.
+   El color se manda por variable inline (--erp-color) desde erp-header.ejs
+   con el brand_color_primary de cada negocio, así cada yonke ve "su" color
+   sin tener que tocar este archivo. Si el negocio no capturó un color, cae
+   al azul de MarketingHub por default (ver el fallback en el partial). */
+.erp-shell { min-height: 100vh; background: var(--bg); }
+.erp-topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 24px;
+  background: var(--erp-color, var(--primary));
+  color: #fff;
+  flex-wrap: wrap;
+}
+.erp-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: #fff;
+  padding-right: 16px;
+  border-right: 1px solid rgba(255, 255, 255, 0.25);
+}
+.erp-brand-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #fff;
+}
+.erp-brand-fallback {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+.erp-brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.erp-brand-text strong { font-size: 0.95rem; }
+.erp-brand-text span { font-size: 0.72rem; opacity: 0.85; }
+.erp-topnav { display: flex; align-items: center; gap: 4px; flex: 1; flex-wrap: wrap; }
+.erp-topnav a {
+  color: rgba(255, 255, 255, 0.88);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.88rem;
+  padding: 7px 12px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.erp-topnav a:hover { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.erp-topnav a.active { background: rgba(255, 255, 255, 0.22); color: #fff; }
+.erp-topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.92);
+  white-space: nowrap;
+}
+.erp-topbar-user .erp-role-pill {
+  background: rgba(255, 255, 255, 0.18);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+}
+.erp-topbar-user button {
+  background: rgba(255, 255, 255, 0.14);
+  border: none;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.erp-topbar-user button:hover { background: rgba(255, 255, 255, 0.24); }
+@media (max-width: 800px) {
+  .erp-topbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .erp-brand { border-right: none; padding-right: 0; }
+}
+
+/* Reportes */
+.report-filters { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px; }
+.report-filters label { display: flex; flex-direction: column; font-size: 0.82rem; color: var(--muted); gap: 4px; }
+.report-section { margin-bottom: 28px; }
+.report-section h3 { margin-bottom: 10px; }
+.rank-bar-track { background: #EEF0F3; border-radius: 6px; height: 8px; overflow: hidden; margin-top: 4px; }
+.rank-bar-fill { background: var(--erp-color, var(--primary)); height: 100%; border-radius: 6px; }

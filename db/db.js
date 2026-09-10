@@ -319,6 +319,25 @@ async function init() {
   // "status", que es el ciclo de vida de venta (disponible/reservada/vendida/
   // desechada). El estado físico es el que se usa para sugerir precio con IA.
   await pool.query(`ALTER TABLE erp_parts ADD COLUMN IF NOT EXISTS condition_grade TEXT;`);
+
+  // --- YonkSuite ahora vive en su PROPIA sesión (cookie "erp.sid", ver
+  // server.js), separada de la sesión de Marketing/CRM ("connect.sid") — así
+  // entrar al ERP siempre pide usuario/contraseña, aunque ya se tenga sesión
+  // abierta de Marketing en otra pestaña del mismo navegador (útil si varias
+  // personas comparten la computadora del mostrador). Por eso el dueño
+  // necesita su PROPIO token de sesión única dentro del ERP, distinto de
+  // active_session_id (que sigue controlando la sesión única de Marketing).
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_owner_active_session_id TEXT;`);
+
+  // --- Reportes: quién registró cada venta, para poder evaluar desempeño por
+  // vendedor. Se guarda el nombre "congelado" al momento de la venta (además
+  // del id de empleado si aplica) para que el reporte histórico no cambie si
+  // luego se renombra o se borra esa cuenta de empleado.
+  await pool.query(`ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS sold_by_actor_type TEXT;`);
+  await pool.query(
+    `ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS sold_by_employee_id INTEGER REFERENCES erp_employees(id);`
+  );
+  await pool.query(`ALTER TABLE erp_sales ADD COLUMN IF NOT EXISTS sold_by_name TEXT;`);
 }
 
 module.exports = { pool, init };
