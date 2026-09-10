@@ -160,6 +160,90 @@ const MX_DEFAULT_TAXES = [
   { name: "RESICO Personas Físicas (1% a 2.5% ISR)", rate: 1.25, regime_hint: "resico" },
 ];
 
+// --- Contabilidad (Configuración > Cuentas contables) ---
+// Tipos de cuenta contable estándar (igual que cualquier catálogo NetSuite/
+// SAT): dicen de qué lado del balance/estado de resultados vive cada cuenta
+// — se usan para agrupar los reportes (Estado de resultados, Balance
+// general) sin tener que adivinar el tipo a partir del nombre.
+const ACCOUNT_TYPES = {
+  ACTIVO: "activo",
+  PASIVO: "pasivo",
+  CAPITAL: "capital",
+  INGRESO: "ingreso",
+  COSTO: "costo",
+  GASTO: "gasto",
+};
+
+const ACCOUNT_TYPE_LABELS = {
+  [ACCOUNT_TYPES.ACTIVO]: "Activo",
+  [ACCOUNT_TYPES.PASIVO]: "Pasivo",
+  [ACCOUNT_TYPES.CAPITAL]: "Capital",
+  [ACCOUNT_TYPES.INGRESO]: "Ingreso",
+  [ACCOUNT_TYPES.COSTO]: "Costo",
+  [ACCOUNT_TYPES.GASTO]: "Gasto",
+};
+
+// Catálogo de cuentas contables más usuales para un negocio mexicano chico/
+// mediano — para "sembrar" con un clic en vez de capturar una por una,
+// mismo patrón que MX_DEFAULT_TAXES. Los códigos siguen a grandes rasgos el
+// código agrupador del SAT (1=Activo, 2=Pasivo, 3=Capital, 4=Ingresos,
+// 5=Costos, 6=Gastos) sin ser el catálogo oficial completo — es un punto de
+// partida razonable que cualquier negocio puede renombrar/ampliar después.
+const MX_DEFAULT_ACCOUNTS = [
+  { code: "101", name: "Caja", account_type: ACCOUNT_TYPES.ACTIVO },
+  { code: "102", name: "Bancos", account_type: ACCOUNT_TYPES.ACTIVO },
+  { code: "105", name: "Clientes", account_type: ACCOUNT_TYPES.ACTIVO },
+  { code: "115", name: "IVA acreditable", account_type: ACCOUNT_TYPES.ACTIVO },
+  { code: "116", name: "Inventario", account_type: ACCOUNT_TYPES.ACTIVO },
+  { code: "201", name: "Proveedores", account_type: ACCOUNT_TYPES.PASIVO },
+  { code: "208", name: "IVA trasladado", account_type: ACCOUNT_TYPES.PASIVO },
+  { code: "210", name: "Acreedores diversos", account_type: ACCOUNT_TYPES.PASIVO },
+  { code: "301", name: "Capital social", account_type: ACCOUNT_TYPES.CAPITAL },
+  { code: "302", name: "Utilidades retenidas", account_type: ACCOUNT_TYPES.CAPITAL },
+  { code: "401", name: "Ventas", account_type: ACCOUNT_TYPES.INGRESO },
+  { code: "402", name: "Otros ingresos", account_type: ACCOUNT_TYPES.INGRESO },
+  { code: "501", name: "Costo de ventas", account_type: ACCOUNT_TYPES.COSTO },
+  { code: "601", name: "Gastos generales", account_type: ACCOUNT_TYPES.GASTO },
+  { code: "602", name: "Sueldos y salarios", account_type: ACCOUNT_TYPES.GASTO },
+  { code: "603", name: "Renta", account_type: ACCOUNT_TYPES.GASTO },
+];
+
+// --- Customización (Configuración > Personalizar campos) ------------------
+// Campos personalizados por negocio, para las 5 entidades que pidió el
+// negocio explícitamente: Artículos, Venta, Compra, Empleados y Pólizas.
+// "venta"/"compra" son dos entity_type DISTINTOS aunque ambos guarden su
+// valor en la misma columna erp_transactions.custom_fields — el flow
+// (Ventas/Compras) decide cuál catálogo de campos aplica al capturar.
+const CUSTOM_FIELD_ENTITY_TYPES = {
+  ARTICULO: "articulo",
+  VENTA: "venta",
+  COMPRA: "compra",
+  EMPLEADO: "empleado",
+  POLIZA: "poliza",
+};
+
+const CUSTOM_FIELD_ENTITY_TYPE_LABELS = {
+  [CUSTOM_FIELD_ENTITY_TYPES.ARTICULO]: "Artículos",
+  [CUSTOM_FIELD_ENTITY_TYPES.VENTA]: "Venta",
+  [CUSTOM_FIELD_ENTITY_TYPES.COMPRA]: "Compra",
+  [CUSTOM_FIELD_ENTITY_TYPES.EMPLEADO]: "Empleados",
+  [CUSTOM_FIELD_ENTITY_TYPES.POLIZA]: "Pólizas",
+};
+
+const CUSTOM_FIELD_TYPES = {
+  TEXTO: "texto",
+  NUMERO: "numero",
+  FECHA: "fecha",
+  OPCION: "opcion",
+};
+
+const CUSTOM_FIELD_TYPE_LABELS = {
+  [CUSTOM_FIELD_TYPES.TEXTO]: "Texto",
+  [CUSTOM_FIELD_TYPES.NUMERO]: "Número",
+  [CUSTOM_FIELD_TYPES.FECHA]: "Fecha",
+  [CUSTOM_FIELD_TYPES.OPCION]: "Opción (lista)",
+};
+
 module.exports = {
   VEHICLE_STATUSES,
   VEHICLE_STATUS_LABELS,
@@ -181,4 +265,11 @@ module.exports = {
   MX_TAX_REGIMES,
   MX_PAC_PROVIDERS,
   MX_DEFAULT_TAXES,
+  ACCOUNT_TYPES,
+  ACCOUNT_TYPE_LABELS,
+  MX_DEFAULT_ACCOUNTS,
+  CUSTOM_FIELD_ENTITY_TYPES,
+  CUSTOM_FIELD_ENTITY_TYPE_LABELS,
+  CUSTOM_FIELD_TYPES,
+  CUSTOM_FIELD_TYPE_LABELS,
 };

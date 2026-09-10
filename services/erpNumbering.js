@@ -38,6 +38,8 @@ const DEFAULT_PREFIXES = {
   ejecucion_compra: "EC",
   factura_compra: "FC",
   nota_credito_compra: "NCC",
+  // Contabilidad
+  poliza: "PZ",
 };
 
 // Etiquetas legibles para la pantalla de Configuración > Transacciones.
@@ -55,6 +57,7 @@ const DOC_TYPE_LABELS = {
   ejecucion_compra: "Ejecución de pedido (Compras)",
   factura_compra: "Factura (Compras)",
   nota_credito_compra: "Nota de crédito (Proveedor)",
+  poliza: "Póliza de diario",
 };
 
 // Agrupados para que la pantalla de Configuración los muestre por sección
@@ -63,6 +66,7 @@ const DOC_TYPE_GROUPS = [
   { label: "YonkSuite (módulo Vehículos)", types: ["client", "quote", "sale"] },
   { label: "Ventas", types: ["cotizacion", "orden_venta", "ejecucion_venta", "factura_venta", "nota_credito_venta"] },
   { label: "Compras", types: ["vendor", "orden_compra", "ejecucion_compra", "factura_compra", "nota_credito_compra"] },
+  { label: "Contabilidad", types: ["poliza"] },
 ];
 
 function formatFolio(prefix, number) {

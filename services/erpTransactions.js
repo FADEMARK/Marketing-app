@@ -92,7 +92,7 @@ function round2(n) {
 // consultar erp_items, así una edición futura del catálogo no cambia
 // transacciones ya capturadas).
 async function createTransaction(
-  { businessId, docType, clientId, vendorId, entityNameSnapshot, currencyCode, exchangeRate, notes, locationId, lines, actor },
+  { businessId, docType, clientId, vendorId, entityNameSnapshot, currencyCode, exchangeRate, notes, locationId, lines, actor, customFields },
   db = pool
 ) {
   if (!flowOf(docType)) throw new Error(`erpTransactions: doc_type desconocido "${docType}"`);
@@ -104,22 +104,36 @@ async function createTransaction(
     quantity: Number(l.quantity) || 0,
     unit_price: Number(l.unit_price) || 0,
     tax_rate: Number(l.tax_rate) || 0,
+    tax_id: l.tax_id || null,
   }));
   const { subtotal, taxTotal, total } = computeTotals(resolvedLines);
 
   const folio = await erpNumbering.nextFolio(businessId, docType, db);
 
+  // Workflows de aprobación (Configuración > Aprobaciones): si el negocio
+  // marcó este doc_type como "requiere aprobación", el documento nace en
+  // pendiente_aprobacion en vez de abierta, y no se puede convertir al
+  // siguiente eslabón de su cadena hasta que alguien lo apruebe (ver
+  // erpTransactions.approveTransaction) — igual de simple que un workflow
+  // básico de NetSuite, sin motor de reglas condicionales.
+  const { rows: approvalRows } = await db.query(
+    "SELECT requires_approval FROM erp_approval_rules WHERE business_id = $1 AND doc_type = $2",
+    [businessId, docType]
+  );
+  const initialStatus = approvalRows[0] && approvalRows[0].requires_approval ? "pendiente_aprobacion" : "abierta";
+
   const { rows } = await db.query(
     `INSERT INTO erp_transactions
        (business_id, doc_type, folio, status, client_id, vendor_id, entity_name_snapshot,
         location_id, currency_code, exchange_rate, subtotal, tax_total, total, notes,
-        created_by_actor_type, created_by_employee_id, created_by_name)
-     VALUES ($1,$2,$3,'abierta',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        created_by_actor_type, created_by_employee_id, created_by_name, custom_fields)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
      RETURNING *`,
     [
       businessId,
       docType,
       folio,
+      initialStatus,
       clientId || null,
       vendorId || null,
       entityNameSnapshot || null,
@@ -133,6 +147,7 @@ async function createTransaction(
       actor ? actor.type : null,
       actor ? actor.employeeId : null,
       actor ? actor.name : null,
+      customFields || null,
     ]
   );
   const transaction = rows[0];
@@ -140,9 +155,9 @@ async function createTransaction(
   for (const line of resolvedLines) {
     await db.query(
       `INSERT INTO erp_transaction_lines
-         (transaction_id, item_id, description, quantity, unit_price, tax_rate, tax_amount, amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [transaction.id, line.item_id, line.description, line.quantity, line.unit_price, line.tax_rate, line.tax_amount, line.amount]
+         (transaction_id, item_id, description, quantity, unit_price, tax_rate, tax_id, tax_amount, amount)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [transaction.id, line.item_id, line.description, line.quantity, line.unit_price, line.tax_rate, line.tax_id, line.tax_amount, line.amount]
     );
   }
 
@@ -231,6 +246,9 @@ async function convertTransaction({ businessId, sourceId, locationId, notes, act
   if (!source) throw new Error("erpTransactions: transacción origen no encontrada.");
   if (source.status === "convertida") throw new Error("erpTransactions: esta transacción ya fue convertida.");
   if (source.status === "cancelada") throw new Error("erpTransactions: esta transacción está cancelada.");
+  if (source.status === "pendiente_aprobacion") {
+    throw new Error("erpTransactions: esta transacción necesita aprobación antes de poder convertirse.");
+  }
 
   const targetDocType = nextDocType(source.doc_type);
   if (!targetDocType) throw new Error("erpTransactions: este documento ya es el último de su cadena.");
@@ -252,6 +270,7 @@ async function convertTransaction({ businessId, sourceId, locationId, notes, act
     quantity: Number(l.quantity),
     unit_price: Number(l.unit_price),
     tax_rate: Number(l.tax_rate),
+    tax_id: l.tax_id || null,
   }));
   const { subtotal, taxTotal, total } = computeTotals(lines);
 
@@ -288,9 +307,9 @@ async function convertTransaction({ businessId, sourceId, locationId, notes, act
   for (const line of lines) {
     await db.query(
       `INSERT INTO erp_transaction_lines
-         (transaction_id, item_id, description, quantity, unit_price, tax_rate, tax_amount, amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-      [created.id, line.item_id, line.description, line.quantity, line.unit_price, line.tax_rate, line.tax_amount, line.amount]
+         (transaction_id, item_id, description, quantity, unit_price, tax_rate, tax_id, tax_amount, amount)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [created.id, line.item_id, line.description, line.quantity, line.unit_price, line.tax_rate, line.tax_id, line.tax_amount, line.amount]
     );
   }
 
@@ -304,8 +323,27 @@ async function convertTransaction({ businessId, sourceId, locationId, notes, act
 }
 
 async function cancelTransaction(businessId, id) {
+  // También permite "rechazar" un documento que estaba pendiente de
+  // aprobación (ver erp_approval_rules / approveTransaction) — cancelarlo
+  // es la forma de rechazarlo, no hace falta un estado "rechazada" aparte.
   const { rowCount } = await pool.query(
-    "UPDATE erp_transactions SET status = 'cancelada', updated_at = NOW() WHERE id = $1 AND business_id = $2 AND status = 'abierta'",
+    `UPDATE erp_transactions SET status = 'cancelada', updated_at = NOW()
+     WHERE id = $1 AND business_id = $2 AND status IN ('abierta', 'pendiente_aprobacion')`,
+    [id, businessId]
+  );
+  return rowCount > 0;
+}
+
+// Aprueba un documento que quedó en "pendiente_aprobacion" (ver
+// erp_approval_rules) — lo deja "abierta" para que ya se pueda convertir al
+// siguiente eslabón de su cadena. No valida aquí que quien aprueba SEA el
+// approver_employee_id configurado; el negocio pidió algo simple ("similar
+// que NetSuite" pero de una primera versión), así que cualquiera con acceso
+// a la sección puede aprobar — la ruta en server.js sí exige el permiso de
+// manage_employees, igual que el resto de Configuración.
+async function approveTransaction(businessId, id) {
+  const { rowCount } = await pool.query(
+    "UPDATE erp_transactions SET status = 'abierta', updated_at = NOW() WHERE id = $1 AND business_id = $2 AND status = 'pendiente_aprobacion'",
     [id, businessId]
   );
   return rowCount > 0;
@@ -350,4 +388,5 @@ module.exports = {
   listTransactions,
   convertTransaction,
   cancelTransaction,
+  approveTransaction,
 };
