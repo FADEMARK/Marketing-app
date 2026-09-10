@@ -9,17 +9,20 @@ const { pool } = require("../db/db");
 const MODULES = {
   CRM: "crm",
   ERP: "erp",
+  YONKSUITE: "yonksuite",
 };
 
 // Mapa módulo -> columna real en la tabla businesses.
 const MODULE_COLUMNS = {
   [MODULES.CRM]: "module_crm_enabled",
   [MODULES.ERP]: "module_erp_enabled",
+  [MODULES.YONKSUITE]: "module_yonksuite_enabled",
 };
 
 const MODULE_LABELS = {
   [MODULES.CRM]: "CRM",
-  [MODULES.ERP]: "ERP Yonkes",
+  [MODULES.ERP]: "ERP (core: Ventas/Compras/Inventario/Clientes)",
+  [MODULES.YONKSUITE]: "YonkSuite (Vehículos/Partes/IA)",
 };
 
 function hasModule(business, moduleKey) {

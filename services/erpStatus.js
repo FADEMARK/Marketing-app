@@ -116,6 +116,50 @@ function roleHasPermission(role, permission) {
   return Boolean(ERP_ROLE_PERMISSIONS[role] && ERP_ROLE_PERMISSIONS[role].includes(permission));
 }
 
+// --- Localización mexicana (Configuración > Localización) ---
+// Catálogo c_RegimenFiscal del SAT (los más usuales). Se usa como select en
+// Configuración > Localización mexicana; guardarlo no activa nada por sí
+// solo (ver businesses.erp_tax_regime) — es la base para cuando se conecte
+// un PAC real y haya que timbrar con el régimen correcto.
+const MX_TAX_REGIMES = [
+  { key: "601", label: "601 — General de Ley Personas Morales" },
+  { key: "603", label: "603 — Personas Morales con Fines no Lucrativos" },
+  { key: "605", label: "605 — Sueldos y Salarios e Ingresos Asimilados a Salarios" },
+  { key: "606", label: "606 — Arrendamiento" },
+  { key: "608", label: "608 — Demás ingresos" },
+  { key: "612", label: "612 — Personas Físicas con Actividades Empresariales y Profesionales" },
+  { key: "621", label: "621 — Incorporación Fiscal" },
+  { key: "622", label: "622 — Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras" },
+  { key: "625", label: "625 — Actividades Empresariales con ingresos a través de Plataformas Tecnológicas" },
+  { key: "626", label: "626 — Régimen Simplificado de Confianza (RESICO)" },
+];
+
+// PAC = Proveedor Autorizado de Certificación (quien timbra el CFDI ante el
+// SAT). Por ahora solo se guarda CUÁL usaría el negocio y sus datos de
+// acceso en texto libre (erp_pac_notes) — la integración real (timbrado
+// automático al facturar) queda para un upgrade posterior; aquí solo se dej
+// listo el lugar donde configurarlo para que activarlo después sea agregar
+// las llamadas a la API del PAC, no rediseñar la pantalla.
+const MX_PAC_PROVIDERS = [
+  { key: "", label: "Ninguno todavía (facturar/timbrar fuera del sistema)" },
+  { key: "facturama", label: "Facturama" },
+  { key: "sw_sapien", label: "SW Sapien (Smarter Web)" },
+  { key: "finkok", label: "Finkok" },
+  { key: "otro", label: "Otro (especificar en notas)" },
+];
+
+// Impuestos mexicanos más comunes, para "sembrar" con un clic en
+// Configuración > Impuestos en vez de capturarlos uno por uno. rate va en
+// PORCENTAJE (16 = 16%), igual que erp_taxes.rate.
+const MX_DEFAULT_TAXES = [
+  { name: "IVA 16%", rate: 16, regime_hint: "iva_general" },
+  { name: "IVA 8% (región fronteriza)", rate: 8, regime_hint: "iva_frontera" },
+  { name: "IVA 0% (tasa cero)", rate: 0, regime_hint: "iva_tasa_0" },
+  { name: "Exento de IVA", rate: 0, regime_hint: "exento" },
+  { name: "Honorarios (Retención ISR 10%)", rate: 16, regime_hint: "honorarios" },
+  { name: "RESICO Personas Físicas (1% a 2.5% ISR)", rate: 1.25, regime_hint: "resico" },
+];
+
 module.exports = {
   VEHICLE_STATUSES,
   VEHICLE_STATUS_LABELS,
@@ -134,4 +178,7 @@ module.exports = {
   ERP_ROLE_DESCRIPTIONS,
   ERP_ROLE_PERMISSIONS,
   roleHasPermission,
+  MX_TAX_REGIMES,
+  MX_PAC_PROVIDERS,
+  MX_DEFAULT_TAXES,
 };

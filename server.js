@@ -39,6 +39,7 @@ const {
   requireErpAuth,
   requirePermission,
   requireAnyPermission,
+  requireYonksuiteModule,
 } = require("./services/middleware");
 
 const app = express();
@@ -1417,7 +1418,7 @@ app.get("/erp", requireErpAuth, async (req, res, next) => {
   }
 });
 
-app.get("/erp/vehiculos", requireErpAuth, async (req, res, next) => {
+app.get("/erp/vehiculos", requireErpAuth, requireYonksuiteModule, async (req, res, next) => {
   try {
     const statusFilter = req.query.status || "";
     const searchQuery = (req.query.q || "").trim();
@@ -1466,7 +1467,7 @@ app.get("/erp/vehiculos", requireErpAuth, async (req, res, next) => {
   }
 });
 
-app.get("/erp/vehicles/new", requireErpAuth, requirePermission("compras"), (req, res) => {
+app.get("/erp/vehicles/new", requireErpAuth, requireYonksuiteModule, requirePermission("compras"), (req, res) => {
   res.render("erp-vehicle-new", {
     currentSection: "vehiculos",
     erpActor: req.erpActor,
@@ -1478,6 +1479,7 @@ app.get("/erp/vehicles/new", requireErpAuth, requirePermission("compras"), (req,
 app.post(
   "/erp/vehicles",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   upload.array("photos", erpStatus.MAX_VEHICLE_PHOTOS),
   async (req, res, next) => {
@@ -1539,7 +1541,7 @@ app.post(
   }
 );
 
-app.get("/erp/vehicles/:id", requireErpAuth, async (req, res, next) => {
+app.get("/erp/vehicles/:id", requireErpAuth, requireYonksuiteModule, async (req, res, next) => {
   try {
     const vehicle = await loadVehicleOr404(req, res);
     if (!vehicle) return;
@@ -1601,6 +1603,7 @@ app.get("/erp/vehicles/:id", requireErpAuth, async (req, res, next) => {
 app.post(
   "/erp/vehicles/:id/update",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res, next) => {
     try {
@@ -1652,6 +1655,7 @@ app.post(
 app.post(
   "/erp/vehicles/:id/photos",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   upload.array("photos", erpStatus.MAX_VEHICLE_PHOTOS),
   async (req, res, next) => {
@@ -1687,6 +1691,7 @@ app.post(
 app.post(
   "/erp/vehicles/:id/photos/:photoId/delete",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res, next) => {
     try {
@@ -1707,6 +1712,7 @@ app.post(
 app.post(
   "/erp/vehicles/:id/toggle-status",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res, next) => {
     try {
@@ -1732,6 +1738,7 @@ app.post(
 app.post(
   "/erp/vehicles/:id/delete",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res, next) => {
     try {
@@ -1768,6 +1775,7 @@ app.post(
 app.post(
   "/erp/vehicles/:id/parts",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res, next) => {
     try {
@@ -1803,7 +1811,7 @@ app.post(
   }
 );
 
-app.post("/erp/parts/:id/update", requireErpAuth, requirePermission("compras"), async (req, res, next) => {
+app.post("/erp/parts/:id/update", requireErpAuth, requireYonksuiteModule, requirePermission("compras"), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       "SELECT * FROM erp_parts WHERE id = $1 AND business_id = $2",
@@ -1858,7 +1866,7 @@ app.post("/erp/parts/:id/update", requireErpAuth, requirePermission("compras"), 
   }
 });
 
-app.post("/erp/parts/:id/delete", requireErpAuth, requirePermission("compras"), async (req, res, next) => {
+app.post("/erp/parts/:id/delete", requireErpAuth, requireYonksuiteModule, requirePermission("compras"), async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       "SELECT * FROM erp_parts WHERE id = $1 AND business_id = $2",
@@ -1887,6 +1895,7 @@ app.post("/erp/parts/:id/delete", requireErpAuth, requirePermission("compras"), 
 app.post(
   "/erp/vehicles/:id/sales",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("ventas"),
   async (req, res, next) => {
     const vehicle = await loadVehicleOr404(req, res);
@@ -1996,7 +2005,7 @@ app.post(
   }
 );
 
-app.post("/erp/sales/:id/delete", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+app.post("/erp/sales/:id/delete", requireErpAuth, requireYonksuiteModule, requirePermission("ventas"), async (req, res, next) => {
   const { rows } = await pool.query("SELECT * FROM erp_sales WHERE id = $1 AND business_id = $2", [
     req.params.id,
     req.erpActor.businessId,
@@ -2214,6 +2223,166 @@ app.post(
   }
 );
 
+// --- Proveedores (core genérico, para Compras) --------------------------
+// Mismo patrón que Clientes (erp_clients) pero para el otro lado del
+// mostrador: a quién le compras. Folio con prefijo propio ("vendor" en
+// erpNumbering, default PROV-0001). No depende del módulo YonkSuite.
+app.get("/erp/proveedores-autocomplete", requireErpAuth, async (req, res, next) => {
+  try {
+    const q = (req.query.q || "").trim();
+    if (!q) return res.json([]);
+    const { rows } = await pool.query(
+      `SELECT id, folio, name, phone, email FROM erp_vendors
+       WHERE business_id = $1 AND (name ILIKE $2 OR phone ILIKE $2 OR email ILIKE $2)
+       ORDER BY name ASC LIMIT 10`,
+      [req.erpActor.businessId, `%${q}%`]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/proveedores", requireErpAuth, async (req, res, next) => {
+  try {
+    const searchQuery = (req.query.q || "").trim();
+    const params = [req.erpActor.businessId];
+    let query = "SELECT * FROM erp_vendors WHERE business_id = $1";
+    const searchWords = searchQuery.split(/\s+/).filter(Boolean);
+    if (searchWords.length) {
+      const blobExpr = `(COALESCE(name,'') || ' ' || COALESCE(phone,'') || ' ' || COALESCE(email,'') || ' ' || COALESCE(folio,''))`;
+      searchWords.forEach((word) => {
+        params.push(`%${word}%`);
+        query += ` AND ${blobExpr} ILIKE $${params.length}`;
+      });
+    }
+    query += " ORDER BY created_at DESC";
+    const { rows: vendors } = await pool.query(query, params);
+    res.render("erp-vendors-list", {
+      currentSection: "proveedores",
+      erpActor: req.erpActor,
+      vendors,
+      searchQuery,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/proveedores/new", requireErpAuth, requirePermission("compras"), (req, res) => {
+  res.render("erp-vendor-form", {
+    currentSection: "proveedores",
+    erpActor: req.erpActor,
+    erpVendor: null,
+    error: null,
+    form: {},
+  });
+});
+
+app.post("/erp/proveedores", requireErpAuth, requirePermission("compras"), async (req, res, next) => {
+  try {
+    const { name, phone, email, address, tax_id, tax_legal_name, notes } = req.body;
+    if (!name || !name.trim()) {
+      return res.render("erp-vendor-form", {
+        currentSection: "proveedores",
+        erpActor: req.erpActor,
+        erpVendor: null,
+        error: "El nombre del proveedor es obligatorio.",
+        form: req.body,
+      });
+    }
+    const folio = await erpNumbering.nextFolio(req.erpActor.businessId, "vendor");
+    const { rows } = await pool.query(
+      `INSERT INTO erp_vendors (business_id, folio, name, phone, email, address, tax_id, tax_legal_name, notes)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [
+        req.erpActor.businessId,
+        folio,
+        name.trim(),
+        (phone || "").trim() || null,
+        (email || "").trim() || null,
+        (address || "").trim() || null,
+        (tax_id || "").trim() || null,
+        (tax_legal_name || "").trim() || null,
+        (notes || "").trim() || null,
+      ]
+    );
+    res.redirect(`/erp/proveedores/${rows[0].id}?saved=1`);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.get("/erp/proveedores/:id", requireErpAuth, async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT * FROM erp_vendors WHERE id = $1 AND business_id = $2",
+      [req.params.id, req.erpActor.businessId]
+    );
+    const erpVendor = rows[0];
+    if (!erpVendor) return res.status(404).send("Proveedor no encontrado.");
+
+    res.render("erp-vendor-detail", {
+      currentSection: "proveedores",
+      erpActor: req.erpActor,
+      erpVendor,
+      canEdit: req.erpActor.type === "owner" || erpStatus.roleHasPermission(req.erpActor.role, "compras"),
+      saved: req.query.saved === "1",
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post(
+  "/erp/proveedores/:id/update",
+  requireErpAuth,
+  requirePermission("compras"),
+  async (req, res, next) => {
+    try {
+      const { name, phone, email, address, tax_id, tax_legal_name, notes } = req.body;
+      if (!name || !name.trim()) return res.status(400).send("El nombre es obligatorio.");
+      const { rowCount } = await pool.query(
+        `UPDATE erp_vendors
+         SET name = $1, phone = $2, email = $3, address = $4, tax_id = $5, tax_legal_name = $6, notes = $7, updated_at = NOW()
+         WHERE id = $8 AND business_id = $9`,
+        [
+          name.trim(),
+          (phone || "").trim() || null,
+          (email || "").trim() || null,
+          (address || "").trim() || null,
+          (tax_id || "").trim() || null,
+          (tax_legal_name || "").trim() || null,
+          (notes || "").trim() || null,
+          req.params.id,
+          req.erpActor.businessId,
+        ]
+      );
+      if (rowCount === 0) return res.status(404).send("Proveedor no encontrado.");
+      res.redirect(`/erp/proveedores/${req.params.id}?saved=1`);
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/proveedores/:id/delete",
+  requireErpAuth,
+  requirePermission("compras"),
+  async (req, res, next) => {
+    try {
+      await pool.query("DELETE FROM erp_vendors WHERE id = $1 AND business_id = $2", [
+        req.params.id,
+        req.erpActor.businessId,
+      ]);
+      res.redirect("/erp/proveedores");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
 // --- Ventas como sección propia: lista de TODAS las ventas del negocio (no
 // solo las de un vehículo, como en el detalle de vehículo) + un acceso
 // directo "Nueva venta" que primero pide elegir vehículo y luego reutiliza
@@ -2222,7 +2391,7 @@ app.post(
 // con FOR UPDATE) — así no hay dos implementaciones de "registrar venta"
 // que puedan desincronizarse.
 
-app.get("/erp/ventas", requireErpAuth, async (req, res, next) => {
+app.get("/erp/ventas", requireErpAuth, requireYonksuiteModule, async (req, res, next) => {
   try {
     const params = [req.erpActor.businessId];
     const { rows: sales } = await pool.query(
@@ -2253,7 +2422,7 @@ app.get("/erp/ventas", requireErpAuth, async (req, res, next) => {
 // (?vehicle_id=X): el mismo checklist de piezas disponibles + cliente que
 // ya existía dentro del detalle de vehículo, pero como pantalla completa —
 // el formulario postea a la ruta de siempre, /erp/vehicles/:id/sales.
-app.get("/erp/ventas/new", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+app.get("/erp/ventas/new", requireErpAuth, requireYonksuiteModule, requirePermission("ventas"), async (req, res, next) => {
   try {
     const vehicleId = parseInt(req.query.vehicle_id, 10);
     if (!vehicleId) {
@@ -2311,7 +2480,7 @@ app.get("/erp/ventas/new", requireErpAuth, requirePermission("ventas"), async (r
 // db/db.js junto a erp_quotes.vehicle_id). Un botón "Convertir en venta"
 // pasa sus piezas de reservada -> vendida sin volver a capturar nada.
 
-app.get("/erp/cotizaciones", requireErpAuth, async (req, res, next) => {
+app.get("/erp/cotizaciones", requireErpAuth, requireYonksuiteModule, async (req, res, next) => {
   try {
     const statusFilter = req.query.status || "";
     const params = [req.erpActor.businessId];
@@ -2344,7 +2513,7 @@ app.get("/erp/cotizaciones", requireErpAuth, async (req, res, next) => {
 // Paso 1 (sin vehicle_id): elegir de qué vehículo se van a cotizar piezas.
 // Paso 2 (?vehicle_id=X): checklist de piezas disponibles de ese vehículo +
 // datos del cliente (se auto-llena/da de alta con findOrCreateClient).
-app.get("/erp/cotizaciones/new", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+app.get("/erp/cotizaciones/new", requireErpAuth, requireYonksuiteModule, requirePermission("ventas"), async (req, res, next) => {
   try {
     const vehicleId = parseInt(req.query.vehicle_id, 10);
     if (!vehicleId) {
@@ -2396,7 +2565,7 @@ app.get("/erp/cotizaciones/new", requireErpAuth, requirePermission("ventas"), as
   }
 });
 
-app.post("/erp/cotizaciones", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+app.post("/erp/cotizaciones", requireErpAuth, requireYonksuiteModule, requirePermission("ventas"), async (req, res, next) => {
   const vehicleId = parseInt(req.body.vehicle_id, 10);
   const { rows: vehicleRows } = await pool.query(
     "SELECT * FROM erp_vehicles WHERE id = $1 AND business_id = $2",
@@ -2488,7 +2657,7 @@ app.post("/erp/cotizaciones", requireErpAuth, requirePermission("ventas"), async
   }
 });
 
-app.get("/erp/cotizaciones/:id", requireErpAuth, async (req, res, next) => {
+app.get("/erp/cotizaciones/:id", requireErpAuth, requireYonksuiteModule, async (req, res, next) => {
   try {
     const { rows } = await pool.query(
       `SELECT erp_quotes.*, erp_vehicles.brand, erp_vehicles.model, erp_vehicles.year
@@ -2528,7 +2697,7 @@ app.get("/erp/cotizaciones/:id", requireErpAuth, async (req, res, next) => {
   }
 });
 
-app.post("/erp/cotizaciones/:id/convertir", requireErpAuth, requirePermission("ventas"), async (req, res, next) => {
+app.post("/erp/cotizaciones/:id/convertir", requireErpAuth, requireYonksuiteModule, requirePermission("ventas"), async (req, res, next) => {
   const { rows } = await pool.query("SELECT * FROM erp_quotes WHERE id = $1 AND business_id = $2", [
     req.params.id,
     req.erpActor.businessId,
@@ -2600,6 +2769,7 @@ app.post("/erp/cotizaciones/:id/convertir", requireErpAuth, requirePermission("v
 app.post(
   "/erp/cotizaciones/:id/rechazar",
   requireErpAuth,
+  requireYonksuiteModule,
   requireAnyPermission("compras", "ventas"),
   async (req, res, next) => {
     const { rows } = await pool.query("SELECT * FROM erp_quotes WHERE id = $1 AND business_id = $2", [
@@ -2930,11 +3100,13 @@ app.get(
   requirePermission("manage_employees"),
   async (req, res, next) => {
     try {
-      const { rows } = await pool.query("SELECT * FROM businesses WHERE id = $1", [req.erpActor.businessId]);
+      const numbering = await erpNumbering.getAllNumberingForBusiness(req.erpActor.businessId);
       res.render("erp-config-transacciones", {
         currentSection: "configuracion",
         erpActor: req.erpActor,
-        business: rows[0],
+        numbering,
+        DOC_TYPE_LABELS: erpNumbering.DOC_TYPE_LABELS,
+        DOC_TYPE_GROUPS: erpNumbering.DOC_TYPE_GROUPS,
         saved: req.query.saved === "1",
         error: null,
       });
@@ -2950,15 +3122,6 @@ app.post(
   requirePermission("manage_employees"),
   async (req, res, next) => {
     try {
-      const {
-        erp_client_prefix,
-        erp_client_next_number,
-        erp_quote_prefix,
-        erp_quote_next_number,
-        erp_sale_prefix,
-        erp_sale_next_number,
-      } = req.body;
-
       const cleanPrefix = (v, fallback) => {
         const trimmed = (v || "").trim().toUpperCase();
         return trimmed || fallback;
@@ -2968,22 +3131,15 @@ app.post(
         return Number.isFinite(n) && n >= 1 ? n : fallback;
       };
 
-      await pool.query(
-        `UPDATE businesses SET
-           erp_client_prefix = $1, erp_client_next_number = $2,
-           erp_quote_prefix = $3, erp_quote_next_number = $4,
-           erp_sale_prefix = $5, erp_sale_next_number = $6
-         WHERE id = $7`,
-        [
-          cleanPrefix(erp_client_prefix, "CLI"),
-          cleanNumber(erp_client_next_number, 1),
-          cleanPrefix(erp_quote_prefix, "COT"),
-          cleanNumber(erp_quote_next_number, 1),
-          cleanPrefix(erp_sale_prefix, "VTA"),
-          cleanNumber(erp_sale_next_number, 1),
-          req.erpActor.businessId,
-        ]
-      );
+      // El formulario manda un campo prefix_<tipo> y next_<tipo> por cada
+      // fila (ver erp-config-transacciones.ejs) — se recorre la lista de
+      // tipos conocidos en vez de desestructurar campos fijos, así agregar
+      // un tipo de documento nuevo en el futuro no requiere tocar esta ruta.
+      for (const type of Object.keys(erpNumbering.DEFAULT_PREFIXES)) {
+        const prefix = cleanPrefix(req.body["prefix_" + type], erpNumbering.DEFAULT_PREFIXES[type]);
+        const nextNumber = cleanNumber(req.body["next_" + type], 1);
+        await erpNumbering.setNumbering(req.erpActor.businessId, type, prefix, nextNumber);
+      }
 
       res.redirect("/erp/configuracion/transacciones?saved=1");
     } catch (err) {
@@ -2995,6 +3151,7 @@ app.post(
 app.get(
   "/erp/configuracion/categorias",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("manage_employees"),
   async (req, res, next) => {
     try {
@@ -3021,6 +3178,7 @@ app.get(
 app.post(
   "/erp/configuracion/categorias",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("manage_employees"),
   async (req, res, next) => {
     try {
@@ -3059,6 +3217,7 @@ app.post(
 app.post(
   "/erp/configuracion/categorias/:id/delete",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("manage_employees"),
   async (req, res, next) => {
     try {
@@ -3073,6 +3232,757 @@ app.post(
   }
 );
 
+// --- Configuración > Ubicaciones (inventario) ---------------------------
+// Cualquier negocio (tenga o no el módulo YonkSuite) necesita al menos una
+// ubicación para poder llevar Inventario (erp_item_stock se guarda por
+// item + ubicación). Se crea una "Principal" en cuanto se agrega la primera,
+// marcada is_default — así el resto del sistema (altas rápidas de artículos,
+// ajustes de inventario) siempre tiene una ubicación a la cual caer si el
+// usuario no elige una explícitamente.
+app.get(
+  "/erp/configuracion/ubicaciones",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: locations } = await pool.query(
+        "SELECT * FROM erp_locations WHERE business_id = $1 ORDER BY is_default DESC, name ASC",
+        [req.erpActor.businessId]
+      );
+      res.render("erp-config-ubicaciones", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        locations,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/ubicaciones",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const name = (req.body.name || "").trim();
+      const address = (req.body.address || "").trim() || null;
+      if (!name) {
+        return res.redirect(
+          "/erp/configuracion/ubicaciones?error=" + encodeURIComponent("Escribe un nombre para la ubicación.")
+        );
+      }
+      const { rows: countRows } = await pool.query(
+        "SELECT COUNT(*)::int AS total FROM erp_locations WHERE business_id = $1",
+        [req.erpActor.businessId]
+      );
+      const isFirst = countRows[0].total === 0;
+      await pool.query(
+        `INSERT INTO erp_locations (business_id, name, address, is_default, active)
+         VALUES ($1, $2, $3, $4, TRUE)`,
+        [req.erpActor.businessId, name, address, isFirst]
+      );
+      res.redirect("/erp/configuracion/ubicaciones?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/ubicaciones/:id/set-default",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      // Solo puede haber una ubicación default por negocio: se apaga la
+      // anterior y se prende la elegida en la misma transacción.
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("UPDATE erp_locations SET is_default = FALSE WHERE business_id = $1", [
+          req.erpActor.businessId,
+        ]);
+        await client.query(
+          "UPDATE erp_locations SET is_default = TRUE, active = TRUE WHERE id = $1 AND business_id = $2",
+          [req.params.id, req.erpActor.businessId]
+        );
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+      res.redirect("/erp/configuracion/ubicaciones?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/ubicaciones/:id/toggle-active",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "UPDATE erp_locations SET active = NOT active WHERE id = $1 AND business_id = $2 AND is_default = FALSE",
+        [req.params.id, req.erpActor.businessId]
+      );
+      res.redirect("/erp/configuracion/ubicaciones?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Configuración > Monedas ---------------------------------------------
+// Modelo de "tipo de cambio manual por transacción" (decisión ya tomada con
+// el negocio): aquí solo se da de alta el CATÁLOGO de monedas en las que se
+// puede transaccionar (una de ellas es la moneda base, normalmente MXN). El
+// tipo de cambio real de cada operación se captura al momento de esa
+// transacción (erp_transactions.exchange_rate), no aquí.
+app.get(
+  "/erp/configuracion/monedas",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: currencies } = await pool.query(
+        "SELECT * FROM erp_currencies WHERE business_id = $1 ORDER BY is_base DESC, code ASC",
+        [req.erpActor.businessId]
+      );
+      res.render("erp-config-monedas", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        currencies,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/monedas",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const code = (req.body.code || "").trim().toUpperCase();
+      const name = (req.body.name || "").trim();
+      const symbol = (req.body.symbol || "").trim() || "$";
+      if (!code || !name) {
+        return res.redirect(
+          "/erp/configuracion/monedas?error=" + encodeURIComponent("Escribe el código (ej. USD) y el nombre de la moneda.")
+        );
+      }
+      const { rows: countRows } = await pool.query(
+        "SELECT COUNT(*)::int AS total FROM erp_currencies WHERE business_id = $1",
+        [req.erpActor.businessId]
+      );
+      const isFirst = countRows[0].total === 0;
+      await pool.query(
+        `INSERT INTO erp_currencies (business_id, code, name, symbol, is_base, active)
+         VALUES ($1, $2, $3, $4, $5, TRUE)
+         ON CONFLICT (business_id, code) DO UPDATE SET name = EXCLUDED.name, symbol = EXCLUDED.symbol`,
+        [req.erpActor.businessId, code, name, symbol, isFirst]
+      );
+      res.redirect("/erp/configuracion/monedas?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/monedas/:id/set-base",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("UPDATE erp_currencies SET is_base = FALSE WHERE business_id = $1", [
+          req.erpActor.businessId,
+        ]);
+        await client.query(
+          "UPDATE erp_currencies SET is_base = TRUE, active = TRUE WHERE id = $1 AND business_id = $2",
+          [req.params.id, req.erpActor.businessId]
+        );
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+      res.redirect("/erp/configuracion/monedas?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/monedas/:id/toggle-active",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "UPDATE erp_currencies SET active = NOT active WHERE id = $1 AND business_id = $2 AND is_base = FALSE",
+        [req.params.id, req.erpActor.businessId]
+      );
+      res.redirect("/erp/configuracion/monedas?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Configuración > Impuestos --------------------------------------------
+// Catálogo de impuestos que se pueden asignar a un artículo (erp_items.tax_id)
+// para que se calculen solos al capturar una transacción. "Sembrar los del
+// SAT" da de alta de un clic los más usuales (IVA 16/8/0%, Honorarios,
+// RESICO) en vez de capturarlos uno por uno.
+app.get(
+  "/erp/configuracion/impuestos",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows: taxes } = await pool.query(
+        "SELECT * FROM erp_taxes WHERE business_id = $1 ORDER BY is_default DESC, rate DESC, name ASC",
+        [req.erpActor.businessId]
+      );
+      res.render("erp-config-impuestos", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        taxes,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/impuestos/sembrar-sat",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      for (const preset of erpStatus.MX_DEFAULT_TAXES) {
+        await pool.query(
+          `INSERT INTO erp_taxes (business_id, name, rate, regime_hint, active)
+           VALUES ($1, $2, $3, $4, TRUE)`,
+          [req.erpActor.businessId, preset.name, preset.rate, preset.regime_hint]
+        );
+      }
+      res.redirect("/erp/configuracion/impuestos?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/impuestos",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const name = (req.body.name || "").trim();
+      const rate = parseFloat(req.body.rate);
+      if (!name || !Number.isFinite(rate) || rate < 0) {
+        return res.redirect(
+          "/erp/configuracion/impuestos?error=" + encodeURIComponent("Escribe un nombre y una tasa válida (puede ser 0).")
+        );
+      }
+      await pool.query(
+        `INSERT INTO erp_taxes (business_id, name, rate, regime_hint, active)
+         VALUES ($1, $2, $3, $4, TRUE)`,
+        [req.erpActor.businessId, name, rate, (req.body.regime_hint || "").trim() || null]
+      );
+      res.redirect("/erp/configuracion/impuestos?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/impuestos/:id/set-default",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("UPDATE erp_taxes SET is_default = FALSE WHERE business_id = $1", [
+          req.erpActor.businessId,
+        ]);
+        await client.query(
+          "UPDATE erp_taxes SET is_default = TRUE, active = TRUE WHERE id = $1 AND business_id = $2",
+          [req.params.id, req.erpActor.businessId]
+        );
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+      res.redirect("/erp/configuracion/impuestos?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/impuestos/:id/toggle-active",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "UPDATE erp_taxes SET active = NOT active WHERE id = $1 AND business_id = $2 AND is_default = FALSE",
+        [req.params.id, req.erpActor.businessId]
+      );
+      res.redirect("/erp/configuracion/impuestos?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Configuración > Localización mexicana --------------------------------
+// Regímenes fiscales y proveedor de timbrado (PAC). Guardar aquí NO timbra
+// nada todavía: es la base de datos que un futuro upgrade usaría para
+// conectarse de verdad a la API de un PAC. Se deja explícito en la vista
+// para no generar expectativas de que ya factura.
+app.get(
+  "/erp/configuracion/localizacion-mx",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      const { rows } = await pool.query(
+        "SELECT erp_tax_regime, erp_pac_provider, erp_pac_notes FROM businesses WHERE id = $1",
+        [req.erpActor.businessId]
+      );
+      res.render("erp-config-localizacion-mx", {
+        currentSection: "configuracion",
+        erpActor: req.erpActor,
+        business: rows[0],
+        MX_TAX_REGIMES: erpStatus.MX_TAX_REGIMES,
+        MX_PAC_PROVIDERS: erpStatus.MX_PAC_PROVIDERS,
+        saved: req.query.saved === "1",
+        error: null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/configuracion/localizacion-mx",
+  requireErpAuth,
+  requirePermission("manage_employees"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        `UPDATE businesses SET erp_tax_regime = $1, erp_pac_provider = $2, erp_pac_notes = $3 WHERE id = $4`,
+        [
+          (req.body.erp_tax_regime || "").trim() || null,
+          (req.body.erp_pac_provider || "").trim() || null,
+          (req.body.erp_pac_notes || "").trim() || null,
+          req.erpActor.businessId,
+        ]
+      );
+      res.redirect("/erp/configuracion/localizacion-mx?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// --- Inventario (core genérico): Artículos, Visualizar inventario, Ajuste
+// de inventario. Ubicaciones vive en Configuración (ver arriba) porque es
+// más una decisión de "cómo está organizado el negocio" que del día a día
+// de inventario, pero Artículos/Ajustes/Visualizar sí son el uso diario.
+// No depende del módulo YonkSuite: cualquier negocio con el core ERP
+// necesita un catálogo de artículos, aunque nunca active Vehículos.
+app.get(
+  "/erp/inventario/articulos",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    try {
+      const q = (req.query.q || "").trim();
+      const params = [req.erpActor.businessId];
+      let where = "WHERE business_id = $1";
+      if (q) {
+        params.push(`%${q.toLowerCase()}%`);
+        where += ` AND (LOWER(name) LIKE $2 OR LOWER(COALESCE(sku, '')) LIKE $2)`;
+      }
+      const { rows: items } = await pool.query(
+        `SELECT * FROM erp_items ${where} ORDER BY active DESC, name ASC`,
+        params
+      );
+      res.render("erp-inventario-articulos", {
+        currentSection: "inventario",
+        erpActor: req.erpActor,
+        items,
+        searchQuery: q,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/inventario/articulos/new",
+  requireErpAuth,
+  requirePermission("compras"),
+  async (req, res, next) => {
+    try {
+      const { rows: taxes } = await pool.query(
+        "SELECT * FROM erp_taxes WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
+        [req.erpActor.businessId]
+      );
+      res.render("erp-inventario-articulo-form", {
+        currentSection: "inventario",
+        erpActor: req.erpActor,
+        item: null,
+        taxes,
+        error: null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/inventario/articulos",
+  requireErpAuth,
+  requirePermission("compras"),
+  async (req, res, next) => {
+    try {
+      const { name, sku, item_type, category, unit, cost, price, tax_id } = req.body;
+      if (!name || !name.trim()) {
+        const { rows: taxes } = await pool.query(
+          "SELECT * FROM erp_taxes WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
+          [req.erpActor.businessId]
+        );
+        return res.render("erp-inventario-articulo-form", {
+          currentSection: "inventario",
+          erpActor: req.erpActor,
+          item: req.body,
+          taxes,
+          error: "El nombre del artículo es obligatorio.",
+        });
+      }
+      const { rows } = await pool.query(
+        `INSERT INTO erp_items (business_id, sku, name, item_type, category, unit, cost, price, tax_id, active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+         RETURNING id`,
+        [
+          req.erpActor.businessId,
+          (sku || "").trim() || null,
+          name.trim(),
+          item_type || "inventario",
+          (category || "").trim() || null,
+          (unit || "pieza").trim(),
+          parseFloat(cost) || 0,
+          parseFloat(price) || 0,
+          tax_id || null,
+        ]
+      );
+      res.redirect("/erp/inventario/articulos/" + rows[0].id + "?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/inventario/articulos/:id",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    try {
+      const { rows } = await pool.query("SELECT * FROM erp_items WHERE id = $1 AND business_id = $2", [
+        req.params.id,
+        req.erpActor.businessId,
+      ]);
+      if (!rows[0]) return res.status(404).send("Artículo no encontrado.");
+      const { rows: taxes } = await pool.query(
+        "SELECT * FROM erp_taxes WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
+        [req.erpActor.businessId]
+      );
+      const { rows: stock } = await pool.query(
+        `SELECT erp_locations.id AS location_id, erp_locations.name AS location_name,
+                COALESCE(erp_item_stock.quantity, 0) AS quantity
+         FROM erp_locations
+         LEFT JOIN erp_item_stock ON erp_item_stock.location_id = erp_locations.id AND erp_item_stock.item_id = $1
+         WHERE erp_locations.business_id = $2 AND erp_locations.active = TRUE
+         ORDER BY erp_locations.is_default DESC, erp_locations.name ASC`,
+        [req.params.id, req.erpActor.businessId]
+      );
+      res.render("erp-inventario-articulo-detail", {
+        currentSection: "inventario",
+        erpActor: req.erpActor,
+        item: rows[0],
+        taxes,
+        stock,
+        totalStock: stock.reduce((sum, s) => sum + Number(s.quantity), 0),
+        saved: req.query.saved === "1",
+        error: null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/inventario/articulos/:id/update",
+  requireErpAuth,
+  requirePermission("compras"),
+  async (req, res, next) => {
+    try {
+      const { rows } = await pool.query("SELECT * FROM erp_items WHERE id = $1 AND business_id = $2", [
+        req.params.id,
+        req.erpActor.businessId,
+      ]);
+      if (!rows[0]) return res.status(404).send("Artículo no encontrado.");
+      const { name, sku, item_type, category, unit, cost, price, tax_id } = req.body;
+      if (!name || !name.trim()) {
+        return res.redirect("/erp/inventario/articulos/" + req.params.id);
+      }
+      await pool.query(
+        `UPDATE erp_items SET
+           sku = $1, name = $2, item_type = $3, category = $4, unit = $5,
+           cost = $6, price = $7, tax_id = $8, updated_at = NOW()
+         WHERE id = $9 AND business_id = $10`,
+        [
+          (sku || "").trim() || null,
+          name.trim(),
+          item_type || "inventario",
+          (category || "").trim() || null,
+          (unit || "pieza").trim(),
+          parseFloat(cost) || 0,
+          parseFloat(price) || 0,
+          tax_id || null,
+          req.params.id,
+          req.erpActor.businessId,
+        ]
+      );
+      res.redirect("/erp/inventario/articulos/" + req.params.id + "?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/inventario/articulos/:id/toggle-active",
+  requireErpAuth,
+  requirePermission("compras"),
+  async (req, res, next) => {
+    try {
+      await pool.query(
+        "UPDATE erp_items SET active = NOT active, updated_at = NOW() WHERE id = $1 AND business_id = $2",
+        [req.params.id, req.erpActor.businessId]
+      );
+      res.redirect("/erp/inventario/articulos/" + req.params.id + "?saved=1");
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+// "Visualizar inventario": una sola tabla artículo x ubicación con la
+// existencia actual — el vistazo rápido de "¿cuánto tengo y dónde?" que
+// pidió el negocio, sin tener que entrar artículo por artículo.
+app.get(
+  "/erp/inventario",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    try {
+      const q = (req.query.q || "").trim();
+      const params = [req.erpActor.businessId];
+      let itemFilter = "";
+      if (q) {
+        params.push(`%${q.toLowerCase()}%`);
+        itemFilter = ` AND (LOWER(erp_items.name) LIKE $2 OR LOWER(COALESCE(erp_items.sku, '')) LIKE $2)`;
+      }
+      const { rows: locations } = await pool.query(
+        "SELECT * FROM erp_locations WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
+        [req.erpActor.businessId]
+      );
+      const { rows: items } = await pool.query(
+        `SELECT erp_items.id, erp_items.sku, erp_items.name, erp_items.unit, erp_items.item_type,
+                COALESCE(SUM(erp_item_stock.quantity), 0) AS total_stock
+         FROM erp_items
+         LEFT JOIN erp_item_stock ON erp_item_stock.item_id = erp_items.id
+         WHERE erp_items.business_id = $1 AND erp_items.active = TRUE${itemFilter}
+         GROUP BY erp_items.id
+         ORDER BY erp_items.name ASC`,
+        params
+      );
+      const { rows: stockRows } = await pool.query(
+        `SELECT item_id, location_id, quantity FROM erp_item_stock WHERE business_id = $1`,
+        [req.erpActor.businessId]
+      );
+      const stockByItemLocation = {};
+      stockRows.forEach((s) => {
+        stockByItemLocation[s.item_id + "_" + s.location_id] = Number(s.quantity);
+      });
+      res.render("erp-inventario-visualizar", {
+        currentSection: "inventario",
+        erpActor: req.erpActor,
+        items,
+        locations,
+        stockByItemLocation,
+        searchQuery: q,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.get(
+  "/erp/inventario/ajustes",
+  requireErpAuth,
+  requireAnyPermission("compras", "ventas"),
+  async (req, res, next) => {
+    try {
+      const { rows: items } = await pool.query(
+        "SELECT id, sku, name, unit FROM erp_items WHERE business_id = $1 AND active = TRUE ORDER BY name ASC",
+        [req.erpActor.businessId]
+      );
+      const { rows: locations } = await pool.query(
+        "SELECT id, name FROM erp_locations WHERE business_id = $1 AND active = TRUE ORDER BY is_default DESC, name ASC",
+        [req.erpActor.businessId]
+      );
+      const { rows: recentAdjustments } = await pool.query(
+        `SELECT erp_inventory_adjustments.*, erp_items.name AS item_name, erp_locations.name AS location_name
+         FROM erp_inventory_adjustments
+         JOIN erp_items ON erp_items.id = erp_inventory_adjustments.item_id
+         JOIN erp_locations ON erp_locations.id = erp_inventory_adjustments.location_id
+         WHERE erp_inventory_adjustments.business_id = $1
+         ORDER BY erp_inventory_adjustments.created_at DESC
+         LIMIT 25`,
+        [req.erpActor.businessId]
+      );
+      res.render("erp-inventario-ajustes", {
+        currentSection: "inventario",
+        erpActor: req.erpActor,
+        items,
+        locations,
+        recentAdjustments,
+        saved: req.query.saved === "1",
+        error: req.query.error || null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+app.post(
+  "/erp/inventario/ajustes",
+  requireErpAuth,
+  requirePermission("compras"),
+  async (req, res, next) => {
+    const { item_id, location_id, new_quantity, reason } = req.body;
+    const newQty = parseFloat(new_quantity);
+    if (!item_id || !location_id || !Number.isFinite(newQty) || newQty < 0) {
+      return res.redirect(
+        "/erp/inventario/ajustes?error=" + encodeURIComponent("Elige un artículo, una ubicación y una cantidad válida (0 o más).")
+      );
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      // Verifica que el artículo y la ubicación sean de este negocio (evita
+      // que alguien mande IDs de otro negocio a mano en el formulario).
+      const { rows: itemCheck } = await client.query(
+        "SELECT id FROM erp_items WHERE id = $1 AND business_id = $2",
+        [item_id, req.erpActor.businessId]
+      );
+      const { rows: locCheck } = await client.query(
+        "SELECT id FROM erp_locations WHERE id = $1 AND business_id = $2",
+        [location_id, req.erpActor.businessId]
+      );
+      if (!itemCheck[0] || !locCheck[0]) {
+        await client.query("ROLLBACK");
+        return res.redirect("/erp/inventario/ajustes?error=" + encodeURIComponent("Artículo o ubicación inválidos."));
+      }
+
+      const { rows: currentRows } = await client.query(
+        "SELECT quantity FROM erp_item_stock WHERE item_id = $1 AND location_id = $2",
+        [item_id, location_id]
+      );
+      const before = currentRows[0] ? Number(currentRows[0].quantity) : 0;
+
+      await client.query(
+        `INSERT INTO erp_item_stock (item_id, location_id, business_id, quantity)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (item_id, location_id) DO UPDATE SET quantity = EXCLUDED.quantity`,
+        [item_id, location_id, req.erpActor.businessId, newQty]
+      );
+
+      await client.query(
+        `INSERT INTO erp_inventory_adjustments
+           (business_id, item_id, location_id, quantity_before, quantity_after, delta, reason,
+            created_by_actor_type, created_by_employee_id, created_by_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          req.erpActor.businessId,
+          item_id,
+          location_id,
+          before,
+          newQty,
+          newQty - before,
+          (reason || "").trim() || null,
+          req.erpActor.type,
+          req.erpActor.employeeId,
+          req.erpActor.name,
+        ]
+      );
+
+      await client.query("COMMIT");
+      res.redirect("/erp/inventario/ajustes?saved=1");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      next(err);
+    } finally {
+      client.release();
+    }
+  }
+);
+
 // --- IA: sugerir piezas vendibles a partir de las fotos ya subidas ---
 // Se dispara solo con el botón explícito "Analizar con IA" (nunca
 // automáticamente al subir fotos), para no gastar una llamada de IA sin que
@@ -3080,6 +3990,7 @@ app.post(
 app.post(
   "/erp/vehicles/:id/analizar-ia",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res, next) => {
     try {
@@ -3121,6 +4032,7 @@ app.post(
 app.post(
   "/erp/vehicles/:id/ai-checklist/enviar",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res, next) => {
     try {
@@ -3173,6 +4085,7 @@ app.post(
 app.post(
   "/erp/parts/:id/sugerir-precio",
   requireErpAuth,
+  requireYonksuiteModule,
   requirePermission("compras"),
   async (req, res) => {
     try {
@@ -3205,7 +4118,7 @@ app.post(
 );
 
 // --- IA: buscador rápido de compatibilidad (sin cambiar de pantalla) ---
-app.post("/erp/compatibilidad", requireErpAuth, async (req, res) => {
+app.post("/erp/compatibilidad", requireErpAuth, requireYonksuiteModule, async (req, res) => {
   try {
     const question = (req.body.question || "").trim();
     if (!question) {
@@ -4399,6 +5312,8 @@ app.post("/admin/businesses/:id/toggle-module", requireAdminAuth, async (req, re
         ? "module_crm_enabled"
         : moduleKey === MODULES.ERP
         ? "module_erp_enabled"
+        : moduleKey === MODULES.YONKSUITE
+        ? "module_yonksuite_enabled"
         : null;
     if (!column) return res.status(400).send("Módulo inválido.");
 

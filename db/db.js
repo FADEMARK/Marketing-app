@@ -440,6 +440,267 @@ async function init() {
       UNIQUE (business_id, category_key)
     );
   `);
+
+  // =====================================================================
+  // CORE ERP GENÉRICO (Fase 1: "core transaccional") — pensado para
+  // vender la plataforma como ERP a CUALQUIER negocio, no solo yonkes.
+  // YonkSuite (erp_vehicles/erp_parts/erp_quotes/erp_sales de arriba) pasa a
+  // ser un MÓDULO ADICIONAL sobre este core (ver businesses.module_yonksuite_enabled
+  // más abajo) — sigue funcionando exactamente igual, sin tocarse.
+  //
+  // Fase 2 (todavía no implementada, ver README): Contabilidad (cuentas
+  // contables, pólizas de diario, tipo de cambio automático) y Customización
+  // (campos/listas propios, workflows de aprobación configurables).
+  // =====================================================================
+
+  // --- Ubicaciones: para negocios con más de una bodega/sucursal. Todo
+  // negocio nuevo puede operar con una sola ubicación "General" (se crea
+  // sola la primera vez que se necesita, ver server.js).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_locations (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      name TEXT NOT NULL,
+      address TEXT,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- Monedas: catálogo simple por negocio (no un catálogo global de
+  // divisas). "is_base" marca la moneda en la que se reportan los totales
+  // por default. El tipo de cambio en sí NO vive aquí — se captura manualmente
+  // en cada transacción (ver erp_transactions.exchange_rate); esto es a
+  // propósito la versión simple, ver roadmap de Fase 2 para integración
+  // automática con Banxico/DOF.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_currencies (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      symbol TEXT NOT NULL DEFAULT '$',
+      is_base BOOLEAN NOT NULL DEFAULT FALSE,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, code)
+    );
+  `);
+
+  // --- Impuestos: catálogo de tasas (IVA 16%, IVA 8% frontera, IVA 0%,
+  // Exento, etc.) que se eligen por línea de artículo en cualquier
+  // transacción. "regime_hint" es solo informativo (ej. "RESICO",
+  // "Honorarios") para que el usuario ubique cuál usar, no aplica lógica
+  // fiscal especial todavía (eso es de Fase 2 / localización real).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_taxes (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      name TEXT NOT NULL,
+      rate NUMERIC(6,3) NOT NULL DEFAULT 0,
+      regime_hint TEXT,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- Artículos: catálogo genérico (a diferencia de erp_parts, que son
+  // piezas específicas de UN vehículo dentro del módulo YonkSuite). Un
+  // artículo tipo "inventario" lleva existencia por ubicación
+  // (erp_item_stock); "servicio"/"no_inventariable" no.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_items (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      sku TEXT,
+      name TEXT NOT NULL,
+      item_type TEXT NOT NULL DEFAULT 'inventario',
+      category TEXT,
+      unit TEXT NOT NULL DEFAULT 'pieza',
+      cost NUMERIC(12,2) NOT NULL DEFAULT 0,
+      price NUMERIC(12,2) NOT NULL DEFAULT 0,
+      tax_id INTEGER REFERENCES erp_taxes(id),
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      custom_fields TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, sku)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_item_stock (
+      id SERIAL PRIMARY KEY,
+      item_id INTEGER NOT NULL REFERENCES erp_items(id) ON DELETE CASCADE,
+      location_id INTEGER NOT NULL REFERENCES erp_locations(id),
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      quantity NUMERIC(14,2) NOT NULL DEFAULT 0,
+      UNIQUE (item_id, location_id)
+    );
+  `);
+
+  // --- Proveedores: mismo patrón que erp_clients, pero para Compras.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_vendors (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      folio TEXT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      tax_id TEXT,
+      tax_legal_name TEXT,
+      notes TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- Motor genérico de transacciones: UNA tabla para los 9 tipos de
+  // documento de Ventas/Compras (cotización, orden, ejecución de pedido,
+  // factura, nota de crédito — por ambos lados), en vez de una tabla por
+  // tipo. "doc_type" identifica cuál es, "related_transaction_id" apunta al
+  // documento del que se convirtió (para poder ver la cadena completa
+  // cotización → orden → ejecución → factura → nota de crédito). El tipo de
+  // cambio se captura manualmente por transacción (ver nota en erp_currencies).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_transactions (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      doc_type TEXT NOT NULL,
+      folio TEXT,
+      status TEXT NOT NULL DEFAULT 'abierta',
+      client_id INTEGER REFERENCES erp_clients(id) ON DELETE SET NULL,
+      vendor_id INTEGER REFERENCES erp_vendors(id) ON DELETE SET NULL,
+      entity_name_snapshot TEXT,
+      location_id INTEGER REFERENCES erp_locations(id),
+      currency_code TEXT,
+      exchange_rate NUMERIC(14,6) NOT NULL DEFAULT 1,
+      related_transaction_id INTEGER REFERENCES erp_transactions(id),
+      subtotal NUMERIC(14,2) NOT NULL DEFAULT 0,
+      tax_total NUMERIC(14,2) NOT NULL DEFAULT 0,
+      total NUMERIC(14,2) NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by_actor_type TEXT,
+      created_by_employee_id INTEGER REFERENCES erp_employees(id),
+      created_by_name TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_transaction_lines (
+      id SERIAL PRIMARY KEY,
+      transaction_id INTEGER NOT NULL REFERENCES erp_transactions(id) ON DELETE CASCADE,
+      item_id INTEGER REFERENCES erp_items(id),
+      description TEXT,
+      quantity NUMERIC(14,2) NOT NULL DEFAULT 1,
+      unit_price NUMERIC(14,2) NOT NULL DEFAULT 0,
+      tax_rate NUMERIC(6,3) NOT NULL DEFAULT 0,
+      tax_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+      amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- Pagos de cliente: aplicados a una factura (erp_transactions con
+  // doc_type='factura_venta') o "en cuenta" (applied_to_transaction_id NULL,
+  // para cuando el cliente paga por adelantado o de forma genérica).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_customer_payments (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      client_id INTEGER NOT NULL REFERENCES erp_clients(id),
+      amount NUMERIC(14,2) NOT NULL,
+      currency_code TEXT,
+      exchange_rate NUMERIC(14,6) NOT NULL DEFAULT 1,
+      payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      method TEXT NOT NULL DEFAULT 'efectivo',
+      applied_to_transaction_id INTEGER REFERENCES erp_transactions(id),
+      notes TEXT,
+      created_by_actor_type TEXT,
+      created_by_employee_id INTEGER REFERENCES erp_employees(id),
+      created_by_name TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- Numeración de folios por tipo de documento: reemplaza el patrón
+  // anterior de columnas sueltas en "businesses" (erp_client_prefix, etc.)
+  // que ya no escalaba con 13 tipos de documento distintos. Ver
+  // services/erpNumbering.js. Se deja una migración de los 3 tipos viejos
+  // (client/quote/sale) que sí vivían en columnas de "businesses", para no
+  // perder la numeración que un negocio ya traía configurada.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_doc_numbering (
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      doc_type TEXT NOT NULL,
+      prefix TEXT NOT NULL,
+      next_number INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (business_id, doc_type)
+    );
+  `);
+  await pool.query(`
+    INSERT INTO erp_doc_numbering (business_id, doc_type, prefix, next_number)
+    SELECT id, 'client', erp_client_prefix, erp_client_next_number FROM businesses
+    ON CONFLICT (business_id, doc_type) DO NOTHING;
+  `);
+  await pool.query(`
+    INSERT INTO erp_doc_numbering (business_id, doc_type, prefix, next_number)
+    SELECT id, 'quote', erp_quote_prefix, erp_quote_next_number FROM businesses
+    ON CONFLICT (business_id, doc_type) DO NOTHING;
+  `);
+  await pool.query(`
+    INSERT INTO erp_doc_numbering (business_id, doc_type, prefix, next_number)
+    SELECT id, 'sale', erp_sale_prefix, erp_sale_next_number FROM businesses
+    ON CONFLICT (business_id, doc_type) DO NOTHING;
+  `);
+
+  // --- Bitácora de ajustes de inventario (Inventario > Ajuste de
+  // inventario). Un ajuste NO es una compra ni una venta — es una
+  // corrección manual (conteo físico, merma, error de captura) que mueve
+  // erp_item_stock.quantity directamente. Se guarda quantity_before/after y
+  // delta para poder auditar qué pasó, quién lo hizo y por qué, sin tener
+  // que reconstruirlo a partir del valor actual de erp_item_stock.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS erp_inventory_adjustments (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      item_id INTEGER NOT NULL REFERENCES erp_items(id),
+      location_id INTEGER NOT NULL REFERENCES erp_locations(id),
+      quantity_before NUMERIC(14,2) NOT NULL,
+      quantity_after NUMERIC(14,2) NOT NULL,
+      delta NUMERIC(14,2) NOT NULL,
+      reason TEXT,
+      created_by_actor_type TEXT,
+      created_by_employee_id INTEGER REFERENCES erp_employees(id),
+      created_by_name TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // --- YonkSuite ahora es un módulo ADICIONAL sobre el core ERP genérico
+  // (Ventas/Compras/Inventario/Clientes de arriba), no "el" ERP — un negocio
+  // puede tener el ERP activo sin YonkSuite (la mayoría, giros que no son
+  // yonkes) o con ambos (un yonke que además quiere Vehículos/Piezas/IA).
+  // Igual que con "is_active" en su momento: arranca en TRUE para que los
+  // negocios que YA estaban usando YonkSuite (bajo el viejo module_erp_enabled)
+  // no pierdan acceso de golpe; el DEFAULT para negocios NUEVOS se baja a
+  // FALSE justo abajo, así que de aquí en adelante hay que activarlo a
+  // propósito desde /admin/businesses, como cualquier otro módulo.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS module_yonksuite_enabled BOOLEAN NOT NULL DEFAULT TRUE;`);
+  await pool.query(`ALTER TABLE businesses ALTER COLUMN module_yonksuite_enabled SET DEFAULT FALSE;`);
+
+  // --- Localización mexicana: placeholder. Guarda los datos fiscales y la
+  // elección de PAC, pero todavía NO timbra nada — el botón de timbrar en
+  // Configuración explica que es una función de una futura actualización.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_tax_regime TEXT;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_pac_provider TEXT;`);
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_pac_notes TEXT;`);
 }
 
 module.exports = { pool, init };

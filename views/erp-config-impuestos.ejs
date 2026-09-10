@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Impuestos — Configuración</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Impuestos</h1>
+    <p class="muted small">
+      Catálogo de impuestos que puedes asignar a tus artículos (Inventario &gt; Artículos). Al
+      generar una venta o compra, el impuesto del artículo se aplica solo — no hay que calcularlo
+      a mano en cada transacción.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <% if (taxes.length === 0) { %>
+      <div class="detail-box">
+        <h3>Empieza rápido</h3>
+        <p class="muted small">
+          Da de alta de un clic los impuestos mexicanos más comunes: IVA 16%, IVA 8% (frontera),
+          IVA 0%, Exento, Honorarios y RESICO. Después puedes editarlos o agregar los tuyos.
+        </p>
+        <form method="POST" action="/erp/configuracion/impuestos/sembrar-sat">
+          <button type="submit" class="btn-primary full-width">🇲🇽 Sembrar impuestos usuales del SAT</button>
+        </form>
+      </div>
+    <% } %>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Agregar impuesto</h3>
+      <form method="POST" action="/erp/configuracion/impuestos" class="card-form">
+        <div class="two-col">
+          <label>Nombre
+            <input type="text" name="name" required placeholder="IVA 16%" />
+          </label>
+          <label>Tasa (%)
+            <input type="number" name="rate" step="0.001" min="0" required placeholder="16" />
+          </label>
+        </div>
+        <label>Nota / referencia (opcional)
+          <input type="text" name="regime_hint" placeholder="iva_general, resico, honorarios..." />
+        </label>
+        <button type="submit" class="btn-primary full-width">+ Agregar</button>
+      </form>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Tus impuestos</h3>
+      <% if (taxes.length === 0) { %>
+        <p class="muted">Todavía no has agregado ningún impuesto.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Nombre</th><th>Tasa</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            <% taxes.forEach(function(t) { %>
+              <tr>
+                <td>
+                  <%= t.name %>
+                  <% if (t.is_default) { %><span class="status-badge status-aprobado" style="margin-left:6px;">Default</span><% } %>
+                </td>
+                <td class="muted small"><%= Number(t.rate).toString() %>%</td>
+                <td>
+                  <span class="status-badge <%= t.active ? 'status-aprobado' : 'status-pendiente_revision' %>">
+                    <%= t.active ? 'Activo' : 'Inactivo' %>
+                  </span>
+                </td>
+                <td>
+                  <% if (!t.is_default) { %>
+                    <form method="POST" action="/erp/configuracion/impuestos/<%= t.id %>/set-default" class="inline-form" style="margin-bottom:4px;">
+                      <button type="submit" class="link-button">Hacer default</button>
+                    </form>
+                    <form method="POST" action="/erp/configuracion/impuestos/<%= t.id %>/toggle-active" class="inline-form">
+                      <button type="submit" class="link-button"><%= t.active ? 'Desactivar' : 'Activar' %></button>
+                    </form>
+                  <% } else { %>
+                    <span class="muted small">—</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

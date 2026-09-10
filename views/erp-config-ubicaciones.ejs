@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Ubicaciones — Configuración</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Ubicaciones</h1>
+    <p class="muted small">
+      Bodegas, sucursales o áreas donde se guarda tu inventario. La primera que agregues queda
+      como Principal automáticamente — es la que se usa por default en altas rápidas y ajustes de inventario.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Agregar ubicación</h3>
+      <form method="POST" action="/erp/configuracion/ubicaciones" class="card-form">
+        <div class="two-col">
+          <label>Nombre
+            <input type="text" name="name" required placeholder="Bodega principal" />
+          </label>
+          <label>Dirección (opcional)
+            <input type="text" name="address" placeholder="Calle, número, ciudad" />
+          </label>
+        </div>
+        <button type="submit" class="btn-primary full-width">+ Agregar</button>
+      </form>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Tus ubicaciones</h3>
+      <% if (locations.length === 0) { %>
+        <p class="muted">Todavía no has agregado ninguna ubicación.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Nombre</th><th>Dirección</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            <% locations.forEach(function(loc) { %>
+              <tr>
+                <td>
+                  <%= loc.name %>
+                  <% if (loc.is_default) { %><span class="status-badge status-aprobado" style="margin-left:6px;">Principal</span><% } %>
+                </td>
+                <td class="muted small"><%= loc.address || '—' %></td>
+                <td>
+                  <span class="status-badge <%= loc.active ? 'status-aprobado' : 'status-pendiente_revision' %>">
+                    <%= loc.active ? 'Activa' : 'Inactiva' %>
+                  </span>
+                </td>
+                <td>
+                  <% if (!loc.is_default) { %>
+                    <form method="POST" action="/erp/configuracion/ubicaciones/<%= loc.id %>/set-default" class="inline-form" style="margin-bottom:4px;">
+                      <button type="submit" class="link-button">Hacer principal</button>
+                    </form>
+                    <form method="POST" action="/erp/configuracion/ubicaciones/<%= loc.id %>/toggle-active" class="inline-form">
+                      <button type="submit" class="link-button"><%= loc.active ? 'Desactivar' : 'Activar' %></button>
+                    </form>
+                  <% } else { %>
+                    <span class="muted small">—</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

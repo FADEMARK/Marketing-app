@@ -84,7 +84,7 @@ async function requireErpAuth(req, res, next) {
   try {
     if (req.session.erpOwnerBusinessId) {
       const { rows } = await pool.query(
-        `SELECT is_active, module_erp_enabled, erp_plan, erp_owner_active_session_id, name,
+        `SELECT is_active, module_erp_enabled, module_yonksuite_enabled, erp_plan, erp_owner_active_session_id, name,
                 logo_data, brand_color_primary, brand_color_secondary
          FROM businesses WHERE id = $1`,
         [req.session.erpOwnerBusinessId]
@@ -121,6 +121,11 @@ async function requireErpAuth(req, res, next) {
         canCompras: true,
         canVentas: true,
         canManageEmployees: true,
+        // Módulo opcional de Vehículos/Partes/IA (YonkSuite). Se activa por
+        // negocio desde /admin/businesses — igual que module_erp_enabled,
+        // pero un nivel más abajo: un negocio puede tener el ERP core
+        // (Ventas/Compras/Inventario/Clientes) sin ser un yonke.
+        moduleYonksuiteEnabled: Boolean(business.module_yonksuite_enabled),
       };
       return next();
     }
@@ -128,7 +133,7 @@ async function requireErpAuth(req, res, next) {
     if (req.session.erpEmployeeId) {
       const { rows } = await pool.query(
         `SELECT e.id, e.name, e.role, e.active, e.active_session_id, e.business_id,
-                b.is_active AS business_active, b.module_erp_enabled, b.erp_plan, b.name AS business_name,
+                b.is_active AS business_active, b.module_erp_enabled, b.module_yonksuite_enabled, b.erp_plan, b.name AS business_name,
                 b.logo_data, b.brand_color_primary, b.brand_color_secondary
          FROM erp_employees e
          JOIN businesses b ON b.id = e.business_id
@@ -164,6 +169,7 @@ async function requireErpAuth(req, res, next) {
         canCompras: roleHasPermission(employee.role, "compras"),
         canVentas: roleHasPermission(employee.role, "ventas"),
         canManageEmployees: roleHasPermission(employee.role, "manage_employees"),
+        moduleYonksuiteEnabled: Boolean(employee.module_yonksuite_enabled),
       };
       return next();
     }
@@ -199,4 +205,25 @@ function requireAnyPermission(...permissions) {
   };
 }
 
-module.exports = { requireBusinessAuth, requireAdminAuth, requireErpAuth, requirePermission, requireAnyPermission };
+// Uso: requireYonksuiteModule — va DESPUÉS de requireErpAuth en cualquier
+// ruta que sea específica del módulo de Vehículos/Partes/IA (YonkSuite):
+// /erp/vehiculos, /erp/vehicles/*, /erp/cotizaciones*, /erp/ventas*,
+// /erp/configuracion/categorias. El resto del ERP (Ventas/Compras/Inventario/
+// Clientes genéricos, Empleados, Configuración de empresa) NO lleva este
+// middleware porque es el "core" que cualquier negocio contrata, tenga o no
+// el módulo de yonke. No hace una consulta extra a la BD: reusa el flag que
+// requireErpAuth ya trajo en este mismo request.
+function requireYonksuiteModule(req, res, next) {
+  if (!req.erpActor) return res.status(500).send("Falta requireErpAuth antes de requireYonksuiteModule.");
+  if (req.erpActor.moduleYonksuiteEnabled) return next();
+  return res.render("module-upsell", { moduleLabel: "YonkSuite (Vehículos)" });
+}
+
+module.exports = {
+  requireBusinessAuth,
+  requireAdminAuth,
+  requireErpAuth,
+  requirePermission,
+  requireAnyPermission,
+  requireYonksuiteModule,
+};

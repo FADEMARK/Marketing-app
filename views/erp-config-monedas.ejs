@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Monedas — Configuración</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Monedas</h1>
+    <p class="muted small">
+      Da de alta las monedas en las que transaccionas con tus clientes o proveedores. La moneda
+      base normalmente es MXN. El tipo de cambio NO se configura aquí: se captura manualmente en
+      cada transacción (por ejemplo, pegando el valor del DOF del día), y los reportes se pueden
+      recalcular por moneda con un filtro.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Agregar moneda</h3>
+      <form method="POST" action="/erp/configuracion/monedas" class="card-form">
+        <div class="two-col">
+          <label>Código (ISO 4217)
+            <input type="text" name="code" required maxlength="6" placeholder="USD" style="text-transform:uppercase;" />
+          </label>
+          <label>Nombre
+            <input type="text" name="name" required placeholder="Dólar americano" />
+          </label>
+        </div>
+        <label>Símbolo
+          <input type="text" name="symbol" maxlength="4" placeholder="$" value="$" />
+        </label>
+        <button type="submit" class="btn-primary full-width">+ Agregar</button>
+      </form>
+    </div>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Tus monedas</h3>
+      <% if (currencies.length === 0) { %>
+        <p class="muted">Todavía no has agregado ninguna moneda. Agrega tu moneda base primero (ej. MXN).</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Código</th><th>Nombre</th><th>Símbolo</th><th>Estado</th><th></th></tr></thead>
+          <tbody>
+            <% currencies.forEach(function(c) { %>
+              <tr>
+                <td>
+                  <strong><%= c.code %></strong>
+                  <% if (c.is_base) { %><span class="status-badge status-aprobado" style="margin-left:6px;">Base</span><% } %>
+                </td>
+                <td><%= c.name %></td>
+                <td class="muted small"><%= c.symbol %></td>
+                <td>
+                  <span class="status-badge <%= c.active ? 'status-aprobado' : 'status-pendiente_revision' %>">
+                    <%= c.active ? 'Activa' : 'Inactiva' %>
+                  </span>
+                </td>
+                <td>
+                  <% if (!c.is_base) { %>
+                    <form method="POST" action="/erp/configuracion/monedas/<%= c.id %>/set-base" class="inline-form" style="margin-bottom:4px;">
+                      <button type="submit" class="link-button">Hacer base</button>
+                    </form>
+                    <form method="POST" action="/erp/configuracion/monedas/<%= c.id %>/toggle-active" class="inline-form">
+                      <button type="submit" class="link-button"><%= c.active ? 'Desactivar' : 'Activar' %></button>
+                    </form>
+                  <% } else { %>
+                    <span class="muted small">—</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

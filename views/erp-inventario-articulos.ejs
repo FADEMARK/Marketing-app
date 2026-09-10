@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Artículos — Inventario</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'inventario' }) %>
+
+  <main class="page">
+    <div class="page-header">
+      <h1>Artículos</h1>
+      <% if (erpActor.canCompras) { %>
+        <a href="/erp/inventario/articulos/new" class="btn-primary">+ Nuevo artículo</a>
+      <% } %>
+    </div>
+
+    <form method="GET" action="/erp/inventario/articulos" class="search-bar">
+      <input type="text" name="q" value="<%= searchQuery %>" placeholder="Buscar por nombre o SKU..." />
+      <button type="submit">Buscar</button>
+    </form>
+
+    <% if (items.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no has dado de alta ningún artículo.</p>
+        <% if (erpActor.canCompras) { %><a href="/erp/inventario/articulos/new" class="btn-primary">+ Nuevo artículo</a><% } %>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead><tr><th>SKU</th><th>Nombre</th><th>Tipo</th><th>Unidad</th><th>Costo</th><th>Precio</th><th>Estado</th></tr></thead>
+        <tbody>
+          <% items.forEach(function(it) { %>
+            <tr>
+              <td class="muted small"><%= it.sku || '—' %></td>
+              <td><a href="/erp/inventario/articulos/<%= it.id %>"><%= it.name %></a></td>
+              <td class="muted small"><%= it.item_type %></td>
+              <td class="muted small"><%= it.unit %></td>
+              <td>$<%= Number(it.cost).toFixed(2) %></td>
+              <td>$<%= Number(it.price).toFixed(2) %></td>
+              <td>
+                <span class="status-badge <%= it.active ? 'status-aprobado' : 'status-pendiente_revision' %>">
+                  <%= it.active ? 'Activo' : 'Inactivo' %>
+                </span>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

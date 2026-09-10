@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= erpVendor.name %> — Proveedores</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'proveedores' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/proveedores" class="back-link">&larr; Volver a Proveedores</a>
+
+    <div class="page-header">
+      <h1><%= erpVendor.name %></h1>
+      <span class="muted small"><%= erpVendor.folio %></span>
+    </div>
+    <p class="muted small">Proveedor registrado el <%= erpVendor.created_at %></p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+
+    <% if (canEdit) { %>
+    <div class="detail-box">
+      <h3>Datos del proveedor</h3>
+      <form method="POST" action="/erp/proveedores/<%= erpVendor.id %>/update" class="card-form">
+        <label>Nombre
+          <input type="text" name="name" required value="<%= erpVendor.name %>" />
+        </label>
+
+        <div class="two-col">
+          <label>Teléfono
+            <input type="text" name="phone" value="<%= erpVendor.phone || '' %>" />
+          </label>
+          <label>Correo
+            <input type="email" name="email" value="<%= erpVendor.email || '' %>" />
+          </label>
+        </div>
+
+        <label>Dirección
+          <input type="text" name="address" value="<%= erpVendor.address || '' %>" />
+        </label>
+
+        <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+          <p class="muted small" style="margin-top:0;">Datos fiscales (opcional):</p>
+          <div class="two-col">
+            <label>RFC
+              <input type="text" name="tax_id" value="<%= erpVendor.tax_id || '' %>" />
+            </label>
+            <label>Razón social
+              <input type="text" name="tax_legal_name" value="<%= erpVendor.tax_legal_name || '' %>" />
+            </label>
+          </div>
+        </div>
+
+        <label>Notas
+          <textarea name="notes" rows="3"><%= erpVendor.notes || '' %></textarea>
+        </label>
+
+        <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+      </form>
+
+      <form method="POST" action="/erp/proveedores/<%= erpVendor.id %>/delete" style="margin-top:12px;"
+            onsubmit="return confirm('¿Borrar este proveedor? No se puede deshacer.');">
+        <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar proveedor</button>
+      </form>
+    </div>
+    <% } %>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Órdenes de compra</h3>
+      <p class="muted small">Todavía no hay compras registradas. Esta sección se llenará cuando captures una orden de compra a este proveedor.</p>
+    </div>
+  </main>
+</body>
+</html>

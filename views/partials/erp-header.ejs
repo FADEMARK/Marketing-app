@@ -14,8 +14,14 @@
 // tap, aunque no se vea el desplegable.
 //
 // currentSection lo manda cada vista para resaltar la pestaña activa: uno de
-// "dashboard" | "ventas" | "cotizaciones" | "vehiculos" | "clientes" |
-// "empleados" | "reportes" | "configuracion" | null.
+// "dashboard" | "ventas" | "cotizaciones" | "vehiculos" | "inventario" |
+// "clientes" | "proveedores" | "empleados" | "reportes" | "configuracion" | null.
+//
+// "Vehículos" (Meter auto/Visualizar inventario de vehículos) es del módulo
+// YonkSuite y solo aparece si moduleYonksuiteEnabled. "Inventario" (Artículos/
+// Ajuste/Visualizar/Ubicaciones) es del core genérico y SIEMPRE aparece,
+// tenga o no el negocio el módulo de vehículos — son catálogos distintos
+// (erp_items vs erp_vehicles/erp_parts) a propósito.
 const _section = typeof currentSection !== "undefined" ? currentSection : null;
 const _erpActor = typeof erpActor !== "undefined" ? erpActor : null;
 const _searchQ = typeof searchGlobalQuery !== "undefined" ? searchGlobalQuery : "";
@@ -36,28 +42,43 @@ const _roleLabels = { owner: "Dueño", admin: "Admin", ventas: "Ventas", compras
     <nav class="erp-topnav">
       <a href="/erp" class="<%= _section === 'dashboard' ? 'active' : '' %>">Dashboard</a>
 
-      <div class="erp-nav-item">
-        <a href="/erp/ventas" class="<%= (_section === 'ventas' || _section === 'cotizaciones') ? 'active' : '' %>">Ventas ▾</a>
-        <div class="erp-nav-dropdown">
-          <% if (_erpActor && _erpActor.canVentas) { %>
-            <a href="/erp/ventas/new">🧾 Nueva venta</a>
-          <% } %>
-          <a href="/erp/ventas">Ver ventas</a>
-          <a href="/erp/cotizaciones">Cotizaciones</a>
+      <% if (_erpActor && _erpActor.moduleYonksuiteEnabled) { %>
+        <div class="erp-nav-item">
+          <a href="/erp/ventas" class="<%= (_section === 'ventas' || _section === 'cotizaciones') ? 'active' : '' %>">Ventas ▾</a>
+          <div class="erp-nav-dropdown">
+            <% if (_erpActor.canVentas) { %>
+              <a href="/erp/ventas/new">🧾 Nueva venta</a>
+            <% } %>
+            <a href="/erp/ventas">Ver ventas</a>
+            <a href="/erp/cotizaciones">Cotizaciones</a>
+          </div>
         </div>
-      </div>
+
+        <div class="erp-nav-item">
+          <a href="/erp/vehiculos" class="<%= _section === 'vehiculos' ? 'active' : '' %>">Vehículos ▾</a>
+          <div class="erp-nav-dropdown">
+            <% if (_erpActor.canCompras) { %>
+              <a href="/erp/vehicles/new">🚗 Meter auto</a>
+            <% } %>
+            <a href="/erp/vehiculos">Visualizar inventario de vehículos</a>
+          </div>
+        </div>
+      <% } %>
 
       <div class="erp-nav-item">
-        <a href="/erp/vehiculos" class="<%= _section === 'vehiculos' ? 'active' : '' %>">Inventario ▾</a>
+        <a href="/erp/inventario" class="<%= _section === 'inventario' ? 'active' : '' %>">Inventario ▾</a>
         <div class="erp-nav-dropdown">
-          <% if (_erpActor && _erpActor.canCompras) { %>
-            <a href="/erp/vehicles/new">🚗 Meter auto</a>
+          <a href="/erp/inventario">Visualizar inventario</a>
+          <a href="/erp/inventario/articulos">Artículos</a>
+          <a href="/erp/inventario/ajustes">Ajuste de inventario</a>
+          <% if (_erpActor && _erpActor.canManageEmployees) { %>
+            <a href="/erp/configuracion/ubicaciones">Ubicaciones</a>
           <% } %>
-          <a href="/erp/vehiculos">Visualizar inventario</a>
         </div>
       </div>
 
       <a href="/erp/clientes" class="<%= _section === 'clientes' ? 'active' : '' %>">Clientes</a>
+      <a href="/erp/proveedores" class="<%= _section === 'proveedores' ? 'active' : '' %>">Proveedores</a>
       <% if (_erpActor && _erpActor.erpPlan === 'plus' && _erpActor.canManageEmployees) { %>
         <a href="/erp/empleados" class="<%= _section === 'empleados' ? 'active' : '' %>">Empleados</a>
       <% } %>

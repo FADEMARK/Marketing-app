@@ -75,12 +75,20 @@
                     <%= b.module_crm_enabled ? '☑' : '☐' %> CRM
                   </button>
                 </form>
-                <form method="POST" action="/admin/businesses/<%= b.id %>/toggle-module" class="inline-form">
+                <form method="POST" action="/admin/businesses/<%= b.id %>/toggle-module" class="inline-form" style="margin-bottom:4px;">
                   <input type="hidden" name="module" value="erp" />
                   <button type="submit" class="link-button" style="font-size:0.8rem;">
-                    <%= b.module_erp_enabled ? '☑' : '☐' %> ERP Yonkes
+                    <%= b.module_erp_enabled ? '☑' : '☐' %> ERP (core)
                   </button>
                 </form>
+                <% if (b.module_erp_enabled) { %>
+                  <form method="POST" action="/admin/businesses/<%= b.id %>/toggle-module" class="inline-form">
+                    <input type="hidden" name="module" value="yonksuite" />
+                    <button type="submit" class="link-button" style="font-size:0.8rem;">
+                      <%= b.module_yonksuite_enabled ? '☑' : '☐' %> YonkSuite (Vehículos)
+                    </button>
+                  </form>
+                <% } %>
               </td>
               <td>
                 <% if (b.module_erp_enabled) { %>

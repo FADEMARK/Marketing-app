@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Localización mexicana — Configuración</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'configuracion' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/configuracion" class="back-link">&larr; Volver a Configuración</a>
+    <h1>Localización mexicana</h1>
+    <p class="muted small">
+      Datos base para facturar en México: tu régimen fiscal y con qué PAC (proveedor autorizado
+      de timbrado) trabajarías. <strong>Por ahora esto solo se guarda como configuración</strong> —
+      todavía no se conecta a un PAC real para timbrar automáticamente; eso queda listo para un
+      upgrade posterior una vez que elijas el proveedor.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/erp/configuracion/localizacion-mx" class="card-form">
+      <div class="detail-box">
+        <h3>Régimen fiscal</h3>
+        <label>Régimen fiscal (catálogo SAT c_RegimenFiscal)
+          <select name="erp_tax_regime">
+            <option value="">— Sin especificar —</option>
+            <% MX_TAX_REGIMES.forEach(function(r) { %>
+              <option value="<%= r.key %>" <%= business.erp_tax_regime === r.key ? 'selected' : '' %>><%= r.label %></option>
+            <% }); %>
+          </select>
+        </label>
+      </div>
+
+      <div class="detail-box" style="margin-top:20px;">
+        <h3>Timbrado (PAC)</h3>
+        <label>Proveedor
+          <select name="erp_pac_provider">
+            <% MX_PAC_PROVIDERS.forEach(function(p) { %>
+              <option value="<%= p.key %>" <%= business.erp_pac_provider === p.key ? 'selected' : '' %>><%= p.label %></option>
+            <% }); %>
+          </select>
+        </label>
+        <label>Notas / datos de acceso (opcional, texto libre por ahora)
+          <textarea name="erp_pac_notes" rows="3" placeholder="Usuario, URL del webservice, número de contrato, etc."><%= business.erp_pac_notes || '' %></textarea>
+        </label>
+        <p class="muted small">
+          Cuando se active la integración real, estos datos son los que se usarían para conectar
+          con la API del PAC elegido y timbrar tus facturas sin salir del sistema.
+        </p>
+      </div>
+
+      <button type="submit" class="btn-primary full-width" style="margin-top:20px;">Guardar cambios</button>
+    </form>
+  </main>
+</body>
+</html>

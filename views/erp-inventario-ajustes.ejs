@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Ajuste de inventario</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'inventario' }) %>
+
+  <main class="page narrow">
+    <h1>Ajuste de inventario</h1>
+    <p class="muted small">
+      Corrige la existencia de un artículo en una ubicación (conteo físico, merma, error de
+      captura). Esto NO genera una compra ni una venta — solo actualiza la existencia directamente
+      y deja un registro de quién y por qué.
+    </p>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Ajuste aplicado.</div>
+    <% } %>
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <% if (erpActor.canCompras) { %>
+      <div class="detail-box">
+        <h3>Nuevo ajuste</h3>
+        <% if (items.length === 0 || locations.length === 0) { %>
+          <p class="muted small">
+            Necesitas al menos un <a href="/erp/inventario/articulos/new">artículo</a> y una
+            <a href="/erp/configuracion/ubicaciones">ubicación</a> activos para poder ajustar inventario.
+          </p>
+        <% } else { %>
+          <form method="POST" action="/erp/inventario/ajustes" class="card-form">
+            <div class="two-col">
+              <label>Artículo
+                <select name="item_id" required>
+                  <option value="">— Elige un artículo —</option>
+                  <% items.forEach(function(it) { %>
+                    <option value="<%= it.id %>"><%= it.name %><%= it.sku ? ' (' + it.sku + ')' : '' %></option>
+                  <% }); %>
+                </select>
+              </label>
+              <label>Ubicación
+                <select name="location_id" required>
+                  <option value="">— Elige una ubicación —</option>
+                  <% locations.forEach(function(loc) { %>
+                    <option value="<%= loc.id %>"><%= loc.name %></option>
+                  <% }); %>
+                </select>
+              </label>
+            </div>
+            <label>Nueva existencia (cantidad final, no el cambio)
+              <input type="number" name="new_quantity" step="0.01" min="0" required placeholder="0" />
+            </label>
+            <label>Motivo del ajuste
+              <input type="text" name="reason" placeholder="Conteo físico de fin de mes, merma, error de captura..." />
+            </label>
+            <button type="submit" class="btn-primary full-width">Aplicar ajuste</button>
+          </form>
+        <% } %>
+      </div>
+    <% } %>
+
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>Últimos ajustes</h3>
+      <% if (recentAdjustments.length === 0) { %>
+        <p class="muted small">Todavía no se ha registrado ningún ajuste.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Fecha</th><th>Artículo</th><th>Ubicación</th><th>Antes</th><th>Después</th><th>Cambio</th><th>Motivo</th><th>Quién</th></tr></thead>
+          <tbody>
+            <% recentAdjustments.forEach(function(a) { %>
+              <tr>
+                <td class="muted small"><%= new Date(a.created_at).toLocaleDateString('es-MX') %></td>
+                <td><%= a.item_name %></td>
+                <td class="muted small"><%= a.location_name %></td>
+                <td><%= a.quantity_before %></td>
+                <td><%= a.quantity_after %></td>
+                <td class="<%= Number(a.delta) >= 0 ? '' : 'muted' %>"><%= Number(a.delta) > 0 ? '+' : '' %><%= a.delta %></td>
+                <td class="muted small"><%= a.reason || '—' %></td>
+                <td class="muted small"><%= a.created_by_name || '—' %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </div>
+  </main>
+</body>
+</html>

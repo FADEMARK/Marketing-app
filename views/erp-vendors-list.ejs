@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Proveedores</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header') %>
+
+  <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
+    <div class="page-header">
+      <h1>Proveedores</h1>
+      <% if (erpActor.canCompras) { %>
+        <a href="/erp/proveedores/new" class="btn-primary">+ Nuevo proveedor</a>
+      <% } %>
+    </div>
+    <p class="subtitle">A quién le compras. Se usan al capturar una orden de compra.</p>
+
+    <form method="GET" action="/erp/proveedores" class="card-form" style="margin-bottom:16px;">
+      <label>Buscar
+        <input type="text" name="q" value="<%= searchQuery %>" placeholder="Nombre, teléfono, correo o folio..." />
+      </label>
+      <button type="submit" class="btn-primary full-width">🔎 Buscar</button>
+    </form>
+
+    <% if (vendors.length === 0) { %>
+      <div class="empty-state">
+        <p>
+          <% if (searchQuery) { %>
+            No encontramos proveedores que coincidan con "<%= searchQuery %>".
+          <% } else { %>
+            Todavía no tienes proveedores registrados.
+          <% } %>
+        </p>
+        <% if (erpActor.canCompras) { %><a href="/erp/proveedores/new" class="btn-primary">Agregar mi primer proveedor</a><% } %>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Folio</th>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Correo</th>
+            <th>Registrado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% vendors.forEach(function(v) { %>
+            <tr onclick="window.location='/erp/proveedores/<%= v.id %>'" style="cursor:pointer;">
+              <td class="muted small"><%= v.folio || '—' %></td>
+              <td><strong><%= v.name %></strong></td>
+              <td class="muted"><%= v.phone || '—' %></td>
+              <td class="muted"><%= v.email || '—' %></td>
+              <td class="muted small"><%= v.created_at %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title><%= item.name %> — Artículos</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'inventario' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/inventario/articulos" class="back-link">&larr; Volver a Artículos</a>
+    <h1><%= item.name %></h1>
+
+    <% if (saved) { %>
+      <div class="alert alert-success">Cambios guardados.</div>
+    <% } %>
+
+    <div class="detail-box">
+      <h3>Existencia total: <%= totalStock %> <%= item.unit %></h3>
+      <% if (stock.length === 0) { %>
+        <p class="muted small">No hay ubicaciones activas todavía. Da de alta una en Configuración &gt; Ubicaciones.</p>
+      <% } else { %>
+        <table class="admin-table">
+          <thead><tr><th>Ubicación</th><th>Existencia</th></tr></thead>
+          <tbody>
+            <% stock.forEach(function(s) { %>
+              <tr>
+                <td><%= s.location_name %></td>
+                <td><%= s.quantity %> <%= item.unit %></td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+      <p class="muted small" style="margin-top:10px;">
+        Para cambiar una existencia, ve a <a href="/erp/inventario/ajustes">Ajuste de inventario</a>.
+      </p>
+    </div>
+
+    <% if (erpActor.canCompras) { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <h3>Editar artículo</h3>
+        <form method="POST" action="/erp/inventario/articulos/<%= item.id %>/update" class="card-form">
+          <div class="two-col">
+            <label>Nombre
+              <input type="text" name="name" required value="<%= item.name %>" />
+            </label>
+            <label>SKU (opcional)
+              <input type="text" name="sku" value="<%= item.sku || '' %>" />
+            </label>
+          </div>
+          <div class="two-col">
+            <label>Tipo
+              <select name="item_type">
+                <option value="inventario" <%= item.item_type === 'inventario' ? 'selected' : '' %>>Inventario (se controla existencia)</option>
+                <option value="servicio" <%= item.item_type === 'servicio' ? 'selected' : '' %>>Servicio (no maneja existencia)</option>
+                <option value="no_inventariable" <%= item.item_type === 'no_inventariable' ? 'selected' : '' %>>No inventariable</option>
+              </select>
+            </label>
+            <label>Unidad
+              <input type="text" name="unit" value="<%= item.unit %>" />
+            </label>
+          </div>
+          <label>Categoría (opcional)
+            <input type="text" name="category" value="<%= item.category || '' %>" />
+          </label>
+          <div class="two-col">
+            <label>Costo
+              <input type="number" name="cost" step="0.01" min="0" value="<%= item.cost %>" />
+            </label>
+            <label>Precio
+              <input type="number" name="price" step="0.01" min="0" value="<%= item.price %>" />
+            </label>
+          </div>
+          <label>Impuesto
+            <select name="tax_id">
+              <option value="">— Sin impuesto —</option>
+              <% taxes.forEach(function(t) { %>
+                <option value="<%= t.id %>" <%= String(item.tax_id) === String(t.id) ? 'selected' : '' %>>
+                  <%= t.name %> (<%= Number(t.rate).toString() %>%)
+                </option>
+              <% }); %>
+            </select>
+          </label>
+          <button type="submit" class="btn-primary full-width">Guardar cambios</button>
+        </form>
+        <form method="POST" action="/erp/inventario/articulos/<%= item.id %>/toggle-active" style="margin-top:10px;">
+          <button type="submit" class="link-button" style="<%= item.active ? 'color:#B3261E;' : '' %>">
+            <%= item.active ? 'Desactivar artículo' : 'Reactivar artículo' %>
+          </button>
+        </form>
+      </div>
+    <% } %>
+  </main>
+</body>
+</html>

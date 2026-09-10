@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Visualizar inventario</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'inventario' }) %>
+
+  <main class="page">
+    <h1>Visualizar inventario</h1>
+    <p class="muted small">Existencia de cada artículo por ubicación.</p>
+
+    <form method="GET" action="/erp/inventario" class="search-bar">
+      <input type="text" name="q" value="<%= searchQuery %>" placeholder="Buscar por nombre o SKU..." />
+      <button type="submit">Buscar</button>
+    </form>
+
+    <% if (items.length === 0) { %>
+      <div class="empty-state">
+        <p>No hay artículos activos<%= searchQuery ? ' que coincidan con la búsqueda' : '' %>.</p>
+        <a href="/erp/inventario/articulos/new" class="btn-primary">+ Nuevo artículo</a>
+      </div>
+    <% } else if (locations.length === 0) { %>
+      <div class="empty-state">
+        <p>Todavía no has dado de alta ninguna ubicación.</p>
+        <a href="/erp/configuracion/ubicaciones" class="btn-primary">Configurar ubicaciones</a>
+      </div>
+    <% } else { %>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Artículo</th>
+            <% locations.forEach(function(loc) { %><th><%= loc.name %></th><% }); %>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% items.forEach(function(it) { %>
+            <tr>
+              <td><a href="/erp/inventario/articulos/<%= it.id %>"><%= it.name %></a> <span class="muted small"><%= it.sku ? '(' + it.sku + ')' : '' %></span></td>
+              <% locations.forEach(function(loc) { %>
+                <td><%= stockByItemLocation[it.id + '_' + loc.id] || 0 %> <%= it.unit %></td>
+              <% }); %>
+              <td><strong><%= it.total_stock %> <%= it.unit %></strong></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </main>
+</body>
+</html>

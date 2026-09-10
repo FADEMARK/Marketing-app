@@ -19,12 +19,30 @@
       </a>
       <a href="/erp/configuracion/transacciones" class="campaign-card">
         <h3>🔢 Configuración de transacciones</h3>
-        <p class="muted small">Prefijo y número consecutivo para Clientes, Cotizaciones y Ventas.</p>
+        <p class="muted small">Prefijo y número consecutivo para cada tipo de documento.</p>
       </a>
-      <a href="/erp/configuracion/categorias" class="campaign-card">
-        <h3>🏷️ Categorías de piezas</h3>
-        <p class="muted small">Personaliza las categorías que aparecen al dar de alta una pieza.</p>
+      <a href="/erp/configuracion/ubicaciones" class="campaign-card">
+        <h3>📍 Ubicaciones</h3>
+        <p class="muted small">Bodegas o sucursales donde se guarda el inventario.</p>
       </a>
+      <a href="/erp/configuracion/monedas" class="campaign-card">
+        <h3>💱 Monedas</h3>
+        <p class="muted small">Catálogo de monedas en las que puedes transaccionar (tipo de cambio manual por transacción).</p>
+      </a>
+      <a href="/erp/configuracion/impuestos" class="campaign-card">
+        <h3>🧾 Impuestos</h3>
+        <p class="muted small">IVA, RESICO, Honorarios y demás impuestos que se aplican a tus artículos.</p>
+      </a>
+      <a href="/erp/configuracion/localizacion-mx" class="campaign-card">
+        <h3>🇲🇽 Localización mexicana</h3>
+        <p class="muted small">Régimen fiscal y proveedor de timbrado (PAC) — configuración base para facturar.</p>
+      </a>
+      <% if (erpActor && erpActor.moduleYonksuiteEnabled) { %>
+        <a href="/erp/configuracion/categorias" class="campaign-card">
+          <h3>🏷️ Categorías de piezas</h3>
+          <p class="muted small">Personaliza las categorías que aparecen al dar de alta una pieza (módulo YonkSuite).</p>
+        </a>
+      <% } %>
     </div>
   </main>
 </body>

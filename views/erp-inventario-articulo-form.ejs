@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Nuevo artículo — Inventario</title>
+  <%- include('partials/head') %>
+</head>
+<body class="erp-shell">
+  <%- include('partials/erp-header', { currentSection: 'inventario' }) %>
+
+  <main class="page narrow">
+    <a href="/erp/inventario/articulos" class="back-link">&larr; Volver a Artículos</a>
+    <h1>Nuevo artículo</h1>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/erp/inventario/articulos" class="card-form">
+      <div class="two-col">
+        <label>Nombre
+          <input type="text" name="name" required value="<%= (item && item.name) || '' %>" placeholder="Batería 12V" />
+        </label>
+        <label>SKU (opcional)
+          <input type="text" name="sku" value="<%= (item && item.sku) || '' %>" placeholder="BAT-001" />
+        </label>
+      </div>
+      <div class="two-col">
+        <label>Tipo
+          <select name="item_type">
+            <option value="inventario" <%= !item || item.item_type === 'inventario' ? 'selected' : '' %>>Inventario (se controla existencia)</option>
+            <option value="servicio" <%= item && item.item_type === 'servicio' ? 'selected' : '' %>>Servicio (no maneja existencia)</option>
+            <option value="no_inventariable" <%= item && item.item_type === 'no_inventariable' ? 'selected' : '' %>>No inventariable</option>
+          </select>
+        </label>
+        <label>Unidad
+          <input type="text" name="unit" value="<%= (item && item.unit) || 'pieza' %>" placeholder="pieza" />
+        </label>
+      </div>
+      <label>Categoría (opcional)
+        <input type="text" name="category" value="<%= (item && item.category) || '' %>" placeholder="Refacciones" />
+      </label>
+      <div class="two-col">
+        <label>Costo (lo que te cuesta comprarlo)
+          <input type="number" name="cost" step="0.01" min="0" value="<%= (item && item.cost) || '0' %>" />
+        </label>
+        <label>Precio (lo que cobras al vender)
+          <input type="number" name="price" step="0.01" min="0" value="<%= (item && item.price) || '0' %>" />
+        </label>
+      </div>
+      <label>Impuesto
+        <select name="tax_id">
+          <option value="">— Sin impuesto —</option>
+          <% taxes.forEach(function(t) { %>
+            <option value="<%= t.id %>" <%= item && String(item.tax_id) === String(t.id) ? 'selected' : '' %>>
+              <%= t.name %> (<%= Number(t.rate).toString() %>%)
+            </option>
+          <% }); %>
+        </select>
+      </label>
+      <button type="submit" class="btn-primary full-width">Guardar artículo</button>
+    </form>
+  </main>
+</body>
+</html>
