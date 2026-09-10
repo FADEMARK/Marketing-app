@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Iniciar sesión — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="form-page narrow">
+    <h1>🔧 YonkSuite</h1>
+    <p class="muted">Inicia sesión con tu cuenta del negocio o con tu cuenta de empleado (YonkSuite Plus).</p>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+
+    <form method="POST" action="/erp/login" class="card-form">
+      <label>Correo electrónico
+        <input type="email" name="email" required autofocus />
+      </label>
+      <label>Contraseña
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit" class="btn-primary full-width">Entrar</button>
+    </form>
+
+    <p class="switch-link">¿Eres el dueño del negocio y no tienes ERP activo? <a href="/login">Inicia sesión normal</a></p>
+  </main>
+</body>
+</html>

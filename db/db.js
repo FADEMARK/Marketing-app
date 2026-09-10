@@ -211,6 +211,22 @@ async function init() {
       part_id INTEGER NOT NULL UNIQUE REFERENCES erp_parts(id),
       price NUMERIC(12,2) NOT NULL
     );
+
+    -- YonkSuite Plus: hasta 3 cuentas de empleado por negocio (aparte de la
+    -- cuenta dueña del negocio, que siempre tiene acceso total). El email es
+    -- único en toda la plataforma (no solo por negocio) para que el login de
+    -- empleado sea un simple email+contraseña, sin pedir de qué negocio son.
+    CREATE TABLE IF NOT EXISTS erp_employees (
+      id SERIAL PRIMARY KEY,
+      business_id INTEGER NOT NULL REFERENCES businesses(id),
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'ventas',
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      active_session_id TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
   `);
 
   // Migraciones ligeras: si la tabla ya existía de antes (como en un
@@ -276,6 +292,33 @@ async function init() {
   await pool.query(`ALTER TABLE crm_contacts ADD COLUMN IF NOT EXISTS address TEXT;`);
   await pool.query(`ALTER TABLE crm_contacts ADD COLUMN IF NOT EXISTS tax_id TEXT;`);
   await pool.query(`ALTER TABLE crm_contacts ADD COLUMN IF NOT EXISTS tax_legal_name TEXT;`);
+
+  // --- Sesión única por cuenta: al iniciar sesión se genera un token nuevo
+  // y se guarda aquí; cada request revalida que el token de la sesión actual
+  // siga siendo el vigente (ver services/middleware.js). Si alguien inicia
+  // sesión con la misma cuenta desde otro dispositivo, el token cambia y la
+  // sesión anterior se cierra sola en su siguiente request — sin necesitar
+  // websockets ni nada en tiempo real. Aplica tanto al negocio (dueño) como
+  // a las cuentas de empleado del ERP.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS active_session_id TEXT;`);
+
+  // --- YonkSuite Standard/Plus: nivel del módulo ERP, independiente del
+  // simple on/off de module_erp_enabled. "standard" = solo la cuenta dueña
+  // del negocio puede operar el ERP (un solo usuario). "plus" habilita la
+  // sección de empleados (hasta 3, con roles) además del dueño. Lo controla
+  // el equipo admin desde /admin/businesses, igual que el resto de módulos.
+  await pool.query(`ALTER TABLE businesses ADD COLUMN IF NOT EXISTS erp_plan TEXT NOT NULL DEFAULT 'standard';`);
+
+  // --- ERP: guarda la última sugerencia de piezas que dio la IA a partir de
+  // las fotos del vehículo (JSON), para poder mostrar el checklist de
+  // "qué mandar a inventario" sin tener que volver a llamar a la IA solo por
+  // recargar la página. Se sobreescribe cada vez que se vuelve a analizar.
+  await pool.query(`ALTER TABLE erp_vehicles ADD COLUMN IF NOT EXISTS ai_suggested_parts TEXT;`);
+
+  // --- Estado FÍSICO de la pieza (bueno/deteriorado/malo) — independiente de
+  // "status", que es el ciclo de vida de venta (disponible/reservada/vendida/
+  // desechada). El estado físico es el que se usa para sugerir precio con IA.
+  await pool.query(`ALTER TABLE erp_parts ADD COLUMN IF NOT EXISTS condition_grade TEXT;`);
 }
 
 module.exports = { pool, init };

@@ -1,30 +1,49 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <title>ERP Yonkes — MarketingHub</title>
+  <title>Inventario — YonkSuite</title>
   <%- include('partials/head') %>
 </head>
 <body>
   <%- include('partials/nav') %>
 
   <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
     <div class="page-header">
-      <h1>ERP Yonkes</h1>
-      <a href="/erp/vehicles/new" class="btn-primary">+ Nuevo vehículo</a>
+      <h1>Inventario de vehículos</h1>
+      <% if (canCompras) { %>
+        <a href="/erp/vehicles/new" class="btn-primary">+ Nuevo vehículo</a>
+      <% } %>
     </div>
     <p class="subtitle">Da de alta cada vehículo que compras, registra sus piezas y sus ventas.</p>
 
+    <form method="GET" action="/erp/vehiculos" class="card-form" style="margin-bottom:16px;">
+      <label>Buscar (ej. "camioneta Ford 2016")
+        <input type="text" name="q" value="<%= searchQuery %>" placeholder="Marca, modelo, año, VIN, placa..." />
+      </label>
+      <% if (statusFilter) { %><input type="hidden" name="status" value="<%= statusFilter %>" /><% } %>
+      <button type="submit" class="btn-primary full-width">🔎 Buscar</button>
+    </form>
+
     <div class="crm-filters">
-      <a href="/erp" class="<%= statusFilter === '' ? 'active' : '' %>">Todos</a>
+      <a href="/erp/vehiculos<%= searchQuery ? '?q=' + encodeURIComponent(searchQuery) : '' %>" class="<%= statusFilter === '' ? 'active' : '' %>">Todos</a>
       <% Object.values(VEHICLE_STATUSES).forEach(function(s) { %>
-        <a href="/erp?status=<%= s %>" class="<%= statusFilter === s ? 'active' : '' %>"><%= VEHICLE_STATUS_LABELS[s] %></a>
+        <a href="/erp/vehiculos?status=<%= s %><%= searchQuery ? '&q=' + encodeURIComponent(searchQuery) : '' %>" class="<%= statusFilter === s ? 'active' : '' %>"><%= VEHICLE_STATUS_LABELS[s] %></a>
       <% }); %>
     </div>
 
     <% if (vehicles.length === 0) { %>
       <div class="empty-state">
-        <p>Todavía no tienes vehículos<%= statusFilter ? ' con este estado' : '' %>.</p>
-        <a href="/erp/vehicles/new" class="btn-primary">Dar de alta mi primer vehículo</a>
+        <p>
+          <% if (searchQuery) { %>
+            No encontramos nada en el stock que coincida con "<%= searchQuery %>".
+          <% } else { %>
+            Todavía no tienes vehículos<%= statusFilter ? ' con este estado' : '' %>.
+          <% } %>
+        </p>
+        <% if (canCompras) { %>
+          <a href="/erp/vehicles/new" class="btn-primary">Dar de alta mi primer vehículo</a>
+        <% } %>
       </div>
     <% } else { %>
       <div class="campaign-grid">

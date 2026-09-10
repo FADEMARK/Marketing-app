@@ -240,33 +240,61 @@ Cada contacto guarda, además de nombre/teléfono/correo: **dirección**, y **da
 
 Si borras un campo personalizado desde el panel admin, los valores que ya se habían guardado en contactos existentes no se pierden, pero el campo deja de mostrarse (por si luego lo vuelves a crear con el mismo nombre).
 
-## ERP Yonkes: control de autos siniestrados y venta de piezas
+## YonkSuite (ERP Yonkes): control de autos siniestrados y venta de piezas
 
-Módulo opcional (`/erp`, requiere `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. El flujo:
+Módulo opcional (`/erp`, requiere `module_erp_enabled`), pensado para yonkes/deshuesaderos: se compra un auto siniestrado, se desarma en piezas, y cada pieza se vende por separado. Vive en su propia sección de la plataforma, con su propio dashboard (`/erp`), su propio login para empleados (`/erp/login`) y su propia barra de navegación reducida cuando entra un empleado.
 
-1. **Alta del vehículo** (`/erp/vehicles/new`): marca, modelo, año, VIN, placa, color, precio de compra, fecha de compra, notas, y hasta 8 fotos (se comprimen automáticamente a JPEG al subirlas, no hace falta que el negocio las optimice antes).
-2. **Piezas**: desde el detalle del vehículo se van registrando las piezas que salen de él (motor, transmisión, suspensión y dirección, frenos, eléctrico, carrocería, interior, llantas y rines, u otro), cada una con un precio sugerido opcional.
-3. **Venta**: cuando se vende una o varias piezas, se registra la venta ahí mismo, en el detalle de ESE vehículo — seleccionas qué piezas se vendieron y confirmas el precio real de cada una (puede ser distinto al sugerido). Las piezas vendidas quedan marcadas como tal y ya no se pueden editar ni borrar (es un registro financiero).
-4. **Estado de cuenta por vehículo**: en todo momento el detalle del vehículo muestra precio de compra, cuánto se ha vendido de él hasta ahora, y la ganancia o pérdida resultante — sin necesitar que el vehículo esté completamente vendido para verlo.
-5. **Agotado**: cuando ya no queda nada que vender de un vehículo, se marca manualmente como "Agotado" (se puede reactivar si hace falta). Un vehículo con ventas registradas no se puede borrar —de nuevo, por ser un registro financiero—, solo marcarse como agotado.
-6. Las ventas se pueden **cancelar** si se registraron por error: las piezas regresan a "Disponible" y el estado de cuenta se recalcula solo.
+### Planes: YonkSuite Standard vs YonkSuite Plus
 
-Todo queda aislado por negocio (un yonke jamás ve el inventario de otro) y todo el flujo de venta corre dentro de una transacción de base de datos, para que una venta a medio registrar nunca deje piezas en un estado inconsistente.
+Independiente del check "Módulo ERP" (que solo prende/apaga el acceso), cada negocio tiene un **plan ERP** que tu equipo controla desde `/admin/businesses` (columna "Plan ERP"):
 
-### Consultoría: cómo empaquetar y revender el ERP Yonkes
+- **YonkSuite Standard**: solo la cuenta dueña del negocio puede entrar al ERP. Es una sola sesión activa a la vez en **toda la plataforma** (Marketing, CRM y ERP) — si el mismo usuario inicia sesión desde otra computadora o navegador, la sesión anterior se cierra sola en cuanto esa persona vuelve a interactuar con la app (no hace falta que la cierre manualmente).
+- **YonkSuite Plus**: agrega hasta **3 cuentas de empleado** (`/erp/empleados`, gestionado por el dueño o por un empleado con rol Admin) con acceso por rol:
+  - **Admin**: puede crear/editar/desactivar/borrar empleados y sus roles, y además tiene acceso completo a compras y ventas.
+  - **Ventas**: solo puede registrar y cancelar ventas de piezas ya en inventario. No puede dar de alta vehículos, subir fotos, agregar piezas ni editar datos del vehículo.
+  - **Compras**: da de alta vehículos, sube fotos, agrega/edita/borra piezas y las manda a inventario. No puede vender.
+  - **Ventas / Admin**: compras + ventas juntos, sin permisos de gestión de empleados.
 
-Dado que la idea es venderlo como producto aparte (estilo NetSuite, pero mucho más ligero y enfocado a un giro específico), esta es una propuesta de modelo de negocio de partida — ajústala según lo que veas en el mercado:
+  Cada cuenta de empleado también tiene sesión única (si el mismo empleado entra desde otro dispositivo, la sesión vieja de ESE empleado se cierra). Si el negocio baja de Plus a Standard, las cuentas de empleado pierden acceso al instante (no necesitan cerrar sesión, se les corta como al resto de módulos).
 
-- **Cuota mensual por yonke (SaaS)**, no por transacción — es lo más simple de vender y de explicarle al cliente. Sugerencia de escalones: un plan básico con 1-2 usuarios y un tope de vehículos activos (por ejemplo, hasta 30 vehículos "en stock" simultáneos), y un plan superior sin ese tope y con más usuarios. El límite de vehículos activos es fácil de implementar más adelante (un `COUNT` sobre `erp_vehicles WHERE status='en_stock'`) si quieres que el sistema mismo lo controle en vez de hacerlo por honestidad del cliente.
+### El flujo del día a día
+
+1. **Alta del vehículo** (`/erp/vehicles/new`, requiere permiso de Compras): marca, modelo, año, VIN, placa, color, precio de compra, fecha de compra, notas, y hasta 8 fotos (se comprimen automáticamente a JPEG al subirlas).
+2. **Búsqueda de stock**: tanto el dashboard (`/erp`) como el inventario (`/erp/vehiculos`) tienen un buscador de texto libre — escribe algo como "camioneta Ford 2016" y encuentra coincidencias sin importar el orden de las palabras ni en qué campo estén (marca, modelo, año, VIN o placa).
+3. **Piezas**: desde el detalle del vehículo se registran las piezas que salen de él (motor, transmisión, suspensión y dirección, frenos, eléctrico, carrocería, interior, llantas y rines, u otro), cada una con un precio sugerido opcional y un **estado físico** (Bueno / Deteriorado / Malo) que ayuda a decidir a qué precio venderla.
+4. **Venta** (requiere permiso de Ventas): se registra en el detalle de ESE vehículo — seleccionas qué piezas se vendieron y confirmas el precio real de cada una. Las piezas vendidas quedan marcadas como tal y ya no se pueden editar ni borrar (es un registro financiero). Las ventas se pueden **cancelar** si se registraron por error: las piezas regresan a "Disponible".
+5. **Estado de cuenta por vehículo**: precio de compra, cuánto se ha vendido de él hasta ahora, y la ganancia o pérdida resultante — sin necesitar que el vehículo esté completamente vendido para verlo.
+6. **Dar de baja el stock**: cuando ya no queda nada que vender de un vehículo, se marca manualmente como "Agotado" (botón "Marcar como Agotado" en el detalle del vehículo, se puede reactivar si hace falta). Un vehículo con ventas registradas no se puede borrar —por ser un registro financiero—, solo marcarse como agotado. Cada pieza también se puede marcar como "Desechada" si resultó dañada/sin valor de venta.
+
+Todo queda aislado por negocio y todo el flujo de venta corre dentro de una transacción de base de datos, para que una venta a medio registrar nunca deje piezas en un estado inconsistente.
+
+### Funciones de IA (solo se disparan con un clic, nunca automáticas)
+
+Igual que en Marketing, ninguna función de IA del ERP se ejecuta sola — todas requieren que el usuario presione un botón explícito, para que nunca se gaste una llamada de IA sin que lo pidan:
+
+- **🤖 Analizar con IA (sugerir piezas)** — botón en la sección de Fotos del detalle del vehículo (solo con permiso de Compras y solo si ya hay al menos una foto subida). Manda las fotos del vehículo a Gemini/OpenAI (según cuál API key esté configurada) pidiéndole que identifique qué piezas se ven y sugiera categoría, estado físico y precio. El resultado aparece como un **checklist**: cada pieza sugerida trae casilla, estado editable y precio editable — solo las piezas que el usuario **marca y envía** con el botón "Enviar seleccionadas a inventario" se crean como piezas reales; las que no se marcan nunca llegan al inventario disponible.
+- **💡 Sugerir precio** — botón junto a cada pieza ya existente; le pasa a la IA el vehículo, el nombre de la pieza y su estado (Bueno/Deteriorado/Malo) y devuelve un precio sugerido en pesos mexicanos.
+- **🔎 Buscador rápido de compatibilidad** — un cuadro de texto libre en el detalle del vehículo (disponible para cualquier rol, sin cambiar de pantalla) donde puedes preguntar cosas como "Nissan Versa 2016 puerta derecha es compatible con qué modelos" y la IA responde en el momento.
+
+Las tres funciones usan el mismo proveedor de IA ya configurado para Marketing (`GEMINI_API_KEY` primero, `OPENAI_API_KEY` como respaldo — ver la sección de variables de entorno). Si el negocio no tiene ninguna de las dos configuradas, los botones responden con un mensaje claro en vez de fallar. El costo por uso es el mismo orden de magnitud que un copy de Marketing (unos centavos de dólar por llamada); el análisis de fotos cuesta un poco más que una llamada de solo texto por incluir imágenes, pero sigue siendo bajo.
+
+### Consultoría: cómo empaquetar y revender YonkSuite
+
+Dado que la idea es venderlo como producto aparte (estilo NetSuite, pero mucho más ligero y enfocado a un giro específico), los dos planes (Standard/Plus) ya están implementados y listos para usarse como escalones de precio — esta es una propuesta de modelo de negocio de partida, ajústala según lo que veas en el mercado:
+
+- **YonkSuite Standard** como plan de entrada: un solo usuario (el dueño), sin cuentas de empleado. Bueno para un yonke chico donde una sola persona captura todo.
+- **YonkSuite Plus** como plan superior: hasta 3 cuentas de empleado con roles (Admin/Ventas/Compras/Ventas-Admin) — natural para un yonke con mostrador de ventas separado de quien desarma los autos. El cambio de plan lo haces tú desde `/admin/businesses` con el selector "Plan ERP", sin tocar código.
+- **Cuota mensual por yonke (SaaS)**, no por transacción — es lo más simple de vender y de explicarle al cliente, con Standard y Plus como dos precios distintos. Un tope de vehículos activos (por ejemplo, hasta 30 vehículos "en stock" simultáneos) es fácil de agregar más adelante (un `COUNT` sobre `erp_vehicles WHERE status='en_stock'`) si quieres un tercer escalón por volumen.
 - **Cuota de implementación inicial (setup fee), aparte de la mensualidad**: carga de su catálogo de vehículos/piezas existente si ya tenían algo en Excel, configuración de su marca (logo/colores, que ya se reutilizan en Documentos y en el futuro catálogo), y una sesión de capacitación al equipo del yonke. Esto es normal en software B2B y ayuda a que el precio mensual no cargue con todo el costo de arranque.
-- **Cobro por usuario adicional** más allá de los incluidos en el plan, si el yonke tiene varios empleados capturando piezas al mismo tiempo.
-- Tú (o tu equipo) actúan como el "admin" de la plataforma: dan de alta al negocio, activan el módulo ERP-Yonkes con el check correspondiente, y quedan como soporte de primer nivel — el mismo rol que ya cumples hoy con los negocios de Marketing.
+- **Cobro por el uso de las funciones de IA** (análisis de fotos, precio sugerido, compatibilidad) si decides pasarle ese costo al cliente en vez de absorberlo en la mensualidad — cada llamada es barata, pero en un yonke con mucho movimiento puede sumar.
+- Tú (o tu equipo) actúan como el "admin" de la plataforma: dan de alta al negocio, activan el módulo ERP con el check correspondiente y eligen su Plan ERP, y quedan como soporte de primer nivel — el mismo rol que ya cumples hoy con los negocios de Marketing.
 
-### Próximos pasos sugeridos para el ERP
+### Próximos pasos sugeridos para YonkSuite
 
-- **Tienda en línea**: el modelo de datos ya quedó listo para esto (las piezas ya tienen categoría, precio y el vehículo ya tiene fotos) — el siguiente paso natural sería una página pública de catálogo por yonke (sin necesitar login) mostrando las piezas "Disponibles", para que el público las vea y contacte o compre. Vale la pena definir aparte si el pago se procesa en línea (Stripe/Mercado Pago) o solo se usa como escaparate para generar el contacto.
+- **Tienda en línea**: el modelo de datos ya quedó listo para esto (las piezas ya tienen categoría, precio, estado físico y el vehículo ya tiene fotos) — el siguiente paso natural sería una página pública de catálogo por yonke (sin necesitar login) mostrando las piezas "Disponibles", para que el público las vea y contacte o compre. Vale la pena definir aparte si el pago se procesa en línea (Stripe/Mercado Pago) o solo se usa como escaparate para generar el contacto.
 - **Fotos por pieza** (hoy las fotos son del vehículo completo) — importante si se construye la tienda en línea, ya que el comprador de una pieza específica quiere verla a ella, no solo el auto completo.
 - **Reportes**: un dashboard con ganancia acumulada por periodo, piezas más vendidas por categoría, etc. — con los datos ya estructurados como quedaron (erp_sales/erp_sale_items), son consultas SQL directas, no requiere cambiar el modelo de datos.
+- **Historial de auditoría por empleado**: hoy se sabe qué rol tiene cada empleado, pero no queda un registro de "quién exactamente dio de alta esta pieza o esta venta" — útil si el yonke crece y quiere rastrear responsabilidad por captura.
 - **Facturación electrónica real (CFDI)** si en algún momento se vuelve un requisito — se dejó la puerta abierta guardando los datos fiscales del cliente en el CRM, pero conectar un PAC (proveedor autorizado del SAT) es un desarrollo aparte, con costo recurrente propio del PAC.
 
 ## Conectar Canva (alternativa más elaborada, con plantillas de marca)
@@ -288,9 +316,12 @@ marketing-app/
 ├── db/db.js                # conexión PostgreSQL (pg) y esquema
 ├── services/
 │   ├── aiCopy.js           # genera caption + hashtags (reglas o IA)
+│   ├── aiParts.js           # YonkSuite: sugerir piezas por foto, precio sugerido, compatibilidad
+│   ├── backgroundRemoval.js # quitar fondo de imágenes (self-hosted, sin licencia AGPL)
 │   ├── canva.js             # genera el diseño vía Canva Connect API
+│   ├── erpStatus.js         # constantes de YonkSuite (estados, planes, roles/permisos)
 │   ├── facebook.js          # publica en Facebook vía Meta Graph API
-│   ├── middleware.js        # protección de rutas (negocio / admin)
+│   ├── middleware.js        # protección de rutas (negocio / admin / ERP por rol)
 │   └── status.js            # estados posibles de una campaña
 ├── views/                  # plantillas EJS (sitio cliente + panel admin)
 ├── public/css/style.css     # estilos

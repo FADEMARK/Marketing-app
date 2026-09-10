@@ -8,7 +8,7 @@
   <%- include('partials/nav') %>
 
   <main class="page narrow">
-    <a href="/erp" class="back-link">&larr; Volver al ERP</a>
+    <a href="/erp/vehiculos" class="back-link">&larr; Volver al inventario</a>
 
     <div class="page-header">
       <h1><%= vehicle.brand %> <%= vehicle.model %> <%= vehicle.year || '' %></h1>
@@ -50,23 +50,59 @@
           <% photos.forEach(function(photo) { %>
             <figure>
               <img src="<%= photo.photo_data %>" alt="" />
-              <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/photos/<%= photo.id %>/delete"
-                    onsubmit="return confirm('¿Borrar esta foto?');">
-                <button type="submit" title="Borrar foto">✕</button>
-              </form>
+              <% if (canCompras) { %>
+                <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/photos/<%= photo.id %>/delete"
+                      onsubmit="return confirm('¿Borrar esta foto?');">
+                  <button type="submit" title="Borrar foto">✕</button>
+                </form>
+              <% } %>
             </figure>
           <% }); %>
         </div>
       <% } %>
-      <% if (photos.length < MAX_VEHICLE_PHOTOS) { %>
+      <% if (canCompras && photos.length < MAX_VEHICLE_PHOTOS) { %>
         <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/photos" enctype="multipart/form-data" style="margin-top:12px; display:flex; gap:8px; align-items:center;">
           <input type="file" name="photos" accept="image/*" multiple />
           <button type="submit" class="btn-secondary">Agregar fotos</button>
         </form>
       <% } %>
+      <% if (canCompras && photos.length > 0) { %>
+        <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/analizar-ia" style="margin-top:12px;">
+          <button type="submit" class="btn-secondary full-width">🤖 Analizar con IA (sugerir piezas)</button>
+        </form>
+      <% } %>
     </div>
 
+    <!-- Sugerencias de IA -->
+    <% if (canCompras && aiSuggestedParts && aiSuggestedParts.length > 0) { %>
+      <div class="detail-box" style="margin-top:20px;">
+        <h3>🤖 Piezas sugeridas por IA</h3>
+        <p class="muted small">Revisa cada pieza, ajusta su estado si hace falta y marca las que quieras enviar al inventario.</p>
+        <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/ai-checklist/enviar" class="card-form">
+          <% aiSuggestedParts.forEach(function(sp, idx) { %>
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border);">
+              <input type="checkbox" name="items[<%= idx %>][selected]" value="1" id="ai-part-<%= idx %>" style="width:auto;" />
+              <input type="hidden" name="items[<%= idx %>][name]" value="<%= sp.name %>" />
+              <input type="hidden" name="items[<%= idx %>][category]" value="<%= sp.category %>" />
+              <label for="ai-part-<%= idx %>" style="flex:1; font-weight:400; margin:0;">
+                <%= sp.name %> <span class="muted small">(<%= PART_CATEGORY_LABELS[sp.category] || sp.category %>)</span>
+              </label>
+              <select name="items[<%= idx %>][condition_grade]" style="width:130px;">
+                <% Object.values(PART_CONDITIONS).forEach(function(c) { %>
+                  <option value="<%= c %>" <%= sp.condition_grade === c ? 'selected' : '' %>><%= PART_CONDITION_LABELS[c] %></option>
+                <% }); %>
+              </select>
+              <input type="number" name="items[<%= idx %>][asking_price]" step="0.01" min="0" placeholder="Precio"
+                     value="<%= sp.suggested_price || '' %>" style="width:110px;" />
+            </div>
+          <% }); %>
+          <button type="submit" class="btn-primary full-width" style="margin-top:12px;">Enviar seleccionadas a inventario</button>
+        </form>
+      </div>
+    <% } %>
+
     <!-- Datos del vehículo -->
+    <% if (canCompras) { %>
     <div class="detail-box" style="margin-top:20px;">
       <h3>Datos del vehículo</h3>
       <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/update" class="card-form">
@@ -110,7 +146,7 @@
 
       <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/toggle-status" style="margin-top:12px;">
         <button type="submit" class="btn-secondary full-width">
-          <%= vehicle.status === 'agotado' ? 'Reactivar (marcar en stock)' : 'Marcar como Agotado' %>
+          <%= vehicle.status === 'agotado' ? 'Reactivar (marcar en stock)' : 'Marcar como Agotado (dar de baja)' %>
         </button>
       </form>
 
@@ -119,11 +155,13 @@
         <button type="submit" class="link-button" style="color:#B3261E;">🗑 Eliminar vehículo</button>
       </form>
     </div>
+    <% } %>
 
     <!-- Piezas -->
     <div class="detail-box" style="margin-top:20px;">
       <h3>Piezas (<%= parts.length %>)</h3>
 
+      <% if (canCompras) { %>
       <form method="POST" action="/erp/vehicles/<%= vehicle.id %>/parts" class="card-form">
         <div class="two-col">
           <label>Nombre de la pieza
@@ -137,6 +175,13 @@
             </select>
           </label>
         </div>
+        <label>Estado de la pieza
+          <select name="condition_grade">
+            <% Object.values(PART_CONDITIONS).forEach(function(c) { %>
+              <option value="<%= c %>"><%= PART_CONDITION_LABELS[c] %></option>
+            <% }); %>
+          </select>
+        </label>
         <label>Precio sugerido (opcional)
           <input type="number" name="asking_price" step="0.01" min="0" />
         </label>
@@ -145,21 +190,23 @@
         </label>
         <button type="submit" class="btn-secondary full-width">+ Agregar pieza</button>
       </form>
+      <% } %>
 
       <% if (parts.length > 0) { %>
         <table class="admin-table" style="margin-top:16px;">
           <thead>
-            <tr><th>Pieza</th><th>Categoría</th><th>Precio</th><th>Estado</th><th></th></tr>
+            <tr><th>Pieza</th><th>Categoría</th><th>Estado pieza</th><th>Precio</th><th>Estado</th><th></th></tr>
           </thead>
           <tbody>
             <% parts.forEach(function(p) { %>
               <tr>
                 <td><%= p.name %></td>
                 <td class="muted"><%= PART_CATEGORY_LABELS[p.category] || p.category %></td>
+                <td class="muted"><%= p.condition_grade ? (PART_CONDITION_LABELS[p.condition_grade] || p.condition_grade) : '—' %></td>
                 <td class="muted">$<%= p.asking_price ? Number(p.asking_price).toLocaleString('es-MX', {minimumFractionDigits:2}) : '—' %></td>
                 <td><span class="status-badge status-<%= p.status %>"><%= PART_STATUS_LABELS[p.status] || p.status %></span></td>
                 <td class="admin-actions">
-                  <% if (p.status !== 'vendida') { %>
+                  <% if (canCompras && p.status !== 'vendida') { %>
                     <details style="display:inline-block;">
                       <summary class="link-strong" style="cursor:pointer; display:inline;">Editar</summary>
                       <form method="POST" action="/erp/parts/<%= p.id %>/update" class="card-form" style="margin-top:8px;">
@@ -170,6 +217,13 @@
                           <select name="category">
                             <% PART_CATEGORIES.forEach(function(c) { %>
                               <option value="<%= c %>" <%= p.category === c ? 'selected' : '' %>><%= PART_CATEGORY_LABELS[c] %></option>
+                            <% }); %>
+                          </select>
+                        </label>
+                        <label>Estado de la pieza
+                          <select name="condition_grade">
+                            <% Object.values(PART_CONDITIONS).forEach(function(c) { %>
+                              <option value="<%= c %>" <%= p.condition_grade === c ? 'selected' : '' %>><%= PART_CONDITION_LABELS[c] %></option>
                             <% }); %>
                           </select>
                         </label>
@@ -189,6 +243,9 @@
                         <button type="submit" class="btn-primary full-width">Guardar</button>
                       </form>
                     </details>
+                    <button type="button" class="link-strong btn-suggest-price" data-part-id="<%= p.id %>"
+                            data-part-name="<%= p.name %>" data-part-condition="<%= p.condition_grade || 'bueno' %>"
+                            style="background:none;border:none;cursor:pointer;font:inherit;">💡 Sugerir precio</button>
                     <form method="POST" action="/erp/parts/<%= p.id %>/delete" style="display:inline;"
                           onsubmit="return confirm('¿Borrar esta pieza?');">
                       <button type="submit" class="link-button" style="color:#B3261E;">Borrar</button>
@@ -205,6 +262,7 @@
     </div>
 
     <!-- Ventas -->
+    <% if (canVentas) { %>
     <div class="detail-box" style="margin-top:20px;">
       <h3>Registrar venta</h3>
       <% if (availableParts.length === 0) { %>
@@ -258,6 +316,68 @@
         <% }); %>
       <% } %>
     </div>
+    <% } %>
+
+    <!-- Buscador rápido de compatibilidad -->
+    <div class="detail-box" style="margin-top:20px;">
+      <h3>🔎 Buscador rápido de compatibilidad</h3>
+      <p class="muted small">Pregunta, por ejemplo: "Nissan Versa 2016 puerta derecha es compatible con qué modelos".</p>
+      <div class="card-form">
+        <label>Pregunta
+          <input type="text" id="compat-question" placeholder="Ej. Nissan Versa 2016 puerta derecha compatible con..." />
+        </label>
+        <button type="button" id="compat-ask-btn" class="btn-secondary full-width">Preguntar</button>
+      </div>
+      <div id="compat-answer" class="muted small" style="margin-top:10px; white-space:pre-wrap;"></div>
+    </div>
   </main>
+
+  <script>
+    (function() {
+      var askBtn = document.getElementById('compat-ask-btn');
+      if (askBtn) {
+        askBtn.addEventListener('click', function() {
+          var q = document.getElementById('compat-question').value.trim();
+          var out = document.getElementById('compat-answer');
+          if (!q) return;
+          out.textContent = 'Buscando...';
+          fetch('/erp/compatibilidad', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: q })
+          }).then(function(r) { return r.json(); }).then(function(data) {
+            out.textContent = data.ok ? data.answer : ('Error: ' + (data.error || 'No se pudo obtener respuesta.'));
+          }).catch(function() {
+            out.textContent = 'Error de conexión. Intenta de nuevo.';
+          });
+        });
+      }
+
+      document.querySelectorAll('.btn-suggest-price').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var partId = btn.getAttribute('data-part-id');
+          var partName = btn.getAttribute('data-part-name');
+          var condition = btn.getAttribute('data-part-condition');
+          var original = btn.textContent;
+          btn.textContent = 'Calculando...';
+          fetch('/erp/parts/' + partId + '/sugerir-precio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: partName, condition_grade: condition })
+          }).then(function(r) { return r.json(); }).then(function(data) {
+            btn.textContent = original;
+            if (data.ok) {
+              alert('Precio sugerido para "' + partName + '" (' + condition + '): $' + data.suggestedPrice);
+            } else {
+              alert('No se pudo sugerir un precio: ' + (data.error || 'error desconocido'));
+            }
+          }).catch(function() {
+            btn.textContent = original;
+            alert('Error de conexión. Intenta de nuevo.');
+          });
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

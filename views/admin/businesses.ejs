@@ -41,6 +41,7 @@
             <th>Estado</th>
             <th>Plan</th>
             <th>Módulos</th>
+            <th>Plan ERP</th>
             <th>Facebook</th>
             <th>Campañas</th>
             <th>Registrado</th>
@@ -80,6 +81,18 @@
                     <%= b.module_erp_enabled ? '☑' : '☐' %> ERP Yonkes
                   </button>
                 </form>
+              </td>
+              <td>
+                <% if (b.module_erp_enabled) { %>
+                  <form method="POST" action="/admin/businesses/<%= b.id %>/set-erp-plan" class="inline-form">
+                    <select name="erp_plan" onchange="this.form.submit()">
+                      <option value="standard" <%= b.erp_plan === 'standard' ? 'selected' : '' %>>Standard (1 usuario)</option>
+                      <option value="plus" <%= b.erp_plan === 'plus' ? 'selected' : '' %>>Plus (hasta 3 empleados + roles)</option>
+                    </select>
+                  </form>
+                <% } else { %>
+                  <span class="muted small">—</span>
+                <% } %>
               </td>
               <td>
                 <% if (b.fb_page_id) { %>

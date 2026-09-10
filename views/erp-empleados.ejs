@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Empleados — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page">
+    <a href="/erp" class="back-link">&larr; Volver al inicio del ERP</a>
+    <h1>👥 Empleados</h1>
+
+    <% if (error) { %>
+      <div class="alert alert-error"><%= error %></div>
+    <% } %>
+    <% if (saved) { %>
+      <div class="alert alert-warning">Listo — cambios guardados.</div>
+    <% } %>
+
+    <% if (erpPlan !== 'plus') { %>
+      <div class="empty-state">
+        <p><strong>Esta sección es parte de YonkSuite Plus.</strong></p>
+        <p class="muted">
+          Con YonkSuite Standard, solo la cuenta del negocio puede operar el ERP. YonkSuite Plus agrega
+          hasta <%= maxEmployees %> cuentas de empleado con roles (Admin, Ventas, Compras, Ventas/Admin).
+          Pide a nuestro equipo que active el plan Plus para tu negocio desde el panel interno.
+        </p>
+      </div>
+    <% } else { %>
+      <p class="muted">
+        Cuentas de empleado: <%= employees.length %> / <%= maxEmployees %>. Cada empleado inicia sesión
+        por separado en <a href="/erp/login">/erp/login</a> con su propio correo y contraseña.
+      </p>
+
+      <h3>Roles</h3>
+      <ul class="muted small">
+        <% Object.values(ERP_ROLES).forEach(function(role) { %>
+          <li><strong><%= ERP_ROLE_LABELS[role] %>:</strong> <%= ERP_ROLE_DESCRIPTIONS[role] %></li>
+        <% }); %>
+      </ul>
+
+      <% if (employees.length >= maxEmployees) { %>
+        <p class="muted small">Ya llegaste al máximo de <%= maxEmployees %> empleados — borra o desactiva uno para agregar otro.</p>
+      <% } else { %>
+        <h3>Agregar empleado</h3>
+        <form method="POST" action="/erp/empleados" class="card-form">
+          <label>Nombre
+            <input type="text" name="name" required />
+          </label>
+          <label>Correo electrónico
+            <input type="email" name="email" required />
+          </label>
+          <label>Contraseña (mínimo 6 caracteres)
+            <input type="password" name="password" minlength="6" required />
+          </label>
+          <label>Rol
+            <select name="role">
+              <% Object.values(ERP_ROLES).forEach(function(role) { %>
+                <option value="<%= role %>" <%= role === 'ventas' ? 'selected' : '' %>><%= ERP_ROLE_LABELS[role] %></option>
+              <% }); %>
+            </select>
+          </label>
+          <button type="submit" class="btn-primary full-width">+ Agregar empleado</button>
+        </form>
+      <% } %>
+
+      <h3>Empleados actuales</h3>
+      <% if (employees.length === 0) { %>
+        <div class="empty-state"><p>Todavía no has agregado ningún empleado.</p></div>
+      <% } else { %>
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Correo</th>
+              <th>Rol</th>
+              <th>Estado</th>
+              <th>Desde</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% employees.forEach(function(emp) { %>
+              <tr>
+                <td><%= emp.name %></td>
+                <td class="muted"><%= emp.email %></td>
+                <td>
+                  <form method="POST" action="/erp/empleados/<%= emp.id %>/update" class="inline-form">
+                    <select name="role" onchange="this.form.submit()">
+                      <% Object.values(ERP_ROLES).forEach(function(role) { %>
+                        <option value="<%= role %>" <%= emp.role === role ? 'selected' : '' %>><%= ERP_ROLE_LABELS[role] %></option>
+                      <% }); %>
+                    </select>
+                  </form>
+                </td>
+                <td>
+                  <span class="status-badge <%= emp.active ? 'status-aprobado' : 'status-pendiente_revision' %>">
+                    <%= emp.active ? 'Activo' : 'Desactivado' %>
+                  </span>
+                </td>
+                <td class="muted small"><%= emp.created_at %></td>
+                <td class="admin-actions">
+                  <form method="POST" action="/erp/empleados/<%= emp.id %>/toggle-active">
+                    <button type="submit" class="link-strong" style="background:none;border:none;cursor:pointer;font:inherit;">
+                      <%= emp.active ? 'Desactivar' : 'Activar' %>
+                    </button>
+                  </form>
+                  <form method="POST" action="/erp/empleados/<%= emp.id %>/delete"
+                        onsubmit="return confirm('¿Borrar a &quot;<%= emp.name %>&quot;? Esto no se puede deshacer.');">
+                    <button type="submit" class="link-button" style="color:#B3261E;">Borrar</button>
+                  </form>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    <% } %>
+  </main>
+</body>
+</html>

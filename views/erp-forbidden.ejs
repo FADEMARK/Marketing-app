@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <title>Sin permiso — YonkSuite</title>
+  <%- include('partials/head') %>
+</head>
+<body>
+  <%- include('partials/nav') %>
+
+  <main class="page narrow">
+    <h1>🔒 No tienes permiso para esto</h1>
+    <p class="muted">
+      Tu cuenta tiene el rol "<strong><%= erpActor && erpActor.role %></strong>" dentro de YonkSuite, y esa
+      acción requiere un permiso que tu rol no tiene. Si crees que deberías tener acceso, pídele al dueño
+      del negocio o a un administrador que ajuste tu rol desde "Empleados".
+    </p>
+    <a href="/erp" class="btn-secondary">&larr; Volver al inicio del ERP</a>
+  </main>
+</body>
+</html>

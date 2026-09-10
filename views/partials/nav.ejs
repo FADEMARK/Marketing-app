@@ -18,6 +18,11 @@
         <button type="submit" class="link-button">Cerrar sesión</button>
       </form>
       <a href="/admin/login" class="muted small" style="text-decoration:none;" title="Panel interno (equipo)">🔧 Panel interno</a>
+    <% } else if (typeof isErpEmployeeLoggedIn !== 'undefined' && isErpEmployeeLoggedIn) { %>
+      <a href="/erp">ERP Yonkes</a>
+      <form action="/erp/logout" method="POST" class="inline-form">
+        <button type="submit" class="link-button">Cerrar sesión</button>
+      </form>
     <% } else if (isAdminLoggedIn) { %>
       <a href="/admin">Panel interno</a>
       <a href="/admin/businesses">Negocios</a>
